@@ -1,0 +1,38 @@
+{
+  "name": "@yggdrasil/service-workflows",
+  "version": "0.1.0-beta.1",
+  "license": "MIT",
+  "description": "Workflow automation engine plugin — gateway methods (workflows.*) over @yggdrasil/workflows's pure executor, with a filesystem store for definitions and runs. See notes/automation/workflows-design.md.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@yggdrasil/sdk": "workspace:*",
+    "@yggdrasil/kernel": "workspace:*",
+    "@yggdrasil/gateway": "workspace:*",
+    "@yggdrasil/tool-cli-delegate": "workspace:*",
+    "@yggdrasil/tools-runtime": "workspace:*",
+    "@yggdrasil/workflows": "workspace:*"
+  },
+  "files": [
+    "dist",
+    "yggdrasil.plugin.json"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mauriciorossdev/yggdrasilOS.git",
+    "directory": "extensions/service-workflows"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

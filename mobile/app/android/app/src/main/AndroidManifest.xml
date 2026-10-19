@@ -1,0 +1,227 @@
+<manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <uses-permission android:name="android.permission.INTERNET"/>
+    <!-- Voice input on the empty-chat-list composer (speech_to_text) — see
+         notes/yggdrasil-mobile/home-screen-voice-input-ux.md §2. -->
+    <uses-permission android:name="android.permission.RECORD_AUDIO"/>
+    <!-- phone_set_alarm (AlarmClock.ACTION_SET_ALARM) — Samsung's clock app
+         (com.sec.android.app.clockpackage) enforces this normal permission on
+         the calling app's own process for that implicit intent, even though
+         it's undeclared by the AOSP AlarmClock API docs. Missed earlier: the
+         only hardware confirmation of this intent had been via `adb shell am
+         start` (shell UID, different permission grants), never through the
+         app's own MainActivity.kt code path until a real standalone-mode
+         chat hit "Permission Denial: ... requires
+         com.android.alarm.permission.SET_ALARM". -->
+    <uses-permission android:name="com.android.alarm.permission.SET_ALARM"/>
+    <!-- phone_find_files (MediaStore.Files query, no picker) — see
+         notes/yggdrasil-mobile/phone-find-files-design.md §1.2. Granular
+         media permissions for Android 13+ (API 33+); READ_EXTERNAL_STORAGE
+         (capped at API 32) covers the single-permission model Android 10-12
+         used before that, which also included MediaStore.Downloads. -->
+    <uses-permission android:name="android.permission.READ_MEDIA_IMAGES"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_VIDEO"/>
+    <uses-permission android:name="android.permission.READ_MEDIA_AUDIO"/>
+    <uses-permission android:name="android.permission.READ_EXTERNAL_STORAGE" android:maxSdkVersion="32"/>
+    <!-- phone_find_files §7 — optional wider access ("All Files Access"),
+         granted only via Settings.ACTION_MANAGE_APP_ALL_FILES_ACCESS_PERMISSION,
+         never a runtime dialog. Additive on top of the permissions above, not
+         a replacement — see phone-find-files-design.md §7.1/§7.6. Requesting
+         it (permission_handler from Flutter) is out of scope here. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE"/>
+    <!-- voice-notification-shortcut-design.md §2.1 — runtime permission on
+         Android 13+/API 33+ to post the ongoing tap-to-listen notification. -->
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- Phase 2 device capabilities (on-device-workflows-design.md §2). Each
+         is only requested at runtime right before the capability that needs it runs. -->
+    <uses-permission android:name="android.permission.ACCESS_COARSE_LOCATION"/>
+    <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION"/>
+    <uses-permission android:name="android.permission.SEND_SMS"/>
+    <uses-permission android:name="android.permission.CALL_PHONE"/>
+    <uses-permission android:name="android.permission.READ_CONTACTS"/>
+    <uses-permission android:name="android.permission.READ_CALENDAR"/>
+    <!-- Phase 4 device triggers (on-device-workflows-design.md §4). -->
+    <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE"/>
+    <uses-permission android:name="android.permission.ACCESS_BACKGROUND_LOCATION"/>
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE"/>
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE"/>
+    <!-- Quick-access assistant bubble: drawn over other apps. -->
+    <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
+    <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
+    <application
+        android:label="Yggdrasil"
+        android:name="${applicationName}"
+        android:icon="@mipmap/ic_launcher"
+        android:networkSecurityConfig="@xml/network_security_config"
+        android:usesCleartextTraffic="true">
+        <!-- Push notifications from the gateway (FCM) use the same channel as on-device alerts. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_channel_id"
+            android:value="yggdrasil_alerts"/>
+        <activity
+            android:name=".MainActivity"
+            android:exported="true"
+            android:launchMode="singleTop"
+            android:taskAffinity=""
+            android:theme="@style/LaunchTheme"
+            android:configChanges="orientation|keyboardHidden|keyboard|screenSize|smallestScreenSize|locale|layoutDirection|fontScale|screenLayout|density|uiMode"
+            android:hardwareAccelerated="true"
+            android:windowSoftInputMode="adjustResize">
+            <!-- Specifies an Android theme to apply to this Activity as soon as
+                 the Android process has started. This theme is visible to the user
+                 while the Flutter UI initializes. After that, this theme continues
+                 to determine the Window background behind the Flutter UI. -->
+            <meta-data
+              android:name="io.flutter.embedding.android.NormalTheme"
+              android:resource="@style/NormalTheme"
+              />
+            <intent-filter>
+                <action android:name="android.intent.action.MAIN"/>
+                <category android:name="android.intent.category.LAUNCHER"/>
+            </intent-filter>
+            <!-- Google connector OAuth redirect (external-actions-and-connectors-
+                 analysis.md §1.3-b) — the system browser sends the consent result
+                 back here after the user approves, via this custom-scheme URI.
+                 Confirmed with Backend: yggdrasil://oauth/google/callback
+                 (configurable server-side via env var — must stay in sync with
+                 google_connector_screen.dart's _redirectUri constant if it
+                 ever changes on either side). -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="yggdrasil" android:host="oauth" android:path="/google/callback"/>
+            </intent-filter>
+            <!-- voice-notification-shortcut-design.md §1.1 — tap target for the
+                 ongoing notification's body/action (§2.3). Same scheme as the
+                 OAuth filter above, different host+path, so Android disambiguates
+                 the two without conflict. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="yggdrasil" android:host="voice" android:path="/listen"/>
+            </intent-filter>
+            <!-- Home screen "Proyectos" widget (MicWidgetProvider's sibling,
+                 ProjectsWidgetProvider) — same scheme, different host, same
+                 disambiguation Android already does for the two filters above. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="yggdrasil" android:host="projects"/>
+            </intent-filter>
+            <!-- yggdrasil://assistant — tapping the quick-access bubble opens the main assistant chat. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="yggdrasil" android:host="assistant"/>
+            </intent-filter>
+            <!-- yggdrasil://hub?url=…&key=… — the desktop's QR/link: learn the Railway gateway once. -->
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW"/>
+                <category android:name="android.intent.category.DEFAULT"/>
+                <category android:name="android.intent.category.BROWSABLE"/>
+                <data android:scheme="yggdrasil" android:host="hub"/>
+            </intent-filter>
+        </activity>
+        <!-- Home screen widgets — static tap-to-launch shortcuts, no live data
+             synced from Flutter, so plain AppWidgetProvider is enough (no
+             home_widget plugin needed). Mic reuses the exact
+             yggdrasil://voice/listen deep link the tap-to-listen notification
+             already uses (main.dart's _handleDeepLink); Proyectos uses the new
+             yggdrasil://projects one above. -->
+        <!-- Quick-access bubble (overlay) and the invisible activity that listens for one utterance. -->
+        <service
+            android:name=".BubbleService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Floating assistant bubble drawn over other apps"/>
+        </service>
+        <activity
+            android:name=".PermissionRequestActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""/>
+        <activity
+            android:name=".VoiceCaptureActivity"
+            android:exported="false"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar"
+            android:excludeFromRecents="true"
+            android:noHistory="true"
+            android:taskAffinity=""/>
+        <!-- Phase 4 triggers. -->
+        <service
+            android:name=".AutomationService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Runs user-defined automations (triggers) while the app is closed"/>
+        </service>
+        <receiver
+            android:name=".TriggerReceiver"
+            android:exported="true">
+            <intent-filter>
+                <action android:name="android.intent.action.BOOT_COMPLETED"/>
+                <action android:name="com.mauriciorossdev.yggdrasil.TRIGGER_ALARM"/>
+                <action android:name="com.mauriciorossdev.yggdrasil.TRIGGER_GEOFENCE"/>
+            </intent-filter>
+        </receiver>
+        <receiver
+            android:name=".MicWidgetProvider"
+            android:label="Yggdrasil Mic"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/mic_widget_info"/>
+        </receiver>
+        <receiver
+            android:name=".ProjectsWidgetProvider"
+            android:label="Yggdrasil Proyectos"
+            android:exported="false">
+            <intent-filter>
+                <action android:name="android.appwidget.action.APPWIDGET_UPDATE"/>
+            </intent-filter>
+            <meta-data
+                android:name="android.appwidget.provider"
+                android:resource="@xml/projects_widget_info"/>
+        </receiver>
+        <!-- Don't delete the meta-data below.
+             This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
+        <meta-data
+            android:name="flutterEmbedding"
+            android:value="2" />
+    </application>
+    <!-- Required to query activities that can process text, see:
+         https://developer.android.com/training/package-visibility and
+         https://developer.android.com/reference/android/content/Intent#ACTION_PROCESS_TEXT.
+
+         In particular, this is used by the Flutter engine in io.flutter.plugin.text.ProcessTextPlugin. -->
+    <queries>
+        <!-- Lets the bubble's voice capture see the device speech recognizer (Android 11+ package visibility). -->
+        <intent>
+            <action android:name="android.speech.RecognitionService"/>
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.PROCESS_TEXT"/>
+            <data android:mimeType="text/plain"/>
+        </intent>
+        <!-- device-tools open_app/list_apps: opts this app into seeing launchable
+             activities under Android 11+ package visibility, without QUERY_ALL_PACKAGES. -->
+        <intent>
+            <action android:name="android.intent.action.MAIN"/>
+            <category android:name="android.intent.category.LAUNCHER"/>
+        </intent>
+        <!-- Pi chat: see/broadcast to the Tailscale app (MainActivity's tailscale channel). -->
+        <package android:name="com.tailscale.ipn"/>
+    </queries>
+</manifest>

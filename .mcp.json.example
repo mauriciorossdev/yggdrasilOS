@@ -1,0 +1,17 @@
+{
+  "mcpServers": {
+    "panes": {
+      "command": "node",
+      "args": ["<repo>/packages/app-desktop/dist/main/paneControlMcpShim.js"],
+      "env": {
+        "PANE_CONTROL_URL": "http://127.0.0.1:<port>",
+        "PANE_CONTROL_TOKEN": "<token printed by the desktop app>"
+      }
+    },
+    "documents": {
+      "command": "node",
+      "args": ["<repo>/packages/app-desktop/dist/main/documentsControlMcpShim.js"],
+      "env": { "YGGDRASIL_PROJECT_ROOT": "<absolute path to your project>" }
+    }
+  }
+}

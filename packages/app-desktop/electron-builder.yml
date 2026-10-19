@@ -1,0 +1,53 @@
+appId: com.yggdrasil.desktop
+productName: Yggdrasil
+executableName: yggdrasil-desktop
+
+directories:
+  output: release
+  buildResources: resources
+
+files:
+  - dist/**
+  - package.json
+
+# See PLAN.md's packaging section: kept unpacked (no asar) for v1 so the
+# plugin loader's dynamic `import()` of each plugin's entry file (ESM) never
+# has to go through Electron's asar virtual filesystem, which has historical
+# gaps for ESM `import()` (fs/require are well-supported, ESM less so).
+# Revisit once verified end-to-end on all three OSes.
+asar: false
+
+# Registers the yggdrasil:// scheme with the OS (Info.plist CFBundleURLTypes
+# on mac, registry on Windows) so a browser redirect from Google's OAuth
+# consent screen (connectors.google.authUrl) can hand back into this app —
+# see main/index.ts's app.on("open-url"/"second-instance").
+protocols:
+  name: Yggdrasil OAuth Callback
+  schemes:
+    - yggdrasil
+
+# No `publish` block on purpose: there is no official update server. To ship
+# auto-updates for your own build, host the installers + `latest*.yml` and set
+# YGGDRASIL_UPDATE_URL at runtime (see src/main/autoUpdate.ts).
+
+win:
+  target: nsis
+  icon: resources/icon.ico
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+mac:
+  target:
+    - dmg
+    - zip
+  icon: resources/icon.icns
+  category: public.app-category.developer-tools
+
+linux:
+  target:
+    - AppImage
+    - deb
+  icon: resources/icon.png
+  category: Development

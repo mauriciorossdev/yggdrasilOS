@@ -1,0 +1,27 @@
+appId: com.yggdrasil.avatar
+productName: Yggdrasil Avatar
+executableName: yggdrasil-avatar
+
+directories:
+  output: release
+  buildResources: resources
+
+files:
+  - dist/**
+  - package.json
+
+# Same reasoning as app-desktop's electron-builder.yml: keep unpacked (no
+# asar) so the kernel plugin loader's dynamic `import()` of each plugin's ESM
+# entry file never has to cross Electron's asar virtual filesystem.
+asar: false
+
+win:
+  target: nsis
+  icon: resources/icon.ico
+
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+
+# Windows-only for v1 — see packages/app-avatar/README.md. Add mac/linux
+# blocks (icon.icns/icon.png, dmg/AppImage targets) when that's in scope.

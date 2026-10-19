@@ -1,0 +1,26 @@
+{
+  "name": "@yggdrasil/context-system-docs",
+  "version": "0.0.1",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@yggdrasil/sdk": "workspace:*"
+  },
+  "files": [
+    "dist",
+    "docs",
+    "yggdrasil.plugin.json"
+  ]
+}

@@ -1,0 +1,55 @@
+{
+  "name": "@yggdrasil/app-tui",
+  "version": "0.1.0-beta.1",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "bin": {
+    "yggdrasil-tui": "./dist/cli.js"
+  },
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@yggdrasil/config": "workspace:*",
+    "@yggdrasil/sdk": "workspace:*",
+    "ink": "^5.2.1",
+    "ink-spinner": "^5.0.0",
+    "ink-text-input": "^6.0.0",
+    "react": "^18.3.1",
+    "ws": "^8.18.2",
+    "marked": "^14.0.0",
+    "marked-terminal": "^7.3.0",
+    "cli-highlight": "^2.1.11",
+    "fuzzysort": "^3.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.3.0",
+    "@types/ws": "^8.18.1",
+    "ink-testing-library": "^4.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mauriciorossdev/yggdrasilOS.git",
+    "directory": "packages/app-tui"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

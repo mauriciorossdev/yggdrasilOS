@@ -1,0 +1,23 @@
+{
+  "name": "@yggdrasil/tool-shell",
+  "version": "0.0.1",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@yggdrasil/config": "workspace:*",
+    "@yggdrasil/sdk": "workspace:*",
+    "@yggdrasil/tools-sdk": "workspace:*",
+    "@yggdrasil/sandbox-runtime": "workspace:*"
+  },
+  "files": [
+    "dist",
+    "yggdrasil.plugin.json"
+  ]
+}

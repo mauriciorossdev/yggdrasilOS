@@ -1,0 +1,8 @@
+{
+  "id": "context-memory-db",
+  "name": "Memory Database Context",
+  "version": "0.1.0",
+  "kind": ["context", "tool"],
+  "entry": "./dist/index.js",
+  "compat": { "pluginApi": ">=0.3.0" }
+}

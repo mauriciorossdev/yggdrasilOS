@@ -1,0 +1,14 @@
+.git
+node_modules
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+packages/app-desktop/resources
+packages/app-avatar/resources
+mobile/*
+!mobile/termux
+*.sqlite
+*.db
+.DS_Store
+.env
+.env.*

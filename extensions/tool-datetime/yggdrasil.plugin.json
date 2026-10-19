@@ -1,0 +1,8 @@
+{
+  "id": "tool-datetime",
+  "kind": ["service"],
+  "entry": "./dist/index.js",
+  "name": "Datetime Tool",
+  "version": "0.1.0",
+  "compat": { "pluginApi": ">=0.3.0" }
+}

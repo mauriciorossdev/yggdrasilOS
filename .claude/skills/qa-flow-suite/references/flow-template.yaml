@@ -1,0 +1,29 @@
+# Plantilla para un flujo nuevo. Copiar a ygg-qa-tooling/flows/<id>.yaml,
+# completar, y agregarlo a la lista de flujos conocidos en
+# ygg-qa-tooling/README.md. No hace falta registrarlo en ningún índice
+# ejecutable — el agente simplemente lee el YAML cuando lo necesita.
+#
+# Vocabulario de `action` disponible (comandos del driver, ver
+# ygg-qa-tooling/driver.mjs): launch, open-project, new-project, goto-tab,
+# send-chat, wait-for-text, click, pclick, click-text, type, press, wait,
+# text, html, eval, ss, close. No inventes verbos nuevos salvo que la
+# secuencia se repita en 3+ flujos distintos — en ese caso agregalo al
+# driver primero (como comando genérico) y documentalo en selectors.md.
+#
+# Cada paso es `action: <comando> / arg: <argumento> [/ timeout: segundos]`
+# o `checkpoint: "<pregunta concreta a responder mirando la pantalla>"`.
+# Un checkpoint NUNCA se auto-aprueba: screenshot (`ss`) + Read del PNG, o
+# `eval`/`text` del DOM, o salir a Bash a verificar contra disco/red si la
+# pregunta lo amerita (como el bug de invoke_cli). Recién después seguís al
+# próximo paso.
+
+id: nombre-del-flujo
+title: "Tab X: descripción corta de qué se prueba"
+project: ygg-qa-project # o el nombre que le pasaste a new-project
+steps:
+  - action: open-project
+    arg: ygg-qa-project
+  - action: goto-tab
+    arg: NombreDelTab
+  - checkpoint: "¿Qué tenés que confirmar acá antes de seguir?"
+  # ... más pasos ...

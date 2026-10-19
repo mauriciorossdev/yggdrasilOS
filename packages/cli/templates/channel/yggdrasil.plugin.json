@@ -1,0 +1,9 @@
+{
+  "id": "{{PLUGIN_ID}}",
+  "kind": ["channel"],
+  "entry": "./dist/index.js",
+  "name": "{{PLUGIN_LABEL}}",
+  "version": "0.1.0",
+  "channels": [{ "id": "{{PLUGIN_ID}}", "label": "{{PLUGIN_LABEL}}" }],
+  "compat": { "pluginApi": ">=0.3.0" }
+}

@@ -1,0 +1,8 @@
+{
+  "id": "tool-weather",
+  "kind": ["service"],
+  "entry": "./dist/index.js",
+  "name": "Weather Tool",
+  "version": "0.4.0",
+  "compat": { "pluginApi": ">=0.3.0" }
+}

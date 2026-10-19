@@ -1,0 +1,43 @@
+{
+  "name": "@yggdrasil/cli",
+  "version": "0.1.0-beta.1",
+  "license": "MIT",
+  "type": "module",
+  "bin": {
+    "yggdrasil": "./dist/index.js"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@yggdrasil/app-tui": "workspace:*",
+    "@yggdrasil/app-voice": "workspace:*",
+    "@yggdrasil/channel-tui": "workspace:*",
+    "@yggdrasil/config": "workspace:*",
+    "@yggdrasil/gateway": "workspace:*",
+    "@yggdrasil/harness-runtime": "workspace:*",
+    "@yggdrasil/kernel": "workspace:*",
+    "@yggdrasil/sdk": "workspace:*",
+    "@yggdrasil/sessions": "workspace:*"
+  },
+  "files": [
+    "dist",
+    "templates"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mauriciorossdev/yggdrasilOS.git",
+    "directory": "packages/cli"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

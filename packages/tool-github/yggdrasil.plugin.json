@@ -1,0 +1,8 @@
+{
+  "id": "tool-github",
+  "kind": ["service"],
+  "entry": "./dist/index.js",
+  "name": "GitHub Connector",
+  "version": "0.1.0",
+  "compat": { "pluginApi": ">=0.3.0" }
+}

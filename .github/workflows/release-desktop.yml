@@ -1,0 +1,64 @@
+name: Release desktop app
+
+# Separate from publish.yml (npm packages) on purpose — different tag
+# namespace so the two never collide on the same push.
+on:
+  push:
+    tags:
+      - "app-desktop-v*"
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [macos-latest, windows-latest, ubuntu-latest]
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+
+      - run: pnpm install --frozen-lockfile
+
+      # Same as test.yml: builds every workspace package in dependency
+      # order, not just app-desktop, since it depends on @yggdrasil/cli,
+      # gateway, kernel, etc. as workspace packages.
+      - run: pnpm build
+
+      # Code signing is intentionally not configured yet (see the app-desktop
+      # production-readiness plan). Without this, electron-builder on Windows
+      # falls back to an ad-hoc signing path that needs symlink permissions
+      # it doesn't have here — this variable stops it from even trying.
+      # Remove once real CSC_LINK/CSC_KEY_PASSWORD secrets are wired in.
+      - name: Build installer
+        run: pnpm --filter @yggdrasil/app-desktop exec electron-builder --publish never
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: false
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: yggdrasil-desktop-${{ matrix.os }}
+          path: |
+            packages/app-desktop/release/*.dmg
+            packages/app-desktop/release/*.zip
+            packages/app-desktop/release/*.exe
+            packages/app-desktop/release/*.AppImage
+            packages/app-desktop/release/*.deb
+            packages/app-desktop/release/latest*.yml
+          if-no-files-found: ignore
+
+      # TODO: once the self-hosted storage for installers + latest*.yml
+      # manifests exists (see plan), replace the upload-artifact step above
+      # (or add alongside it) with a real deploy step here, e.g.:
+      #   - name: Upload to self-hosted storage
+      #     run: <rsync/scp/aws s3 cp/etc. to your own host>
+      #     env:
+      #       DEPLOY_TARGET: ${{ secrets.DESKTOP_RELEASE_UPLOAD_TARGET }}

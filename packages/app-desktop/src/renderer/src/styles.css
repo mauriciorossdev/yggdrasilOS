@@ -1,0 +1,4980 @@
+:root {
+  color-scheme: dark;
+  font-family: system-ui, -apple-system, sans-serif;
+  --project-border-color: transparent;
+  /* Same per-project color as --project-border-color (TitleBar.tsx's color
+     picker), but with a real fallback instead of "transparent" — the border
+     wants to disappear when no color is chosen, but anything using this as
+     a background (the chat Send button) still needs to render as a button. */
+  --project-accent-color: #2f5d8a;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: #14161a;
+  color: #e6e6e6;
+}
+
+.app-shell {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+/* The project-color border (TitleBar.tsx's color picker) used to live only
+   on .title-bar, top edge only, with no way to reach the bottom without a
+   harsh cutoff. A separate overlay covering the full window instead of a
+   literal `border` on .app-shell means the fade (mask-image) and pulse
+   (animation) can apply to the border alone without dragging window content
+   along with it — content stays full opacity all the way down. */
+.app-shell::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border: 2px solid var(--project-border-color);
+  border-radius: 1rem 1rem 0 0;
+  -webkit-mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 92%);
+  mask-image: linear-gradient(to bottom, black 0%, black 55%, transparent 92%);
+  animation: project-border-pulse 2.6s ease-in-out infinite;
+}
+
+@keyframes project-border-pulse {
+  /* Only the glow (box-shadow) animates — border/opacity stay fixed. */
+  0%,
+  100% {
+    box-shadow:
+      0 0 6px 0 var(--project-border-color),
+      inset 0 0 6px 0 var(--project-border-color);
+  }
+  50% {
+    box-shadow:
+      0 0 22px 3px var(--project-border-color),
+      inset 0 0 14px 0 var(--project-border-color);
+  }
+}
+
+.app-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: 1;
+  min-height: 0;
+}
+
+/* App.tsx — shown above ChatView (which stays mounted) while client-web is
+   auto-reconnecting a dropped gateway socket. */
+.gateway-reconnect-banner {
+  flex: none;
+  padding: 4px 12px;
+  font-size: 12px;
+  text-align: center;
+  color: #f0c674;
+  background: rgba(240, 198, 116, 0.12);
+  border-bottom: 1px solid rgba(240, 198, 116, 0.35);
+}
+
+/* Frameless window (main/index.ts: frame:false on every platform) — this
+   replaces the native title bar entirely, including its own close/minimize/
+   maximize buttons (TitleBar.tsx). -webkit-app-region:drag makes the bar
+   itself move the window; every interactive child needs no-drag back or
+   clicks just drag instead of firing. */
+.title-bar {
+  height: 36px;
+  flex-shrink: 0;
+  background: #000;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  -webkit-app-region: drag;
+  user-select: none;
+  border-radius: 1rem 1rem 0 0;
+  box-sizing: border-box;
+}
+
+.title-bar-drag {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  padding: 0 12px;
+  min-width: 0;
+  overflow: hidden;
+}
+
+.title-bar-project {
+  font-size: 12px;
+  font-weight: 600;
+  color: #e6e6e6;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.title-bar-gateway {
+  font-size: 11px;
+  color: #8a8f98;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.title-bar-color-swatch-wrap {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  -webkit-app-region: no-drag;
+  flex-shrink: 0;
+}
+
+.title-bar-color-swatch {
+  width: 12px;
+  height: 12px;
+  border-radius: 50%;
+  border: 1px solid #5a5e66;
+  background-image:
+    linear-gradient(45deg, #3a3d43 25%, transparent 25%, transparent 75%, #3a3d43 75%),
+    linear-gradient(45deg, #3a3d43 25%, transparent 25%, transparent 75%, #3a3d43 75%);
+  background-size: 6px 6px;
+  background-position: 0 0, 3px 3px;
+}
+
+.title-bar-color-input {
+  position: absolute;
+  inset: 0;
+  width: 12px;
+  height: 12px;
+  opacity: 0;
+  cursor: pointer;
+  border: none;
+  padding: 0;
+}
+
+.title-bar-color-clear {
+  background: none;
+  border: none;
+  color: #8a8f98;
+  font-size: 9px;
+  line-height: 1;
+  padding: 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+
+.title-bar-color-clear:hover {
+  color: #e0715c;
+}
+
+.title-bar-controls {
+  display: flex;
+  height: 100%;
+  -webkit-app-region: no-drag;
+}
+
+.title-bar-btn {
+  width: 44px;
+  height: 100%;
+  border: none;
+  background: none;
+  color: #c7cad1;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.title-bar-btn:hover {
+  background: #2a2d33;
+}
+
+.title-bar-ide-btn {
+  width: auto;
+  padding: 0 12px;
+  margin-right: 2rem;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.title-bar-close:hover {
+  background: #e0715c;
+  color: #fff;
+}
+
+.title-bar-close {
+  border-radius: 0 12px 0 0;
+}
+.ok {
+  color: #6bd08a;
+}
+
+.error {
+  color: #e0715c;
+}
+
+/* Chat shell */
+
+.chat-shell {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  border: 2px solid var(--project-border-color);
+  border-top: none;
+  border-bottom: none;
+  border-radius: 0 0 1rem 1rem;
+  box-sizing: border-box;
+}
+
+/* Right panel (file content viewer, more modes later) */
+
+.file-content-panel {
+  width: 380px;
+  flex-shrink: 0;
+  background: #191b20;
+  border-left: 1px solid #2a2d33;
+  display: flex;
+  flex-direction: column;
+  z-index: 99;
+  position: absolute;
+  right: 0;
+  /* Below .title-bar (36px), not over it — was 100vh/top:0 before the
+     frameless title bar existed, which covered its right-side buttons
+     (same right:0 edge) whenever a file was open. */
+  top: 36px;
+  height: calc(100vh - 36px);
+  border-radius: 1rem 0 0 0;
+}
+.file-content-resizer {
+  width: 4px;
+  cursor: col-resize;
+  background: #2a2d33;
+  /* .file-content-panel is position:absolute (pinned to the right edge,
+     full viewport height) — this has to leave flex flow too and track the
+     panel's live width itself (ChatView.tsx sets `right` inline), or it just
+     sits wherever flex leaves it, decoupled from the panel's real left edge. */
+  position: absolute;
+  /* top: 36px;
+  height: calc(100vh - 36px); */
+  z-index: 100;
+  top: 50%;
+    height: 30%;
+    transform: translate(0px, -50%);
+}
+
+.file-content-resizer:hover {
+  background: #3d4148;
+}
+
+.file-content-panel-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-bottom: 1px solid #2a2d33;
+}
+
+/* Path + Save grouped tight (Save sits right next to the path, not pushed
+   off toward Close) — this group grows to fill the header, Close (a sibling
+   outside it) stays pinned at the far right. */
+.file-content-panel-title {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  flex: 1;
+  min-width: 0;
+}
+
+.file-content-panel-path {
+  font-size: 12px;
+  color: #c7cad1;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+}
+
+.file-content-panel-body {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+}
+
+.plugin-panel-body {
+  padding: 0;
+  overflow: hidden;
+}
+
+.file-editor {
+  flex: 1;
+  min-height: 0;
+  margin: -12px;
+  display: flex;
+}
+
+/* Text/markdown editor (files/TextEditor.tsx) */
+
+.text-editor {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.text-editor-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.markdown-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  padding: 4px 6px;
+  border-bottom: 1px solid #2a2d33;
+  background: #191b20;
+  flex-shrink: 0;
+}
+
+.markdown-toolbar button {
+  background: none;
+  border: none;
+  color: #c7cad1;
+  border-radius: 4px;
+  padding: 4px 7px;
+  font-size: 12px;
+  cursor: pointer;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.markdown-toolbar button:hover:not(:disabled) {
+  background: #2a2d33;
+  color: #fff;
+}
+
+.markdown-toolbar button:disabled {
+  color: #4a4d54;
+  cursor: default;
+}
+
+.markdown-toolbar button.active {
+  background: #2f5d8a;
+  color: #fff;
+}
+
+.markdown-toolbar-sep {
+  width: 1px;
+  align-self: stretch;
+  margin: 2px 4px;
+  background: #2a2d33;
+}
+
+.markdown-toolbar-spacer {
+  flex: 1;
+}
+
+.mic-button-wrap {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.mic-button.recording {
+  background: #3a1c1c;
+  color: #e0715c;
+}
+
+.mic-error-tooltip {
+  color: #e0715c;
+  font-size: 11px;
+  cursor: default;
+}
+
+/* Document-style reading view: centered column on a "paper" card instead of
+   text running edge-to-edge, so a long rendered .md note reads like a
+   document rather than a raw dump. */
+.markdown-preview {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  padding: 40px 24px 64px;
+  display: flex;
+  justify-content: center;
+  background: #121317;
+}
+
+.markdown-preview .markdown {
+  width: 100%;
+  max-width: 820px;
+  height: fit-content;
+  margin: 0 auto;
+  background: #191b20;
+  border: 1px solid #2a2d33;
+  border-radius: 10px;
+  padding: 44px 56px;
+  line-height: 1.65;
+}
+
+/* MarkdownRichEditor's wrapper (EditorContent) around the actual
+   contenteditable .markdown node — needs full width so the margin-auto
+   centering above has somewhere to center within. */
+.markdown-rich-editor {
+  width: 100%;
+}
+
+.markdown-preview .markdown:focus,
+.markdown-preview .markdown:focus-visible {
+  outline: none;
+}
+
+@media (max-width: 640px) {
+  .markdown-preview {
+    padding: 20px 10px 40px;
+  }
+  .markdown-preview .markdown {
+    padding: 24px 20px;
+  }
+}
+
+.markdown-preview .markdown p {
+  margin: 0 0 14px;
+}
+
+.markdown-preview .markdown ul,
+.markdown-preview .markdown ol {
+  margin: 0 0 14px;
+}
+
+.markdown-preview .markdown li {
+  margin-bottom: 4px;
+}
+
+.markdown-preview .markdown h1,
+.markdown-preview .markdown h2,
+.markdown-preview .markdown h3 {
+  margin: 28px 0 12px;
+}
+
+.markdown-preview .markdown > *:first-child {
+  margin-top: 0;
+}
+
+.markdown-preview .markdown h1 {
+  font-size: 1.8em;
+  border-bottom: 1px solid #2a2d33;
+  padding-bottom: 8px;
+}
+
+.markdown-preview .markdown h2 {
+  font-size: 1.45em;
+}
+
+.markdown-preview .markdown h3 {
+  font-size: 1.2em;
+}
+
+.markdown-preview .markdown blockquote {
+  padding: 8px 14px;
+  background: #14161a;
+  border-radius: 0 6px 6px 0;
+}
+
+.markdown-preview .markdown table {
+  width: 100%;
+  margin: 0 0 14px;
+  border: 1px solid #2a2d33;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.markdown-preview .markdown th {
+  background: #22252b;
+  text-align: left;
+  font-weight: 600;
+}
+
+.markdown-preview .markdown tr:nth-child(even) td {
+  background: #16181d;
+}
+
+.markdown-preview .markdown pre {
+  margin: 0 0 14px;
+}
+
+.file-content-pre {
+  margin: 0;
+  font-size: 12px;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: #d6d9e0;
+}
+
+.sidebar {
+  width: 240px;
+  flex-shrink: 0;
+  background: #000;
+/*   border-right: 1px solid #2a2d33; */
+  display: flex;
+  flex-direction: column;
+  padding: 12px;
+  gap: 12px;
+}
+
+/* Separates Projects/Sessions/Agents/Files/Scripts from the pinned "+ New
+   chat" button above and .sidebar-footer below, so this middle group scrolls
+   on its own instead of pushing the footer off-screen when it exceeds the
+   sidebar's height (many sessions/agents/a big file tree). min-height: 0
+   overrides flexbox's default min-height: auto, which would otherwise let
+   this grow to fit its content instead of actually scrolling. */
+.sidebar-sections {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.sidebar-section {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  background: #191b20;
+  border-radius: 12px;
+  padding: 8px;
+}
+
+.sidebar-label {
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: #8a8f98;
+}
+
+.sidebar select,
+.new-chat {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 13px;
+}
+
+.new-chat {
+  cursor: pointer;
+  text-align: left;
+  font-weight: 600;
+}
+
+.new-chat:hover {
+  background: #2a2d33;
+}
+
+.sessions-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.sessions-section.open {
+  flex: 1;
+  min-height: 0;
+}
+
+.sessions-section.open .collapsible-body-shell {
+  flex: 1;
+  min-height: 0;
+}
+
+.sessions-section .collapsible-body {
+  overflow-y: auto;
+}
+
+.files-section {
+  display: flex;
+  flex-direction: column;
+}
+
+.files-section.open {
+  flex: 1;
+  min-height: 0;
+}
+
+.files-section.open .collapsible-body-shell {
+  flex: 1;
+  min-height: 0;
+}
+
+.files-section .collapsible-body {
+  overflow-y: auto;
+}
+
+/* Files section: Local/Remote tabs */
+
+.files-tab-bar {
+  display: flex;
+  gap: 4px;
+  padding: 4px 12px;
+  border-bottom: 1px solid #2a2d33;
+}
+
+.files-tab {
+  background: none;
+  border: none;
+  color: #8a8f98;
+  padding: 4px 10px;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.files-tab:hover {
+  color: #c7cad1;
+}
+
+.files-tab.active {
+  background: #2a2d33;
+  color: #fff;
+}
+
+/* Remote (git) panel */
+
+.git-remote-panel {
+  display: flex;
+  flex-direction: column;
+}
+
+.git-remote-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 12px;
+}
+
+.git-branch-label {
+  font-size: 11px;
+  color: #8a8f98;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-status-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: none;
+  border: none;
+  color: #c7cad1;
+  padding: 3px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+}
+
+.git-status-row:hover {
+  background: #22252b;
+}
+
+.git-status-path {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.git-status-badge {
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  font-size: 10px;
+  font-weight: 600;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.git-status-badge.modified {
+  background: #4a3a12;
+  color: #f0c674;
+}
+
+.git-status-badge.added,
+.git-status-badge.untracked {
+  background: #17301f;
+  color: #7fd99a;
+}
+
+.git-status-badge.deleted {
+  background: #3a1c1c;
+  color: #e0715c;
+}
+
+.git-status-badge.renamed {
+  background: #16283a;
+  color: #6ea8e0;
+}
+
+.git-status-badge.unmerged {
+  background: #4a1414;
+  color: #ff8a8a;
+}
+
+.git-diff-pre {
+  margin: 4px 12px 8px;
+  padding: 8px;
+  background: #14161a;
+  border-radius: 6px;
+  font-size: 11px;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  white-space: pre-wrap;
+  word-break: break-word;
+  overflow: auto;
+  max-height: 300px;
+}
+
+.git-diff-add {
+  background: rgba(107, 208, 138, 0.15);
+  color: #9fe0b5;
+}
+
+.git-diff-del {
+  background: rgba(224, 113, 92, 0.15);
+  color: #eba396;
+}
+
+.git-diff-hunk {
+  color: #6ea8e0;
+}
+
+/* File tree */
+
+.file-tree-toolbar {
+  display: flex;
+  justify-content: flex-end;
+  gap: 2px;
+  padding: 2px 4px 4px;
+}
+
+.file-tree-toolbar .icon-btn {
+  font-size: 12px;
+}
+
+.file-tree-new-input {
+  width: calc(100% - 12px);
+  margin: 0 6px 4px;
+}
+
+.file-node-row {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: none;
+  border: none;
+  color: #c7cad1;
+  padding: 3px 8px 3px 0;
+  font-size: 12px;
+  cursor: pointer;
+  text-align: left;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.file-node-row:hover {
+  background: #22252b;
+}
+
+.file-node-row.drag-over {
+  background: #2f5d8a;
+  color: #fff;
+}
+
+/* The file behind the Documents panel's currently-active tab (see
+   DocumentsView's activePath -> FileTree -> FileTreeNode). */
+.file-node-row.active {
+  background: #22252b;
+  color: #fff;
+  box-shadow: inset 2px 0 0 #2f5d8a;
+}
+
+.file-tree.drag-over {
+  outline: 1px dashed #2f5d8a;
+  outline-offset: -1px;
+}
+
+.file-node-row.file-node-leaf {
+  cursor: default;
+}
+
+.file-node-row .chevron {
+  font-size: 9px;
+  width: 9px;
+}
+
+.file-node-row .chevron-hidden {
+  visibility: hidden;
+}
+
+.file-node-icon {
+  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+}
+
+.file-node-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.collapsible-body ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+/* Collapsible sidebar sections (Projects, Sessions, ...) */
+
+.collapsible-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.collapsible-toggle {
+  background: none;
+  border: none;
+  color: inherit;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 0;
+}
+
+.chevron {
+  display: inline-flex;
+  align-items: center;
+  font-size: 10px;
+  color: #6a6e77;
+  transition: transform 0.1s ease;
+}
+
+.chevron.open {
+  transform: rotate(90deg);
+}
+
+.collapsible-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.collapsible-actions .icon-btn {
+  font-size: 12px;
+  padding: 2px 4px;
+}
+
+/* Grid 0fr->1fr trick: animates to/from the content's real height without
+   knowing it upfront, and collapses the *whole* sidebar-section (not just
+   its contents) so sibling sections reflow into the freed space. */
+.collapsible-body-shell {
+  display: grid;
+  grid-template-rows: 0fr;
+  transition: grid-template-rows 200ms ease;
+}
+
+.collapsible-body-shell.open {
+  grid-template-rows: 1fr;
+}
+
+.collapsible-body {
+  margin-top: 4px;
+  overflow: hidden;
+  min-height: 0;
+}
+
+.session-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: #c7cad1;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.project-list-color-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  border: 1px solid #444;
+  flex-shrink: 0;
+}
+
+.session-item:hover {
+  background: #22252b;
+}
+
+.session-item.active {
+  background: #2a2d33;
+  color: #fff;
+}
+
+.muted {
+  color: #6a6e77;
+  font-size: 13px;
+  padding: 6px 8px;
+}
+
+/* Main chat area */
+
+.chat-main {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  position: relative;
+}
+
+/* Terminal tab's file viewer: an overlay drawer instead of a side column
+   (see ChatView.tsx) — absolutely positioned so .chat-main never resizes,
+   which would otherwise reflow the real xterm panes underneath. No dimmed
+   backdrop (unlike .modal-overlay) — it overlays, it doesn't block. */
+.file-content-panel-drawer {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  max-width: 90%;
+  z-index: 5;
+  box-shadow: -8px 0 24px rgba(0, 0, 0, 0.45);
+}
+
+/* Same drag handle as the column mode's .file-content-resizer, just taken
+   out of flex flow to sit at the drawer's left seam (ChatView.tsx sets
+   `right` inline to match the drawer's live width). */
+.file-content-resizer-drawer {
+  position: absolute;
+  /* Same vertical centering as the base .file-content-resizer (top 50% +
+     translateY -50%, height 30%) — the old top:0/bottom:0 lost to the base
+     height and the base transform then pushed the handle half off the top. */
+  top: 50%;
+  bottom: auto;
+  height: 30%;
+  transform: translateY(-50%);
+  z-index: 6;
+}
+
+.message-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 20px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.message-list-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #8a8f98;
+  font-size: 13px;
+}
+
+.bubble {
+  max-width: 70%;
+  padding: 10px 14px;
+  border-radius: 10px;
+  white-space: pre-wrap;
+  word-break: break-word;
+  font-size: 14px;
+  line-height: 1.5;
+}
+
+.bubble.user {
+  align-self: flex-end;
+  background: #2f5d8a;
+  color: #fff;
+}
+
+.bubble.assistant {
+  align-self: flex-start;
+  background: #22252b;
+}
+
+/* Rendered markdown inside assistant bubbles */
+
+.markdown {
+  white-space: normal;
+}
+
+.markdown > *:first-child {
+  margin-top: 0;
+}
+
+.markdown > *:last-child {
+  margin-bottom: 0;
+}
+
+.markdown p {
+  margin: 0 0 8px;
+}
+
+.markdown ul,
+.markdown ol {
+  margin: 0 0 8px;
+  padding-left: 20px;
+}
+
+.markdown li {
+  margin-bottom: 2px;
+}
+
+.markdown code {
+  background: #14161a;
+  padding: 1px 5px;
+  border-radius: 4px;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-size: 12.5px;
+}
+
+.markdown pre {
+  background: #14161a;
+  border: 1px solid #2a2d33;
+  border-radius: 6px;
+  padding: 10px 12px;
+  overflow-x: auto;
+  margin: 0 0 8px;
+}
+
+.markdown pre code {
+  background: none;
+  padding: 0;
+  font-size: 12.5px;
+}
+
+.markdown a {
+  color: #6ea8e0;
+  cursor: pointer;
+}
+
+.markdown blockquote {
+  border-left: 3px solid #2a2d33;
+  margin: 0 0 8px;
+  padding-left: 10px;
+  color: #a9adb5;
+}
+
+.markdown h1,
+.markdown h2,
+.markdown h3 {
+  margin: 12px 0 6px;
+  font-size: 15px;
+}
+
+.markdown table {
+  border-collapse: collapse;
+  margin: 0 0 8px;
+  font-size: 13px;
+}
+
+.markdown th,
+.markdown td {
+  border: 1px solid #2a2d33;
+  padding: 4px 8px;
+}
+
+.markdown hr {
+  border: none;
+  border-top: 1px solid #2a2d33;
+  margin: 10px 0;
+}
+
+.bubble.system {
+  align-self: center;
+  background: transparent;
+  color: #8a8f98;
+  font-size: 12px;
+  font-style: italic;
+}
+
+.cursor {
+  animation: blink 1s step-start infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0;
+  }
+}
+
+.bubble.thinking {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 14px;
+}
+
+.thinking-dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: #8a8f98;
+  animation: thinking-bounce 1.2s ease-in-out infinite;
+}
+
+.thinking-dot:nth-child(2) {
+  animation-delay: 0.15s;
+}
+
+.thinking-dot:nth-child(3) {
+  animation-delay: 0.3s;
+}
+
+@keyframes thinking-bounce {
+  0%,
+  60%,
+  100% {
+    opacity: 0.3;
+    transform: translateY(0);
+  }
+  30% {
+    opacity: 1;
+    transform: translateY(-3px);
+  }
+}
+
+/* Tool bubbles */
+
+.bubble.tool {
+  align-self: flex-start;
+  max-width: 85%;
+  background: #1c1f24;
+  border: 1px solid #2a2d33;
+  border-radius: 8px;
+  padding: 8px 12px;
+  font-size: 13px;
+}
+
+.tool-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.tool-ok .tool-icon {
+  color: #6bd08a;
+}
+
+.tool-error .tool-icon {
+  color: #e0715c;
+}
+
+.tool-name {
+  font-weight: 600;
+}
+
+.tool-args {
+  color: #6a6e77;
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.tool-result {
+  margin: 6px 0 0;
+  padding: 8px;
+  background: #14161a;
+  border-radius: 6px;
+  overflow: auto;
+  max-height: 200px;
+  font-size: 12px;
+}
+
+.tool-image {
+  margin: 6px 0 0;
+}
+
+.tool-image summary {
+  cursor: pointer;
+  color: #8a8f98;
+  font-size: 12px;
+  user-select: none;
+}
+
+.tool-image summary:hover {
+  color: #c7cbd1;
+}
+
+.tool-image img {
+  display: block;
+  margin-top: 6px;
+  max-width: 100%;
+  max-height: 360px;
+  border-radius: 6px;
+  border: 1px solid #2a2d33;
+}
+
+.tool-running {
+  align-self: flex-start;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #8a8f98;
+  font-size: 13px;
+}
+
+.spinner {
+  width: 12px;
+  height: 12px;
+  border: 2px solid #2a2d33;
+  border-top-color: #8a8f98;
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Approval bar */
+
+/* Floating banner for a pending approval while a non-Chat tab is active —
+   see ChatView.tsx. .chat-main already has position:relative (from the
+   Terminal-tab file-content-panel-drawer). z-index above the drawer (5) and
+   its resizer (6) — an approval must stay reachable above everything else. */
+.approval-bar-overlay {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 10;
+  padding: 0 20px 16px;
+  pointer-events: none;
+}
+
+.approval-bar-overlay .approval-bar {
+  margin: 0;
+  pointer-events: auto;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5);
+}
+
+.approval-bar {
+  margin: 0 20px 12px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #2a2312;
+  border: 1px solid #6b5a1f;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.approval-info {
+  /* Without this, the flex item's default min-width:auto refuses to shrink
+     below its unwrapped content width — a long args line pushed the action
+     buttons out of view instead of wrapping. */
+  flex: 1;
+  min-width: 0;
+}
+
+.approval-bar.risk-destructive {
+  background: #2a1414;
+  border-color: #6b1f1f;
+}
+
+.approval-info strong {
+  color: #f0c674;
+}
+
+.approval-warning-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.approval-bar.risk-destructive .approval-info strong {
+  color: #e0715c;
+}
+
+.risk-tag {
+  margin-left: 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: #8a8f98;
+}
+
+.approval-info pre {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: #a9adb5;
+  max-height: 200px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.approval-trust-device {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 12px;
+  color: #c7cad1;
+  cursor: pointer;
+}
+
+.approval-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
+.approval-actions button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+
+.approve {
+  background: #6bd08a;
+  color: #14161a;
+}
+
+.deny {
+  background: #e0715c;
+  color: #14161a;
+}
+
+/* Input */
+
+.chat-input {
+  display: flex;
+  align-items: stretch;
+  gap: 8px;
+  padding: 16px 20px;
+  border-top: 1px solid #2a2d33;
+  border-radius: 12px;
+}
+
+.chat-input-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.chat-input-textarea-wrap {
+  width: 100%;
+  position: relative;
+}
+
+.attachment-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.attachment-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  max-width: 200px;
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  border-radius: 999px;
+  padding: 3px 4px 3px 10px;
+  font-size: 12px;
+  color: #c7cad1;
+}
+
+.attachment-chip-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.attachment-chip button {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  color: #8a8f98;
+  cursor: pointer;
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  font-size: 10px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.attachment-chip button:hover {
+  background: #3a1c1c;
+  color: #e0715c;
+}
+
+.mention-dropdown {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  left: 0;
+  right: 0;
+  max-height: 220px;
+  overflow-y: auto;
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 4px;
+  z-index: 20;
+}
+
+.mention-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  background: none;
+  border: none;
+  color: #e6e6e6;
+  padding: 6px 8px;
+  border-radius: 5px;
+  font-size: 12px;
+  cursor: pointer;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.mention-item.active,
+.mention-item:hover {
+  background: #2a2d33;
+}
+
+.chat-input textarea {
+  display: block;
+  width: 100%;
+  resize: none;
+  background: #1c1f24;
+  border: 1px solid #2a2d33;
+  border-radius: 8px;
+  color: #e6e6e6;
+  padding: 11px 14px;
+  font-family: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.chat-input textarea::placeholder {
+  color: #6a6e77;
+}
+
+.chat-input textarea:focus {
+  outline: none;
+  border-color: #3d6a9c;
+  box-shadow: 0 0 0 3px rgba(47, 93, 138, 0.25);
+}
+
+.chat-input button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 22px;
+  border-radius: 8px;
+  border: none;
+  background: #2f5d8a;
+  color: #fff;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    transform 0.05s ease;
+}
+
+.chat-input button:hover:not(:disabled) {
+  background: #3a6da0;
+}
+
+.chat-input button:active:not(:disabled) {
+  transform: translateY(1px);
+}
+
+/* Send/Stop specifically — same per-project color as the title bar's color
+   picker, so this button reinforces which project you're in like the
+   terminal pane's active border already does. Attribute selector keeps the
+   specificity above the generic ".chat-input button" rule above without
+   also matching the attachment-remove/mention-pick buttons in this form. */
+.chat-input button[type="submit"] {
+  background: var(--project-accent-color);
+}
+
+.chat-input button[type="submit"]:hover:not(:disabled) {
+  background: var(--project-accent-color);
+  filter: brightness(1.15);
+}
+
+.chat-input button:disabled,
+.chat-input textarea:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.link-btn {
+  background: none;
+  border: none;
+  color: #6ea8e0;
+  font-size: 12px;
+  text-align: left;
+  padding: 2px 0;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.link-btn:hover {
+  text-decoration: underline;
+}
+
+/* Modal */
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 10;
+}
+
+.modal {
+  background: #1c1f24;
+  border: 1px solid #2a2d33;
+  border-radius: 10px;
+  width: 480px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 16px 20px 20px;
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 16px;
+}
+
+.icon-btn {
+  background: none;
+  border: none;
+  color: #8a8f98;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 2px 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 4px;
+}
+
+.icon-btn:hover {
+  color: #e6e6e6;
+}
+
+/* Every Heroicons <svg> in the app carries this — sized off the ancestor's
+   font-size (so it drops into whatever px each context already set for its
+   old text/emoji glyph, e.g. .icon-btn's 16px or .chevron's 10px) instead of
+   each icon usage needing its own width/height override. */
+.hero-icon {
+  width: 1em;
+  height: 1em;
+  flex-shrink: 0;
+  vertical-align: -0.15em;
+}
+
+.agent-list {
+  list-style: none;
+  margin: 0 0 12px;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.agent-row {
+  padding: 8px 10px;
+  border-radius: 6px;
+  background: #22252b;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.agent-row-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.script-list {
+  list-style: none;
+  margin: 0;
+  padding: 4px 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.scripts-section .collapsible-body {
+  max-height: 120px;
+  overflow: scroll;
+}
+
+.scripts-section .collapsible-body::-webkit-scrollbar {
+  width: 6px;
+}
+
+.script-row {
+  padding: 4px 8px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.script-row:hover {
+  background: #22252b;
+}
+
+.script-row-info {
+  min-width: 0;
+}
+
+.script-row-name {
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.script-row .icon-btn {
+  font-size: 6px;
+}
+
+.provider-select-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.provider-select-row select {
+  flex: 1;
+}
+
+.agent-form-title {
+  margin: 0 0 4px;
+  font-size: 13px;
+  color: #8a8f98;
+  font-weight: 600;
+}
+
+.agent-row-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.agent-row-meta {
+  font-size: 12px;
+  color: #8a8f98;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.scope-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  background: #2a2d33;
+  padding: 1px 6px;
+  border-radius: 4px;
+}
+
+.plugin-error-tag {
+  background: #4a2020;
+  color: #ff8f8f;
+}
+
+.plugin-draft-tag {
+  background: #3a3320;
+  color: #e0c26a;
+}
+
+.plugin-icon {
+  flex-shrink: 0;
+}
+
+.agent-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.agent-form label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.agent-form input,
+.agent-form select,
+.agent-form textarea {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.scope-choice {
+  flex-direction: row;
+  gap: 16px;
+  display: flex;
+}
+
+.scope-choice label {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  color: #c7cad1;
+  font-size: 13px;
+}
+
+.agent-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.agent-form-actions button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  background: #2a2d33;
+  color: #e6e6e6;
+}
+
+.agent-form-actions button[type="submit"] {
+  background: #2f5d8a;
+  color: #fff;
+}
+
+.agent-form-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.sidebar-footer {
+  margin-top: auto;
+  padding-top: 8px;
+  border-top: 1px solid #2a2d33;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+/* Composer toolbar (agent + model pickers, below the chat input) */
+
+.composer-toolbar {
+  display: flex;
+  gap: 8px;
+  padding: 0 20px 14px;
+}
+
+.composer-pill {
+  appearance: none;
+  -webkit-appearance: none;
+  background-color: #22252b;
+  border: 1px solid #2a2d33;
+  color: #c7cad1;
+  border-radius: 999px;
+  padding: 6px 30px 6px 14px;
+  font-size: 12px;
+  max-width: 220px;
+  cursor: pointer;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='10' height='6' viewBox='0 0 10 6'%3E%3Cpath d='M1 1l4 4 4-4' stroke='%238a8f98' stroke-width='1.5' fill='none' stroke-linecap='round' stroke-linejoin='round'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  transition:
+    background-color 0.15s ease,
+    border-color 0.15s ease;
+}
+
+.composer-pill:hover:not(:disabled) {
+  background-color: #2a2d33;
+  border-color: #3d4148;
+}
+
+.composer-pill:focus {
+  outline: none;
+  border-color: #3d6a9c;
+  box-shadow: 0 0 0 3px rgba(47, 93, 138, 0.25);
+}
+
+.composer-pill:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.settings-view {
+  min-width: 80vw;
+  height: 80vh;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+  /* .modal's own overflow-y:auto would scroll the whole modal (header
+     included) — settings-body's children (nav/panel) scroll independently
+     instead, so the header/nav stay put while only the long panel content
+     (or, in principle, a long nav list) moves. */
+  overflow: hidden;
+}
+
+.settings-gateway-url {
+  margin: -4px 0 12px;
+  font-size: 12px;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+}
+
+.settings-body {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  min-height: 0;
+}
+
+.settings-nav {
+  width: 140px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  border-right: 1px solid #2a2d33;
+  padding-right: 12px;
+  overflow-y: auto;
+}
+
+.settings-nav-item {
+  background: none;
+  border: none;
+  color: #c7cad1;
+  text-align: left;
+  padding: 8px 10px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.settings-nav-item:hover {
+  background: #22252b;
+}
+
+.settings-nav-item.active {
+  background: #2a2d33;
+  color: #fff;
+  font-weight: 600;
+}
+
+.settings-panel {
+  flex: 1;
+  min-width: 0;
+  overflow-y: auto;
+}
+
+.settings-section {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.settings-section h3 {
+  margin: 0 0 2px;
+  font-size: 13px;
+  color: #8a8f98;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+}
+
+.settings-section label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.settings-section select,
+.settings-section input[type="text"],
+.settings-section input[type="password"],
+.settings-section textarea {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 13px;
+  font-family: inherit;
+  resize: vertical;
+}
+
+.settings-section button {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #c7cad1;
+  border-radius: 6px;
+  padding: 7px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.settings-section button:hover {
+  background: #2a2d33;
+  color: #fff;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 6px;
+}
+
+.input-with-button input {
+  flex: 1;
+  background: #16181c;
+  border: 1px solid #2a2d33;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 8px 10px;
+  font-size: 12.5px;
+  font-family: monospace;
+}
+
+.input-with-button button.active {
+  border-color: #2f5d8a;
+  color: #6ea8e0;
+}
+
+.trusted-devices-list {
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+}
+
+.trusted-devices-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  border: 1px solid #2a2d33;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.trusted-device-id {
+  font-family: monospace;
+  font-size: 12.5px;
+  color: #e6e6e6;
+}
+
+.trusted-devices-list li .muted {
+  flex: 1;
+  font-size: 12px;
+}
+
+.whisper-models {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.whisper-model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid #2a2d33;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.whisper-model-row.active {
+  border-color: #2f5d8a;
+}
+
+.whisper-model-radio {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 6px !important;
+  margin: 0;
+  color: #e6e6e6 !important;
+  font-size: 13px !important;
+}
+
+.ide-option-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 4px;
+}
+
+.ide-option-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+  margin: 0;
+  color: #e6e6e6 !important;
+  font-size: 13px !important;
+  border: 1px solid #2a2d33;
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+
+.ide-option-row:has(input:checked) {
+  border-color: #2f5d8a;
+}
+
+.ide-option-row.disabled {
+  opacity: 0.5;
+}
+
+.ide-option-status {
+  margin-left: auto;
+  font-size: 11px;
+  color: #8a8f98;
+}
+
+.ide-option-status.installed {
+  color: #6bd08a;
+}
+
+.sync-share-list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.sync-share-list code {
+  color: #e6e6e6;
+}
+
+/* ShareDialog.tsx */
+
+.share-status-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: #8a8f98;
+  margin-bottom: 14px;
+}
+
+.share-status-badge {
+  background: #22252b;
+  border-radius: 4px;
+  padding: 2px 8px;
+  color: #c7cad1;
+  font-family: monospace;
+}
+
+.share-status-conflict {
+  color: #e0a15a;
+}
+
+.share-conflict-banner {
+  background: #3a2620;
+  border: 1px solid #5a3a2a;
+  border-radius: 8px;
+  padding: 10px 12px;
+  margin-bottom: 14px;
+}
+
+.share-conflict-banner p {
+  margin: 0 0 8px;
+  color: #f0b088;
+  font-size: 13px;
+}
+
+.share-conflict-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.share-section {
+  border-top: 1px solid #2a2d33;
+  padding-top: 14px;
+  margin-top: 14px;
+}
+
+.share-section:first-child {
+  border-top: none;
+  padding-top: 0;
+  margin-top: 0;
+}
+
+.share-section-title {
+  margin: 0 0 10px;
+  font-size: 13px;
+  font-weight: 600;
+  color: #e6e6e6;
+}
+
+.share-section-hint {
+  margin: -2px 0 10px;
+  font-size: 12px;
+  color: #8a8f98;
+  line-height: 1.5;
+}
+
+.share-link-reveal {
+  margin-top: 10px;
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.share-link-reveal p {
+  margin: 0 0 8px;
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.share-link-reveal strong {
+  color: #e6e6e6;
+}
+
+.share-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  background: #2a2d33;
+  color: #e6e6e6;
+}
+
+.share-btn:hover {
+  background: #33363d;
+}
+
+.share-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.share-btn-primary {
+  background: #2f5d8a;
+  color: #fff;
+}
+
+.share-btn-primary:hover {
+  background: #366a9e;
+}
+
+.share-btn-full {
+  width: 100%;
+  margin-top: 10px;
+}
+
+.member-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.member-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  border: 1px solid #2a2d33;
+  border-radius: 8px;
+  padding: 8px 10px;
+}
+
+.member-row-info {
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.member-row-name {
+  font-size: 13px;
+  color: #e6e6e6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.member-row-meta {
+  font-size: 11px;
+  color: #8a8f98;
+}
+
+.mcp-server-header {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.mcp-id-input {
+  flex: 1;
+  font-weight: 600;
+}
+
+.mcp-add-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.mcp-add-actions .new-chat {
+  flex: 1;
+}
+
+.mcp-import {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.mcp-import textarea {
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  font-size: 12px;
+}
+
+.mcp-status-ok {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #17301f;
+  border: 1px solid #275a37;
+  color: #7fd99a;
+  font-size: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.provider-warning {
+  margin: 0;
+  padding: 6px 8px;
+  border-radius: 6px;
+  background: #2a2312;
+  border: 1px solid #6b5a1f;
+  color: #f0c674;
+  font-size: 12px;
+  display: flex;
+  align-items: flex-start;
+  gap: 4px;
+}
+
+.provider-warning .hero-icon {
+  margin-top: 0.15em;
+}
+
+.settings-provider {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 0;
+  border-top: 1px solid #2a2d33;
+}
+
+.settings-provider:first-of-type {
+  border-top: none;
+  padding-top: 0;
+}
+
+.checkbox-row {
+  flex-direction: row !important;
+  align-items: center;
+  gap: 8px !important;
+  color: #c7cad1 !important;
+  font-size: 13px !important;
+}
+
+.banner {
+  background: #1c2e1f;
+  border: 1px solid #2f5d3a;
+  color: #8fd6a0;
+  padding: 8px 12px;
+  border-radius: 6px;
+  font-size: 13px;
+  margin-bottom: 12px;
+}
+
+/* Session context menu */
+
+.context-menu {
+  position: fixed;
+  z-index: 20;
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  border-radius: 8px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+  padding: 4px;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.context-menu-item {
+  background: none;
+  border: none;
+  color: #e6e6e6;
+  text-align: left;
+  padding: 7px 10px;
+  border-radius: 5px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.context-menu-item:hover {
+  background: #2a2d33;
+}
+
+.context-menu-item:disabled {
+  color: #4a4d54;
+  cursor: default;
+}
+
+.context-menu-item:disabled:hover {
+  background: none;
+}
+
+.context-menu-item.danger {
+  color: #e0715c;
+}
+
+.context-menu-item.danger:hover {
+  background: #2a1414;
+}
+
+.context-menu-separator {
+  height: 1px;
+  background: #2a2d33;
+  margin: 3px 4px;
+}
+
+.context-menu-input {
+  background: #14161a;
+  border: 1px solid #2f5d8a;
+  color: #e6e6e6;
+  border-radius: 5px;
+  padding: 6px 8px;
+  font-size: 13px;
+  width: 200px;
+}
+
+.context-menu-confirm-label {
+  padding: 6px 10px 2px;
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+/* Main tabs (Chat / Terminal) */
+.main-tabs {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.main-tabs-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 8px 0;
+  background: #000;
+}
+
+.main-tab-group {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  background: #16181d;
+  border-radius: 12px;
+  padding: 2px;
+}
+
+.main-tab-group .main-tab {
+  border-radius: 10px;
+}
+
+.main-tab-add {
+  background: none;
+  border: none;
+  color: #c7cad1;
+  border-radius: 10px;
+  width: 20px;
+  height: 20px;
+  line-height: 1;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.main-tab-add:hover {
+  background: #2a2d33;
+  color: #fff;
+}
+
+.main-tab-teams-select {
+  background: none;
+  border: none;
+  color: #c7cad1;
+  border-radius: 10px;
+  height: 20px;
+  font-size: 12px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.teams-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.teams-menu-list {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 200px;
+}
+
+.teams-menu-list .terminal-team-row .context-menu-item {
+  flex: 1;
+}
+
+.terminal-team-banner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 10px;
+  background: #000;
+  padding: 16px 20px;
+  border-radius: 6px;
+}
+
+.terminal-team-banner-list {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  align-items: stretch;
+}
+
+.terminal-team-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.terminal-team-row .new-chat {
+  flex: 1;
+}
+
+.main-tabs-bar-spacer {
+  flex: 1;
+}
+
+.main-tab {
+  background: none;
+  border: 2px solid;
+  color: #8a8f98;
+  padding: 8px 14px;
+  font-size: 13px;
+  cursor: pointer;
+  /* border-bottom: 2px solid transparent; */
+  border-radius: 12px;
+}
+
+.main-tab:hover {
+  color: #c7cad1;
+}
+
+.main-tab.active {
+  color: #fff;
+  border-color: white;
+  font-weight: 600;
+}
+
+.main-tab-closable {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.main-tab-close {
+  opacity: 0.6;
+  font-size: 14px;
+  line-height: 1;
+}
+
+.main-tab-close:hover {
+  opacity: 1;
+}
+
+.main-tab-plugin-icon {
+  font-size: 13px;
+}
+
+.main-tabs-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.main-tab-panel {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  flex-direction: column;
+  background: #000;
+}
+
+.plugin-frame {
+  flex: 1;
+  border: 0;
+  width: 100%;
+  height: 100%;
+  background: #14161a;
+}
+
+.plugin-frame-error {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  color: #ff8f8f;
+  font-size: 13px;
+  overflow: auto;
+}
+
+.plugin-frame-error pre {
+  white-space: pre-wrap;
+  color: #c7cad1;
+}
+
+/* Browser tab — .browser-tab-viewport renders nothing itself; it's a
+   placeholder whose on-screen rect BrowserTabView.tsx reports to main so
+   the real WebContentsView (a native layer, not a DOM node) lines up
+   behind it exactly. */
+.browser-tab {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  background: #000;
+}
+
+.browser-tab-bar {
+  display: flex;
+  gap: 6px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #2a2d33;
+  background: #000;
+  flex-shrink: 0;
+}
+
+.browser-tab-address {
+  flex: 1;
+  background: #14161a;
+  border: 1px solid #2a2d33;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+}
+
+.browser-tab-address:focus {
+  outline: none;
+  border-color: #2f5d8a;
+}
+
+.browser-tab-bar button {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #c7cad1;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.browser-tab-bar button:hover {
+  background: #2a2d33;
+  color: #fff;
+}
+
+.browser-tab-viewport {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.browser-tab-empty {
+  font-size: 13px;
+}
+
+.browser-tab-pick-btn {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.browser-tab-pick-btn .hero-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.browser-tab-pick-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.browser-tab-pick-btn.active {
+  background: #2f5d3a;
+  border-color: #6bd08a;
+  color: #d7ffe4;
+}
+
+/* A real layout row, not a floating overlay — the WebContentsView behind
+   .browser-tab-viewport is a native layer Electron always composites on top
+   of this window's own DOM, so anything CSS-positioned within the
+   viewport's screen rect would render underneath it, invisible. This sits
+   above the viewport instead, shrinking its reported bounds. */
+.browser-tab-picked {
+  flex-shrink: 0;
+  max-height: 30vh;
+  overflow: auto;
+  background: #14161a;
+  border-bottom: 1px solid #2a2d33;
+  padding: 10px 12px;
+  font-size: 12px;
+  color: #c7cad1;
+}
+
+.browser-tab-picked-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: #e6e6e6;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+}
+
+.browser-tab-picked-close {
+  background: none;
+  border: none;
+  color: #8a8f98;
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+}
+
+.browser-tab-picked-close .hero-icon {
+  width: 14px;
+  height: 14px;
+}
+
+.browser-tab-picked-close:hover {
+  color: #fff;
+}
+
+.browser-tab-picked-text {
+  margin: 6px 0;
+  color: #c7cad1;
+}
+
+.browser-tab-picked-html {
+  display: block;
+  white-space: pre-wrap;
+  word-break: break-all;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  color: #8a8f98;
+  font-size: 11px;
+}
+
+/* Terminal container */
+.terminal-container {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+  min-width: 0;
+  background: #000;
+  padding: 4px;
+}
+
+.terminal-navbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-bottom: 1px solid #2a2d33;
+  background: #000;
+  flex-shrink: 0;
+}
+
+.terminal-navbar .icon-btn.active {
+  background: #22252b;
+  color: #6ea8e0;
+  border-radius: 4px;
+  box-shadow: inset 0 0 0 1px #2a2d33;
+}
+
+.terminal-arrange-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 8px;
+}
+
+.commands-menu {
+  position: relative;
+  display: inline-flex;
+}
+
+.terminal-commands-menu {
+  position: absolute;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 200px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+
+.minimized-dock {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 8px;
+  border-top: 1px solid #2a2d33;
+  background: #000;
+  flex-shrink: 0;
+  overflow-x: auto;
+}
+
+.minimized-chip {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #c7cad1;
+  border-radius: 999px;
+  padding: 4px 12px;
+  font-size: 12px;
+  white-space: nowrap;
+  cursor: pointer;
+  flex-shrink: 0;
+}
+
+.minimized-chip:hover {
+  background: #2a2d33;
+  color: #e6e6e6;
+}
+
+.claude-usage {
+  margin-left: auto;
+  font-size: 12px;
+  color: #8a8f98;
+  padding: 2px 6px;
+  cursor: default;
+}
+
+.terminal-body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+}
+
+.terminal-body-empty {
+  background-color: #000;
+  background-image: radial-gradient(circle, #2a2d3391 1px, transparent 1px);
+  background-size: 8px 8px;
+  align-items: center;
+  justify-content: center;
+}
+
+.terminal-body-empty .muted {
+  background: #000;
+  padding: 2px 10px;
+}
+
+.pane-split {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+}
+
+.pane-split.row {
+  flex-direction: row;
+}
+
+.pane-split.column {
+  flex-direction: column;
+}
+
+.pane-slot {
+  display: flex;
+  min-height: 0;
+  min-width: 0;
+}
+
+.pane-divider {
+  flex-shrink: 0;
+  background: #2a2d33;
+}
+
+.pane-divider.row {
+  width: 4px;
+  cursor: col-resize;
+}
+
+.pane-divider.column {
+  height: 4px;
+  cursor: row-resize;
+}
+
+.pane-divider:hover {
+  background: #3d4148;
+}
+
+.terminal-pane {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  border: 1px solid transparent;
+  border-radius: 12px;
+}
+
+.terminal-pane.active {
+  /* Same var the title bar's own border uses (TitleBar.tsx sets it from
+     the project color picker) — an extra glance-level cue for which
+     project's window you're looking at, especially useful with several
+     project windows open side by side. Transparent (no color chosen)
+     behaves the same as the title bar's own border in that case: no
+     visible border, not a fallback color — consistent, not a regression. */
+  border-color: var(--project-border-color);
+}
+
+.terminal-pane-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 4px 8px;
+  background: #000;
+  border-bottom: 1px solid #2a2d33;
+  font-size: 12px;
+  color: #c7cad1;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  border-radius: 12px 12px 0 0;
+}
+
+.terminal-pane-header input {
+  background: #14161a;
+  border: 1px solid #2f5d8a;
+  color: #e6e6e6;
+  border-radius: 4px;
+  padding: 2px 4px;
+  font-size: 12px;
+  font-family: inherit;
+}
+
+.terminal-pane-actions {
+  display: flex;
+  gap: 2px;
+}
+
+.terminal-pane-actions button {
+  background: none;
+  border: none;
+  color: #8a8f98;
+  cursor: pointer;
+  font-size: 12px;
+  padding: 2px 5px;
+  border-radius: 3px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.terminal-pane-split-vertical {
+  transform: rotate(90deg);
+}
+
+.terminal-pane-actions button:hover {
+  background: #2a2d33;
+  color: #fff;
+}
+
+.terminal-pane-body-wrapper {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  position: relative;
+}
+
+.terminal-pane-body {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  padding: 4px;
+}
+
+.terminal-pane-actions .terminal-mic-button.recording {
+  background: #3a1c1c;
+  color: #e0715c;
+  animation: terminal-mic-pulse 1.4s ease-out infinite;
+}
+
+.terminal-pane-actions .terminal-speak-button.loading {
+  background: #1c2a3a;
+  color: #5cb3e0;
+  animation: terminal-mic-pulse 1.4s ease-out infinite;
+}
+
+.terminal-voice-bar {
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: 8px;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 8px;
+  background: #1b1d22;
+  border: 1px solid #3a1c1c;
+  border-radius: 6px;
+  color: #e6e6e6;
+  font-size: 12px;
+}
+
+.terminal-voice-bar.error {
+  border-color: #5a2a2a;
+  color: #e0715c;
+}
+
+.terminal-voice-dot {
+  flex: none;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background: #e0715c;
+  animation: terminal-mic-pulse 1.4s ease-out infinite;
+}
+
+.terminal-voice-dot.idle {
+  background: #8a8f98;
+  animation: none;
+}
+
+.terminal-voice-time {
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-variant-numeric: tabular-nums;
+  color: #8a8f98;
+}
+
+.terminal-voice-stop {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #3a1c1c;
+  color: #e0715c;
+  border: none;
+  border-radius: 4px;
+  padding: 3px 8px;
+  font: inherit;
+  cursor: pointer;
+}
+
+.terminal-voice-stop:hover {
+  background: #4a2424;
+}
+
+@keyframes terminal-mic-pulse {
+  0% {
+    box-shadow: 0 0 0 0 rgba(224, 113, 92, 0.55);
+  }
+  70% {
+    box-shadow: 0 0 0 8px rgba(224, 113, 92, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(224, 113, 92, 0);
+  }
+}
+
+.terminal-pane-mobile-focus-overlay {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.65);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 5;
+  pointer-events: none;
+  color: #fff;
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.terminal-pane-exited {
+  opacity: 0.6;
+}
+
+.terminal-pane-expand-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.6);
+  z-index: 30;
+  animation: terminal-pane-backdrop-in 160ms ease;
+}
+
+.terminal-pane-expand-backdrop.closing {
+  animation: terminal-pane-backdrop-out 160ms ease forwards;
+}
+
+.terminal-pane.expanded {
+  position: fixed;
+  inset: 5%;
+  width: 90vw;
+  height: 90vh;
+  z-index: 31;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+  animation: terminal-pane-expand 160ms ease;
+  background: #000;
+}
+
+.terminal-pane.expanded.closing {
+  animation: terminal-pane-collapse 160ms ease forwards;
+}
+
+@keyframes terminal-pane-expand {
+  from {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+  to {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+
+@keyframes terminal-pane-collapse {
+  from {
+    transform: scale(1);
+    opacity: 1;
+  }
+  to {
+    transform: scale(0.92);
+    opacity: 0;
+  }
+}
+
+@keyframes terminal-pane-backdrop-in {
+  from {
+    opacity: 0;
+  }
+  to {
+    opacity: 1;
+  }
+}
+
+@keyframes terminal-pane-backdrop-out {
+  from {
+    opacity: 1;
+  }
+  to {
+    opacity: 0;
+  }
+}
+
+/* Agent Flow tab */
+
+.agent-flow-view {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  padding: 12px;
+  gap: 12px;
+}
+
+.agent-flow-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.agent-flow-toolbar-btn {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #c7cad1;
+  border-radius: 6px;
+  padding: 7px 12px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.agent-flow-toolbar-btn:hover:not(:disabled) {
+  background: #2a2d33;
+  color: #fff;
+}
+
+.agent-flow-toolbar-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* TeamsMenu's trigger (.main-tab-teams-select) is styled to blend into
+   .main-tabs-bar elsewhere — inside this toolbar it needs to match the
+   other buttons instead. */
+.agent-flow-toolbar .teams-menu .main-tab-teams-select {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #c7cad1;
+  border-radius: 6px;
+  padding: 7px 12px;
+  height: auto;
+  font-size: 12px;
+}
+
+.agent-flow-toolbar .teams-menu .main-tab-teams-select:hover {
+  background: #2a2d33;
+  color: #fff;
+}
+
+.agent-flow-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  gap: 16px;
+}
+
+.agent-flow-canvas-area {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+}
+
+.agent-flow-team-label {
+  position: absolute;
+  top: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 5;
+  padding: 4px 12px;
+  border-radius: 6px;
+  background: rgba(20, 22, 26, 0.85);
+  border: 1px solid #2a2d33;
+  color: #c9cdd4;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  pointer-events: none;
+}
+
+.agent-flow-canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid #2a2d33;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.agent-flow-canvas-empty {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px dashed #2a2d33;
+  border-radius: 8px;
+}
+
+/* @xyflow/react theme overrides — match the app's dark chrome */
+.agent-flow-canvas .react-flow {
+  background: #14161a;
+}
+
+.agent-flow-canvas .react-flow__controls {
+  box-shadow: none;
+  border: 1px solid #2a2d33;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.agent-flow-canvas .react-flow__controls-button {
+  background: #22252b;
+  border-bottom: 1px solid #2a2d33;
+  color: #c7cad1;
+  fill: #c7cad1;
+}
+
+.agent-flow-canvas .react-flow__controls-button:hover {
+  background: #2a2d33;
+}
+
+.agent-flow-canvas .react-flow__edge-path {
+  stroke: #4a4f5a;
+}
+
+.agent-flow-canvas .react-flow__edge.selected .react-flow__edge-path {
+  stroke: #6ea8e0;
+}
+
+/* write_pane just fired between these two nodes (AgentFlowView.tsx's
+   onCommunication) — react-flow's own animated-dash treatment, just
+   recolored/thickened to read clearly against the dark canvas. */
+.agent-flow-canvas .react-flow__edge.animated .react-flow__edge-path {
+  stroke: #6bd08a;
+  stroke-width: 2.5;
+}
+
+.agent-flow-canvas .react-flow__edge-text {
+  fill: #c7cad1;
+}
+
+.agent-flow-canvas .react-flow__edge-textbg {
+  fill: #14161a;
+}
+
+.agent-flow-canvas .react-flow__handle {
+  background: #2f5d8a;
+  border: 1px solid #6ea8e0;
+  width: 8px;
+  height: 8px;
+}
+
+.agent-flow-sidebar {
+  width: 300px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  overflow-y: auto;
+}
+
+/* Terminal Canvas view (TerminalCanvasView.tsx / TerminalFlowNode.tsx) —
+   same @xyflow/react library as .agent-flow-canvas above, own wrapper class
+   since node sizes/shapes differ drastically (a full terminal window vs a
+   180px label card), so these rules are duplicated rather than shared. */
+
+.terminal-canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.terminal-canvas .react-flow {
+  background: #14161a;
+}
+
+.terminal-canvas .react-flow__controls {
+  box-shadow: none;
+  border: 1px solid #2a2d33;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.terminal-canvas .react-flow__controls-button {
+  background: #22252b;
+  border-bottom: 1px solid #2a2d33;
+  color: #c7cad1;
+  fill: #c7cad1;
+}
+
+.terminal-canvas .react-flow__controls-button:hover {
+  background: #2a2d33;
+}
+
+.terminal-canvas .react-flow__handle {
+  background: #2f5d8a;
+  border: 1px solid #6ea8e0;
+  width: 8px;
+  height: 8px;
+}
+
+/* write_pane just fired between these two terminals (useTerminalCanvasEdges.ts)
+   — react-flow's own animated-dash treatment, same recolor/thickening as
+   .agent-flow-canvas's own pulse. */
+.terminal-canvas .react-flow__edge.animated .react-flow__edge-path {
+  stroke: #6bd08a;
+  stroke-width: 2.5;
+}
+
+.terminal-flow-node {
+  width: 640px;
+  height: 420px;
+  display: flex;
+  border: 1px solid #2a2d33;
+  border-radius: 10px;
+  box-shadow: 0 4px 18px rgba(0, 0, 0, 0.45);
+  overflow: hidden;
+  background: #000;
+}
+
+.terminal-flow-node .terminal-pane {
+  flex: 1;
+  border-radius: 0;
+}
+
+.terminal-flow-node-handle {
+  opacity: 0;
+  transition: opacity 120ms ease;
+}
+
+.terminal-flow-node:hover .terminal-flow-node-handle {
+  opacity: 1;
+}
+
+/* Compact canvas node (FlowAgentNode) — full editing lives in the drawer */
+
+.flow-node-compact {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: #1c1f24;
+  border: 1px solid #2a2d33;
+  border-radius: 8px;
+  padding: 8px 10px;
+  width: 180px;
+  cursor: pointer;
+}
+
+.flow-node-compact.selected {
+  border-color: #6ea8e0;
+  box-shadow: 0 0 0 1px #6ea8e0;
+}
+
+.flow-node-compact.running {
+  border-color: #6bd08a;
+}
+
+.flow-node-compact-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+}
+
+.flow-node-running-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #6bd08a;
+  animation: thinking-bounce 1.2s ease-in-out infinite;
+}
+
+.flow-node-compact-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: #8a8f98;
+  background: #22252b;
+  border-radius: 4px;
+  padding: 2px 6px;
+}
+
+.flow-node-compact-badge.harness-yggdrasil {
+  color: #6ea8e0;
+}
+
+.flow-node-compact-badge.harness-claude {
+  color: #c98bd8;
+}
+
+.flow-node-compact-badge.harness-antigravity {
+  color: #6bd08a;
+}
+
+.flow-node-compact-badge.harness-omp {
+  color: #e0b25c;
+}
+
+.flow-node-compact-badge.harness-copilot {
+  color: #7fd4d1;
+}
+
+.flow-node-compact-name {
+  font-size: 13px;
+  font-weight: 600;
+  color: #e6e6e6;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.flow-node-compact-sub {
+  font-size: 11px;
+  color: #8a8f98;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* Node config drawer — full harness form, opened by clicking a canvas node */
+
+.node-config-drawer {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  background: #1c1f24;
+  border: 1px solid #2a2d33;
+  border-radius: 8px;
+  padding: 10px 12px;
+}
+
+.node-config-drawer-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.node-config-drawer-body {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.node-config-drawer-body label,
+.flow-node-communication {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.node-config-drawer-body label.flow-node-checkbox {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+}
+
+.node-config-drawer-body label.flow-node-checkbox input {
+  width: auto;
+}
+
+.node-config-drawer-body input,
+.node-config-drawer-body select,
+.node-config-drawer-body textarea,
+.flow-node-communication input {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.agent-template-picker-groups {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: -2px;
+}
+
+.agent-template-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.agent-template-chip-add {
+  align-self: flex-start;
+  background: transparent;
+  border-style: dashed;
+  color: #8a8f98;
+}
+
+.agent-template-chip-add:hover:not(:disabled) {
+  color: #c7cad1;
+}
+
+.agent-template-chip-add:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.agent-template-custom-input-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.agent-template-custom-input-row input {
+  flex: 1;
+  min-width: 0;
+}
+
+.agent-template-picker-label {
+  font-size: 11px;
+  color: #6d7178;
+}
+
+.agent-template-chip-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.agent-template-chip {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #c7cad1;
+  border-radius: 999px;
+  padding: 3px 10px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.agent-template-chip:hover {
+  background: #2a2d33;
+}
+
+.agent-template-chip.active {
+  background: #2f3a4f;
+  border-color: #4a7dff;
+  color: #e6e6e6;
+}
+
+.node-config-drawer-footer {
+  display: flex;
+  justify-content: flex-end;
+  border-top: 1px solid #2a2d33;
+  padding-top: 8px;
+}
+
+.flow-node-name {
+  flex: 1;
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.flow-node-agent-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.flow-node-agent-row select {
+  flex: 1;
+}
+
+.flow-node-new-agent {
+  display: flex;
+  gap: 6px;
+}
+
+.flow-node-new-agent input {
+  flex: 1;
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.flow-supervisor,
+.flow-connections {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  border-top: 1px solid #2a2d33;
+  padding-top: 12px;
+}
+
+.flow-supervisor h3,
+.flow-connections h3 {
+  margin: 0;
+  font-size: 13px;
+  color: #e6e6e6;
+}
+
+.flow-supervisor-note {
+  margin: 0;
+  font-size: 12px;
+}
+
+.flow-supervisor label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.flow-supervisor input,
+.flow-supervisor select,
+.flow-supervisor textarea {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+}
+
+.flow-connections-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.flow-connection-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 12px;
+  color: #c7cad1;
+}
+
+.flow-connection-form {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+}
+
+.flow-connection-form select,
+.flow-connection-form input {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+}
+
+.delegate-btn {
+  background: #2f5d8a;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.send-task-btn {
+  background: #2f8a5d;
+  color: #fff;
+  border: none;
+  border-radius: 5px;
+  padding: 4px 8px;
+  font-size: 11px;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+
+.delegate-modal {
+  width: 480px;
+  max-width: 90vw;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.delegate-modal label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.delegate-modal select {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.delegate-textarea {
+  background: #14161a;
+  border: 1px solid #2a2d33;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 12px;
+  font-family: "SF Mono", Menlo, Consolas, monospace;
+  resize: vertical;
+}
+
+.terminal-pane-restart {
+  align-self: center;
+  margin: 8px;
+  background: #2f5d8a;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  padding: 6px 14px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+/* Documents tab (notes/ folder) */
+
+.documents-view {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  padding-top: 16px;
+}
+
+/* Estudio (Studio) — same two-column shape as .documents-view/.documents-tree, own class names since the rail's items (draft/published badges, "+ Nuevo") are shaped differently from a file tree. */
+.studio-view {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+}
+
+.studio-rail {
+  width: 240px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid #2a2d33;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.studio-new-btn {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 8px;
+  font-size: 13px;
+  cursor: pointer;
+  text-align: left;
+  font-weight: 600;
+}
+
+.studio-new-btn:hover {
+  background: #2a2d33;
+}
+
+.studio-rail-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.studio-rail-item {
+  width: 100%;
+  text-align: left;
+  background: transparent;
+  border: none;
+  color: #c7cad1;
+  padding: 6px 8px;
+  border-radius: 6px;
+  font-size: 13px;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  overflow: hidden;
+}
+
+.studio-rail-item:hover {
+  background: #22252b;
+}
+
+.studio-rail-item.active {
+  background: #2a2d33;
+  color: #fff;
+}
+
+.studio-main {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.studio-empty {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+}
+
+.studio-create-form {
+  max-width: 480px;
+}
+
+.studio-permission-add {
+  display: flex;
+  gap: 8px;
+}
+
+.studio-permission-add input {
+  flex: 1;
+}
+
+.studio-permission-add button {
+  background: #2a2d33;
+  border: none;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 8px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+
+.studio-permission-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 6px;
+}
+
+.studio-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  background: #2a2d33;
+  color: #c7cad1;
+  border-radius: 12px;
+  padding: 2px 4px 2px 10px;
+  font-size: 12px;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+}
+
+.studio-chip button {
+  background: none;
+  border: none;
+  color: #8a8f98;
+  cursor: pointer;
+  font-size: 14px;
+  line-height: 1;
+  padding: 2px 6px;
+}
+
+.studio-chip button:hover {
+  color: #fff;
+}
+
+.studio-workspace {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  flex: 1;
+  min-height: 0;
+}
+
+.studio-workspace-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.studio-workspace-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.studio-workspace-actions {
+  display: flex;
+  gap: 8px;
+}
+
+.studio-workspace-actions button {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+  background: #2a2d33;
+  color: #e6e6e6;
+}
+
+.studio-workspace-actions button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.studio-danger-btn {
+  background: #4a2020 !important;
+  color: #ff8f8f !important;
+}
+
+.studio-workspace-body {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  gap: 12px;
+}
+
+.studio-mode-toggle {
+  display: flex;
+  border: 1px solid #2a2d33;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.studio-mode-toggle button {
+  background: none;
+  border: none;
+  color: #8a8f98;
+  padding: 6px 14px;
+  font-size: 13px;
+  cursor: pointer;
+}
+
+.studio-mode-toggle button.active {
+  background: #2a2d33;
+  color: #fff;
+  font-weight: 600;
+}
+
+.studio-harness-select {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+}
+
+.studio-authoring-pane {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.studio-authoring-placeholder {
+  flex: 1;
+  min-width: 0;
+  border: 1px dashed #2a2d33;
+  border-radius: 8px;
+  padding: 16px;
+}
+
+.studio-chat-pane {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #2a2d33;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.studio-preview {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  border: 1px solid #2a2d33;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.studio-preview-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 10px;
+  border-bottom: 1px solid #2a2d33;
+  flex-shrink: 0;
+}
+
+.studio-preview-toolbar button {
+  background: #2a2d33;
+  border: none;
+  color: #e6e6e6;
+  border-radius: 6px;
+  padding: 4px 10px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.studio-preview-frame {
+  flex: 2;
+  min-height: 0;
+  display: flex;
+}
+
+.studio-preview-log {
+  flex: 1;
+  min-height: 80px;
+  max-height: 40%;
+  overflow-y: auto;
+  border-top: 1px solid #2a2d33;
+  padding: 6px 10px;
+  font-family: ui-monospace, "SF Mono", Consolas, monospace;
+  font-size: 12px;
+}
+
+.studio-preview-log-empty {
+  padding: 4px 0;
+}
+
+.studio-log-entry {
+  padding: 3px 0;
+  border-bottom: 1px solid #1c1e23;
+  color: #c7cad1;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.studio-log-entry pre {
+  margin: 4px 0 0;
+  color: #8a8f98;
+  white-space: pre-wrap;
+}
+
+.studio-log-badge {
+  display: inline-block;
+  font-size: 10px;
+  text-transform: uppercase;
+  background: #2a2d33;
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin-right: 6px;
+}
+
+.studio-log-error {
+  color: #ff8f8f;
+}
+
+.studio-log-error .studio-log-badge {
+  background: #4a2020;
+  color: #ff8f8f;
+}
+
+.studio-log-warn .studio-log-badge {
+  background: #3a3320;
+  color: #e0c26a;
+}
+
+.documents-tree {
+  width: 220px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid #2a2d33;
+  padding: 6px 0;
+}
+
+.documents-main {
+  flex: 1;
+  min-height: 0;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.documents-tabs {
+  display: flex;
+  align-items: center;
+  overflow-x: auto;
+  border-bottom: 1px solid #2a2d33;
+  flex-shrink: 0;
+}
+
+.documents-tabs::-webkit-scrollbar {
+  height: 6px;
+}
+
+.documents-tabs::-webkit-scrollbar-thumb {
+  background: #2a2d33;
+  border-radius: 3px;
+}
+
+.documents-tabs::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.documents-tab {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border-right: 1px solid #2a2d33;
+  flex-shrink: 0;
+}
+
+.documents-tab.active {
+  background: #22252b;
+}
+
+.documents-tab-label {
+  background: none;
+  border: none;
+  color: #8a8f98;
+  padding: 8px 6px 8px 12px;
+  font-size: 12px;
+  cursor: pointer;
+  max-width: 180px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.documents-tab.active .documents-tab-label {
+  color: #fff;
+}
+
+.documents-tab-close {
+  background: none;
+  border: none;
+  color: #8a8f98;
+  padding: 4px 10px 4px 2px;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+.documents-tab-close:hover {
+  color: #e0715c;
+}
+
+.documents-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  border-bottom: 1px solid #2a2d33;
+}
+
+.documents-drive-share-btn {
+  background: #22252b;
+  border: 1px solid #2a2d33;
+  color: #c7cad1;
+  border-radius: 6px;
+  padding: 4px 10px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.documents-drive-share-btn:hover:not(:disabled) {
+  background: #2a2d33;
+  color: #fff;
+}
+
+.documents-drive-share-btn:disabled {
+  opacity: 0.6;
+  cursor: default;
+}
+
+.documents-drive-link {
+  font-size: 12px;
+  color: #6fa8ff;
+}
+
+.documents-drive-error {
+  font-size: 12px;
+}
+
+.documents-editor {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+}
+
+.documents-empty {
+  margin: auto;
+}
+
+.feature-doc-new {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 6px 8px;
+  border-bottom: 1px solid #2a2d33;
+}
+
+.feature-doc-new-btn {
+  text-align: left;
+  font-size: 12px;
+}
+
+.feature-doc-new input {
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.feature-progress {
+  padding: 6px 12px;
+  font-size: 12px;
+  border-bottom: 1px solid #2a2d33;
+}
+
+.feature-progress summary {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  cursor: pointer;
+}
+
+.feature-progress-bar {
+  flex: 1;
+  max-width: 220px;
+  height: 6px;
+  border-radius: 3px;
+  background: #2a2d33;
+  overflow: hidden;
+}
+
+.feature-progress-fill {
+  display: block;
+  height: 100%;
+  background: #5aa56a;
+}
+
+.feature-progress-status {
+  padding: 1px 8px;
+  border-radius: 10px;
+  background: #2a2d33;
+}
+
+.feature-progress-status.status-ready {
+  color: #7fd48f;
+}
+
+.feature-progress-status.status-checking {
+  color: #e8c27a;
+}
+
+.feature-progress-status.status-needs-decision {
+  color: #e88a7a;
+}
+
+.feature-progress-tasks {
+  margin: 6px 0 0;
+  padding: 0;
+  list-style: none;
+}
+
+.feature-progress-tasks li.done {
+  opacity: 0.6;
+  text-decoration: line-through;
+}
+
+.documents-conflict-bar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 12px;
+  font-size: 12px;
+  color: #e8c27a;
+  background: #2b2619;
+  border-bottom: 1px solid #4a3f22;
+}
+
+.documents-conflict-bar span {
+  flex: 1;
+}
+
+/* Non-text file preview (files/FileViewer.tsx) */
+
+.file-viewer-image,
+.file-viewer-pdf,
+.file-viewer-fallback {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+}
+
+.file-viewer-image {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: auto;
+  padding: 12px;
+}
+
+.file-viewer-image img {
+  max-width: 100%;
+  max-height: 100%;
+  object-fit: contain;
+}
+
+.file-viewer-pdf {
+  width: 100%;
+  height: 100%;
+  border: none;
+}
+
+.file-viewer-fallback {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  margin: auto;
+}
+
+/* Workflows tab (WorkflowsView.tsx) — reuses .agent-flow-view/-toolbar/-body/
+   -canvas-area/-sidebar and .flow-connections-list/.flow-connection-row/
+   .flow-connection-form wholesale (workflows-design.md §8.1); only what's
+   genuinely different gets its own class below. */
+
+.workflow-name-input {
+  background: #1c1f24;
+  border: 1px solid #2a2d33;
+  color: #e6e8eb;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 13px;
+  min-width: 160px;
+}
+
+.agent-flow-toolbar-btn.danger,
+button.danger {
+  border-color: #5a2a2a;
+  color: #e08a8a;
+}
+
+.agent-flow-toolbar-btn.danger:hover:not(:disabled),
+button.danger:hover:not(:disabled) {
+  background: #3a2020;
+}
+
+.agent-flow-toolbar-btn.active {
+  background: #2a2d33;
+  color: #fff;
+  border-color: #6ea8e0;
+}
+
+/* Wraps the "+ Add node" bar and the canvas stacked vertically — deliberately
+   its own class rather than reusing .agent-flow-canvas-area for this, since
+   that one is `display:flex` with a row main-axis (built for AgentFlow's
+   single-child canvas + an absolutely-positioned label), and two children
+   dropped straight into a row container land side by side, not stacked. */
+.workflow-main-column {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  gap: 8px;
+}
+
+.workflow-add-node {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.workflow-add-node select {
+  background: #1c1f24;
+  border: 1px solid #2a2d33;
+  color: #c7cad1;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 12px;
+  min-width: 220px;
+}
+
+.workflow-canvas {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  border: 1px solid #2a2d33;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.workflow-canvas .react-flow {
+  background: #14161a;
+}
+
+.workflow-canvas .react-flow__controls {
+  box-shadow: none;
+  border: 1px solid #2a2d33;
+  border-radius: 6px;
+  overflow: hidden;
+}
+
+.workflow-canvas .react-flow__controls-button {
+  background: #22252b;
+  border-bottom: 1px solid #2a2d33;
+  color: #c7cad1;
+  fill: #c7cad1;
+}
+
+.workflow-canvas .react-flow__controls-button:hover {
+  background: #2a2d33;
+}
+
+.workflow-canvas .react-flow__edge-path {
+  stroke: #4a4f5a;
+}
+
+.workflow-canvas .react-flow__edge.selected .react-flow__edge-path {
+  stroke: #6ea8e0;
+}
+
+.workflow-canvas .react-flow__edge-text {
+  fill: #c7cad1;
+}
+
+.workflow-canvas .react-flow__edge-textbg {
+  fill: #14161a;
+}
+
+.workflow-canvas .react-flow__handle {
+  background: #2f5d8a;
+  border: 1px solid #6ea8e0;
+  width: 8px;
+  height: 8px;
+}
+
+/* Node box — reuses .flow-node-compact's shape (width, padding, selected/
+   running borders); status color (from the last run) overrides the border. */
+.workflow-node-succeeded {
+  border-color: #6bd08a;
+}
+
+.workflow-node-failed {
+  border-color: #d06b6b;
+}
+
+.workflow-node-skipped {
+  border-color: #8a8f98;
+}
+
+.workflow-node-handles {
+  position: relative;
+  height: 14px;
+  margin-top: 2px;
+}
+
+.workflow-node-handle-label {
+  position: absolute;
+  top: 0;
+  transform: translateX(-50%);
+  font-size: 9px;
+  color: #8a8f98;
+  white-space: nowrap;
+}
+
+.workflow-drawer {
+  gap: 10px;
+}
+
+.workflow-drawer label,
+.workflow-drawer h4 {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: #8a8f98;
+}
+
+.workflow-drawer h4 {
+  margin: 6px 0 0;
+}
+
+.workflow-drawer input,
+.workflow-drawer select {
+  background: #1c1f24;
+  border: 1px solid #2a2d33;
+  color: #e6e8eb;
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+}
+
+.workflow-condition-row {
+  display: flex;
+  gap: 6px;
+}
+
+.workflow-condition-row input,
+.workflow-condition-row select {
+  flex: 1;
+  min-width: 0;
+}
+
+.workflow-trigger-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 8px 0;
+  border-bottom: 1px solid #2a2d33;
+}
+
+.workflow-trigger-row > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+}
+
+.workflow-run-row {
+  border-bottom: 1px solid #2a2d33;
+  padding: 4px 0;
+}
+
+.workflow-run-status {
+  font-weight: 600;
+}
+
+.workflow-run-status-running {
+  color: #6ea8e0;
+}
+
+.workflow-run-status-succeeded {
+  color: #6bd08a;
+}
+
+.workflow-run-status-failed {
+  color: #d06b6b;
+}
+
+.workflow-run-status-cancelled,
+.workflow-run-status-skipped {
+  color: #8a8f98;
+}
+
+.workflow-run-detail {
+  padding: 8px 0 4px 8px;
+  font-size: 12px;
+}
+
+.workflow-run-detail table {
+  width: 100%;
+  border-collapse: collapse;
+}
+
+.workflow-run-detail td {
+  padding: 2px 6px 2px 0;
+  color: #c7cad1;
+  vertical-align: top;
+}
+
+.workflow-node-output {
+  background: #14161a;
+  border: 1px solid #2a2d33;
+  border-radius: 6px;
+  padding: 8px;
+  margin: 4px 0 8px;
+  font-size: 11px;
+  color: #c7cad1;
+  white-space: pre-wrap;
+  word-break: break-word;
+  max-height: 260px;
+  overflow-y: auto;
+}
+
+.workflow-grant-badge {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.03em;
+  border-radius: 4px;
+  padding: 2px 6px;
+  margin-left: auto;
+}
+
+.workflow-grant-none,
+.workflow-grant-stale {
+  background: #3a2f1a;
+  color: #e0b86a;
+}
+
+.workflow-grant-granted {
+  background: #1a3a24;
+  color: #6bd08a;
+}
+
+/* ---- Repositorio tab (repository/*) ---- */
+.repo-view { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; }
+.repo-topbar { display: flex; align-items: center; gap: 8px; padding: 8px 10px; border-bottom: 1px solid #2a2d33; flex-wrap: wrap; }
+.repo-topbar-spacer { flex: 1; }
+.repo-selector { display: flex; align-items: center; gap: 10px; min-width: 0; flex-wrap: wrap; }
+.repo-select { background: #22252b; color: #e6e6e6; border: 1px solid #2a2d33; border-radius: 6px; padding: 5px 8px; font-size: 13px; max-width: 420px; }
+.repo-location-note { font-size: 12px; color: #9aa0ab; }
+.repo-head { font-size: 13px; font-weight: 600; color: #e6e6e6; padding: 0 6px; }
+.repo-ahead-behind { font-size: 11px; color: #8fb4e0; margin-left: 6px; }
+.repo-btn { background: #22252b; border: 1px solid #2a2d33; color: #e6e6e6; border-radius: 6px; padding: 5px 10px; font-size: 12px; cursor: pointer; }
+.repo-btn:hover:not(:disabled) { background: #2a2d33; }
+.repo-btn:disabled { opacity: 0.5; cursor: default; }
+.repo-btn.primary { background: var(--project-accent-color); border-color: transparent; font-weight: 600; }
+.repo-btn.small { padding: 2px 8px; font-size: 11px; }
+.repo-banner { display: flex; align-items: center; gap: 10px; padding: 8px 12px; font-size: 12px; border-bottom: 1px solid #2a2d33; }
+.repo-banner.info { background: #1d2733; color: #b9d0ea; }
+.repo-banner.warn { background: #33291a; color: #ecd29a; margin: 8px; border-radius: 6px; border: 1px solid #4a3c1f; }
+.repo-banner.error { background: #33201f; color: #f0b4b0; }
+.repo-error-text { margin: 0; flex: 1; white-space: pre-wrap; font: inherit; max-height: 120px; overflow: auto; }
+.repo-body { flex: 1; min-height: 0; display: flex; }
+.repo-rail { width: 230px; flex-shrink: 0; overflow-y: auto; border-right: 1px solid #2a2d33; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.repo-rail-title, .repo-section-title { display: flex; align-items: center; justify-content: space-between; font-size: 11px; text-transform: uppercase; letter-spacing: 0.04em; color: #9aa0ab; margin-top: 6px; }
+.repo-section-title { padding: 6px 8px 2px; }
+.repo-section-toggle { background: transparent; border: none; color: #9aa0ab; font-size: 12px; text-align: left; cursor: pointer; padding: 2px 0; }
+.repo-inline-form { display: flex; gap: 4px; }
+.repo-input { flex: 1; min-width: 0; background: #1a1d22; border: 1px solid #2a2d33; color: #e6e6e6; border-radius: 6px; padding: 5px 8px; font-size: 12px; font-family: inherit; resize: vertical; }
+.repo-list { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 1px; }
+.repo-muted { font-size: 12px; color: #7d828c; padding: 4px 8px; }
+.repo-branch, .repo-change, .repo-commit { display: flex; align-items: center; border-radius: 6px; }
+.repo-branch:hover, .repo-change:hover, .repo-commit:hover { background: #22252b; }
+.repo-branch.current { background: #1f2a38; }
+.repo-change.active, .repo-commit.active { background: #2a2d33; }
+.repo-branch-main, .repo-change-main, .repo-commit-main { flex: 1; min-width: 0; background: transparent; border: none; color: #c7cad1; text-align: left; padding: 5px 8px; font-size: 13px; cursor: pointer; display: flex; align-items: center; gap: 6px; overflow: hidden; }
+.repo-branch-main.static { cursor: default; }
+.repo-branch-main:disabled { cursor: default; color: #e6e6e6; }
+.repo-branch-name, .repo-change-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; min-width: 0; }
+.repo-branch-dot { font-size: 10px; color: #8fb4e0; }
+.repo-row-actions { display: none; gap: 2px; padding-right: 4px; }
+.repo-branch:hover .repo-row-actions, .repo-change:hover .repo-row-actions { display: flex; }
+.repo-row-actions.disabled { opacity: 0.5; }
+.repo-icon-btn { background: transparent; border: none; color: #c7cad1; cursor: pointer; border-radius: 4px; padding: 1px 6px; font-size: 13px; }
+.repo-icon-btn:hover:not(:disabled) { background: #333741; }
+.repo-icon-btn.danger:hover:not(:disabled) { color: #f0b4b0; }
+.repo-center { width: 340px; flex-shrink: 0; display: flex; flex-direction: column; border-right: 1px solid #2a2d33; min-height: 0; }
+.repo-tabs { display: flex; border-bottom: 1px solid #2a2d33; }
+.repo-tab { background: transparent; border: none; border-bottom: 2px solid transparent; color: #9aa0ab; padding: 8px 14px; font-size: 13px; cursor: pointer; }
+.repo-tab.active { color: #e6e6e6; border-bottom-color: var(--project-accent-color); }
+.repo-center-body { flex: 1; min-height: 0; overflow-y: auto; }
+.repo-changes { display: flex; flex-direction: column; padding-bottom: 8px; }
+.repo-changes section { padding: 0 4px; }
+.repo-letter { width: 16px; text-align: center; font-size: 11px; font-weight: 700; flex-shrink: 0; color: #e0b050; }
+.repo-letter.l-A { color: #6cc070; }
+.repo-letter.l-u, .repo-letter.l-\? { color: #6cc070; }
+.repo-letter.l-D { color: #e07070; }
+.repo-letter.l-U { color: #f08060; }
+.repo-letter.l-R { color: #70a8e0; }
+.repo-change-file { font-size: 13px; }
+.repo-change-dir { font-size: 11px; color: #7d828c; margin-left: 6px; }
+.repo-commit-box { display: flex; flex-direction: column; gap: 6px; padding: 8px; border-top: 1px solid #2a2d33; margin-top: 8px; }
+.repo-commit-actions { display: flex; align-items: center; justify-content: space-between; }
+.repo-check { font-size: 12px; color: #c7cad1; display: flex; align-items: center; gap: 4px; }
+.repo-log { display: flex; flex-direction: column; }
+.repo-commit-main { flex-direction: column; align-items: flex-start; gap: 2px; }
+.repo-commit-subject { font-size: 13px; color: #e6e6e6; max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.repo-commit-meta { font-size: 11px; color: #7d828c; }
+.repo-ref { font-size: 10px; background: #2b3b52; color: #b9d0ea; border-radius: 8px; padding: 1px 6px; margin-right: 6px; }
+.repo-ref.tag { background: #4a3c1f; color: #ecd29a; }
+.repo-ref.head { background: var(--project-accent-color); color: #fff; }
+.repo-commit-detail { border-top: 1px solid #2a2d33; padding: 8px; display: flex; flex-direction: column; gap: 6px; }
+.repo-commit-detail-head { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: #9aa0ab; }
+.repo-commit-message { margin: 0; white-space: pre-wrap; font: inherit; font-size: 12px; color: #c7cad1; }
+.repo-diff { flex: 1; min-width: 0; display: flex; flex-direction: column; }
+.repo-diff-title { font-size: 12px; color: #9aa0ab; padding: 8px 10px; border-bottom: 1px solid #2a2d33; }
+.repo-diff-body { flex: 1; min-height: 0; }
+.repo-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; color: #9aa0ab; font-size: 13px; padding: 24px; text-align: center; height: 100%; }
+
+/* Audio + 3D viewers */
+.file-viewer-audio {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 14px;
+  padding: 24px;
+}
+
+.file-viewer-audio audio {
+  width: min(560px, 100%);
+}
+
+.file-viewer-audio-name {
+  font-weight: 600;
+  word-break: break-all;
+  text-align: center;
+}
+
+.file-viewer-audio-options {
+  display: flex;
+  gap: 18px;
+  align-items: center;
+}
+
+.file-viewer-model {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.file-viewer-model-toolbar {
+  display: flex;
+  gap: 6px;
+  align-items: center;
+  padding: 6px 8px;
+  border-bottom: 1px solid var(--border, rgba(128, 128, 128, 0.25));
+}
+
+.file-viewer-model-toolbar .icon-btn.active {
+  background: rgba(128, 128, 128, 0.25);
+}
+
+.file-viewer-model-spacer {
+  flex: 1;
+}
+
+.file-viewer-model-msg {
+  margin: 4px 8px;
+}
+
+.file-viewer-model-canvas {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.file-viewer-model-overlay {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 16px;
+  text-align: center;
+  pointer-events: none;
+}
+
+/* Settings → Skills (settings/sections/SkillsSection.tsx) */
+.skill-new {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin: 10px 0;
+  padding: 10px;
+  border: 1px solid #2a2d33;
+  border-radius: 6px;
+}
+
+.skill-group h4 {
+  margin: 16px 0 6px;
+}
+
+.skill-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 8px 0;
+  border-bottom: 1px solid #2a2d33;
+}
+
+.skill-row-main {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.skill-row-desc {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.skill-row-path {
+  font-size: 11px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.skill-row-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* Feature-doc status chip in a terminal pane's header (terminal/usePaneSpec.ts) */
+.pane-spec-badge {
+  margin-left: 8px;
+  padding: 1px 8px;
+  border: none;
+  border-radius: 10px;
+  font-size: 11px;
+  cursor: pointer;
+  color: #e8c27a;
+  background: #2b2619;
+}
+
+.pane-spec-badge.status-ready {
+  color: #7fd48f;
+  background: #1d2a21;
+}
+
+.pane-spec-badge.status-checking {
+  color: #8ab4f8;
+  background: #1c2433;
+}
+
+.pane-spec-badge.status-needs-decision {
+  color: #e88a7a;
+  background: #2e1f1d;
+}
+
+/* Task lists in the markdown rich editor (files/MarkdownRichEditor.tsx) */
+.markdown ul[data-type="taskList"] {
+  list-style: none;
+  padding-left: 4px;
+}
+
+.markdown ul[data-type="taskList"] li {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+}
+
+.markdown ul[data-type="taskList"] li > label {
+  margin-top: 3px;
+  user-select: none;
+}
+
+.markdown ul[data-type="taskList"] li > div {
+  flex: 1;
+  min-width: 0;
+}
+
+.markdown ul[data-type="taskList"] li[data-checked="true"] > div {
+  opacity: 0.6;
+  text-decoration: line-through;
+}

@@ -1,0 +1,8 @@
+{
+  "id": "tool-cli-delegate",
+  "kind": ["service"],
+  "entry": "./dist/index.js",
+  "name": "CLI Delegate Tools",
+  "version": "0.1.0",
+  "compat": { "pluginApi": ">=0.3.0" }
+}

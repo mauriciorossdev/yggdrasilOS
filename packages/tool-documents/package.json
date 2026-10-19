@@ -1,0 +1,36 @@
+{
+  "name": "@yggdrasil/tool-documents",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Read/list/create/edit/rename/delete tools scoped to a project's notes/ (Documents) folder",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@yggdrasil/sdk": "workspace:*",
+    "@yggdrasil/tools-sdk": "workspace:*",
+    "pdfjs-dist": "^4.10.38"
+  },
+  "files": [
+    "dist",
+    "yggdrasil.plugin.json"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mauriciorossdev/yggdrasilOS.git",
+    "directory": "packages/tool-documents"
+  }
+}

@@ -1,0 +1,8 @@
+{
+  "id": "tool-browser",
+  "name": "Browser Automation",
+  "version": "0.1.0",
+  "kind": ["tool", "service"],
+  "entry": "./dist/index.js",
+  "compat": { "pluginApi": ">=0.3.0" }
+}

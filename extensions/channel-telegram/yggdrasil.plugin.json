@@ -1,0 +1,9 @@
+{
+  "id": "channel-telegram",
+  "kind": ["channel"],
+  "entry": "./dist/index.js",
+  "name": "Telegram Channel",
+  "version": "0.1.0",
+  "channels": [{ "id": "telegram", "label": "Telegram" }],
+  "compat": { "pluginApi": ">=0.3.0" }
+}

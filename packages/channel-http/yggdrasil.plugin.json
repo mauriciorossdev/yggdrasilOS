@@ -1,0 +1,9 @@
+{
+  "id": "channel-http",
+  "kind": ["channel"],
+  "entry": "./dist/index.js",
+  "name": "HTTP Channel",
+  "version": "0.1.0",
+  "channels": [{ "id": "http", "label": "HTTP Webhook" }],
+  "compat": { "pluginApi": ">=0.3.0" }
+}

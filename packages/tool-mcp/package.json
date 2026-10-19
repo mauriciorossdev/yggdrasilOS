@@ -1,0 +1,36 @@
+{
+  "name": "@yggdrasil/tool-mcp",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Bridges MCP (Model Context Protocol) servers into Yggdrasil agent tools",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.12.0",
+    "@yggdrasil/config": "workspace:*",
+    "@yggdrasil/sdk": "workspace:*",
+    "@yggdrasil/tools-sdk": "workspace:*"
+  },
+  "files": [
+    "dist",
+    "yggdrasil.plugin.json"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mauriciorossdev/yggdrasilOS.git",
+    "directory": "packages/tool-mcp"
+  }
+}

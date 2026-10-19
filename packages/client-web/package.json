@@ -1,0 +1,45 @@
+{
+  "name": "@yggdrasil/client-web",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Browser-safe WebSocket client + React hook for talking to the Yggdrasil gateway. Shared by web-console and app-desktop.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./dist/index.d.ts",
+      "import": "./dist/index.js"
+    }
+  },
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm run build"
+  },
+  "peerDependencies": {
+    "react": "^18.3.0 || ^19.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.2",
+    "react": "^19.1.0",
+    "typescript": "^5.8.3",
+    "vitest": "^3.2.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mauriciorossdev/yggdrasilOS.git",
+    "directory": "packages/client-web"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

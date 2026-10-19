@@ -1,0 +1,8 @@
+{
+  "id": "tool-agents",
+  "kind": ["service"],
+  "entry": "./dist/index.js",
+  "name": "Agent Creation Tool",
+  "version": "0.4.0",
+  "compat": { "pluginApi": ">=0.3.0" }
+}

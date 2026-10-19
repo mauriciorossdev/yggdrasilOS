@@ -1,0 +1,13 @@
+# Railway build/deploy config for the headless gateway (see Dockerfile,
+# deploy/railway/README.md). No healthcheckPath set — the gateway doesn't
+# expose an HTTP /health route today (confirmed by grepping
+# packages/gateway/src/server.ts), so Railway falls back to its default
+# "does the process accept a TCP connection on $PORT" check.
+
+[build]
+builder = "DOCKERFILE"
+dockerfilePath = "Dockerfile"
+
+[deploy]
+restartPolicyType = "ON_FAILURE"
+restartPolicyMaxRetries = 5

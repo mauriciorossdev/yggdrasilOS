@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  This app talks to a Yggdrasil gateway the user points it at — typically
+  running locally (Termux on the same device, 127.0.0.1) or on another
+  machine on the LAN — over plain http/ws, not https/wss. Cleartext is
+  permitted blanket (base-config, no per-domain allowlist) because the
+  gateway host is user-configured at runtime (see ConfigPage's "Configurar
+  API URL"), not a fixed set of domains this config could enumerate.
+  Acceptable for a local dev tool that is never distributed via Play Store.
+-->
+<network-security-config>
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

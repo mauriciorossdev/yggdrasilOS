@@ -1,0 +1,8 @@
+{
+  "id": "tool-destructive-demo",
+  "kind": ["service"],
+  "entry": "./dist/index.js",
+  "name": "Destructive Tool Demo",
+  "version": "0.1.0",
+  "compat": { "pluginApi": ">=0.3.0" }
+}

@@ -1,0 +1,6 @@
+{
+  "id": "channel-slack",
+  "kind": ["channel"],
+  "entry": "./dist/index.js",
+  "compat": { "pluginApi": ">=0.3.0" }
+}

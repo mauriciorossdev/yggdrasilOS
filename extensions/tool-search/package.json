@@ -1,0 +1,33 @@
+{
+  "name": "@yggdrasil/tool-search",
+  "version": "0.1.0-beta.1",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@yggdrasil/sdk": "workspace:*",
+    "@yggdrasil/tools-sdk": "workspace:*"
+  },
+  "files": [
+    "dist",
+    "yggdrasil.plugin.json"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mauriciorossdev/yggdrasilOS.git",
+    "directory": "extensions/tool-search"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,29 @@
+# Documentación
+
+- [Roadmap de iteraciones](./roadmap-iteraciones.md) — fases completadas y pendientes (4–8+)
+- [Plan Iteración 4](./plans/yggdrasil-iteracion-4.plan.md) — memoria, sesiones, compaction
+- [Plan Iteración 5](./plans/yggdrasil-iteracion-5.plan.md) — Telegram, auth, SSE HTTP
+- [Plan Iteración 6](./plans/yggdrasil-iteracion-6.plan.md) — npm, plugin install, tool-weather
+- [Plan Iteración 8](./plans/yggdrasil-iteracion-8.plan.md) — Web Console
+- [Web Console](./web-console.md) — dashboard en browser
+- [Protocolo del Gateway](./gateway-protocol.md) — contrato WS RPC para clientes externos (apps móviles, scripts)
+- [Instalación npm](./installation.md) — CLI global, `plugin install`, workspace root
+- [Publicación npm](./publishing.md) — mantenedores
+- [Sesiones y memoria](./sessions.md) — compaction, `sessions.patch`, `tools.list`, historial con tools
+- [Telegram channel](./telegram-channel.md) — conectar bot de Telegram
+- [Discord channel](./discord-channel.md) — conectar bot de Discord (discord.js v14)
+- [Browser tool](./browser-tool.md) — automatización web con Playwright headless
+- [File System tool](./fs-tool.md) — read/write/list/delete/move con risk levels
+- [Web Search tool](./search-tool.md) — Brave Search API o SearXNG self-hosted
+- [HTTP Fetch tool](./fetch-tool.md) — fetch nativo Node, sin browser, para APIs y HTML estático
+- [Image Input tool](./image-tool.md) — visión multimodal: cargar imágenes locales o remotas
+- [Cron Scheduler](./cron-service.md) — disparar mensajes al pipeline según expresiones cron
+- [Memory tools](./memory-tools.md) — CRUD explícito de memoria de largo plazo (memory_add/list/search/update/remove)
+- [Shell tool](./shell-tool.md) — shell_exec con sandbox (env filtrado, timeout, allowedRoot)
+- [API Keys Gateway](./api-keys.md) — múltiples keys con nombre y expiración para testers
+- [TLS Gateway](./tls-gateway.md) — HTTPS/WSS para acceso remoto seguro
+- [Publicar beta en npm](./beta-publish.md) — guía paso a paso para publicar y compartir con testers
+- [TUI](./tui.md) — terminal UI (app-tui React/Ink + channel-tui readline)
+- [Testing](./testing.md) — capas unit/integration/e2e, Ollama Cloud live
+- [Configuración del provider LLM](./provider-config.md) — `baseUrl`, API keys, Ollama Cloud/local, OpenAI
+- [Crear plugins](./creating-plugins.md) — `create-plugin`, tools, discovery

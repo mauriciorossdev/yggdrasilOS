@@ -1,0 +1,9 @@
+{
+  "id": "tui",
+  "kind": ["channel"],
+  "entry": "./dist/index.js",
+  "name": "TUI Channel",
+  "version": "0.1.0",
+  "channels": [{ "id": "tui", "label": "Terminal" }],
+  "compat": { "pluginApi": ">=0.3.0" }
+}

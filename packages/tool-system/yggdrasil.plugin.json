@@ -1,0 +1,8 @@
+{
+  "id": "tool-system",
+  "kind": ["service"],
+  "entry": "./dist/index.js",
+  "name": "System Tools",
+  "version": "0.1.0",
+  "compat": { "pluginApi": ">=0.3.0" }
+}

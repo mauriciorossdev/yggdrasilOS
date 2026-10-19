@@ -1,0 +1,17 @@
+{
+  "name": "@yggdrasil/echo-channel",
+  "version": "0.1.0",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit"
+  },
+  "dependencies": {
+    "@yggdrasil/config": "workspace:*",
+    "@yggdrasil/sdk": "workspace:*"
+  },
+  "files": ["dist"]
+}

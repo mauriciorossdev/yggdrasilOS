@@ -1,0 +1,32 @@
+{
+  "name": "@yggdrasil/workflows",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "Pure workflow engine for Yggdrasil automations: types, validation, canonical hashing, expressions and the DAG executor — no I/O, no gateway dependency. See notes/automation/workflows-design.md.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "cron-parser": "^5.0.0"
+  },
+  "files": [
+    "dist"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mauriciorossdev/yggdrasilOS.git",
+    "directory": "packages/workflows"
+  }
+}

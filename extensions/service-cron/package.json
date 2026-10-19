@@ -1,0 +1,39 @@
+{
+  "name": "@yggdrasil/service-cron",
+  "version": "0.1.0-beta.1",
+  "license": "MIT",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@yggdrasil/sdk": "workspace:*",
+    "@yggdrasil/config": "workspace:*",
+    "@yggdrasil/kernel": "workspace:*",
+    "@yggdrasil/pipeline": "workspace:*",
+    "node-cron": "^3.0.3"
+  },
+  "devDependencies": {
+    "@types/node-cron": "^3.0.11"
+  },
+  "files": [
+    "dist",
+    "yggdrasil.plugin.json"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mauriciorossdev/yggdrasilOS.git",
+    "directory": "extensions/service-cron"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

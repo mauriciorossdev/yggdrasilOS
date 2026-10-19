@@ -1,0 +1,36 @@
+{
+  "name": "@yggdrasil/tool-github",
+  "version": "0.1.0",
+  "license": "MIT",
+  "description": "GitHub connector — OAuth Device Flow + github_list_repos/github_clone_repo tools and connectors.github.* gateway methods",
+  "type": "module",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "test": "vitest run",
+    "prepublishOnly": "pnpm run build"
+  },
+  "dependencies": {
+    "@yggdrasil/kernel": "workspace:*",
+    "@yggdrasil/sdk": "workspace:*",
+    "@yggdrasil/tools-sdk": "workspace:*"
+  },
+  "files": [
+    "dist",
+    "yggdrasil.plugin.json"
+  ],
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mauriciorossdev/yggdrasilOS.git",
+    "directory": "packages/tool-github"
+  }
+}

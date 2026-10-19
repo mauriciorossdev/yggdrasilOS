@@ -1,0 +1,9 @@
+{
+  "id": "echo-channel",
+  "kind": ["channel"],
+  "entry": "./dist/index.js",
+  "name": "Echo Channel",
+  "version": "0.1.0",
+  "channels": [{ "id": "echo", "label": "Echo (test)" }],
+  "compat": { "pluginApi": ">=0.1.0" }
+}

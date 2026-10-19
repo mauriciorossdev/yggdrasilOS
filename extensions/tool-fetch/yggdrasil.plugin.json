@@ -1,0 +1,8 @@
+{
+  "id": "tool-fetch",
+  "name": "HTTP Fetch",
+  "version": "0.1.0",
+  "kind": ["tool"],
+  "entry": "./dist/index.js",
+  "compat": { "pluginApi": ">=0.3.0" }
+}

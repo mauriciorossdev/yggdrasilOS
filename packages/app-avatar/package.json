@@ -1,0 +1,47 @@
+{
+  "name": "@yggdrasil/app-avatar",
+  "version": "0.1.0",
+  "license": "MIT",
+  "private": true,
+  "type": "module",
+  "description": "Voice avatar client (Windows) for the Yggdrasil gateway — local Whisper STT, configurable LLM provider/model/apiKey.",
+  "author": "Mauricio Ross",
+  "main": "./dist/main/index.js",
+  "scripts": {
+    "dev": "electron-vite dev",
+    "build": "electron-vite build",
+    "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
+    "dist": "electron-vite build && electron-builder"
+  },
+  "dependencies": {
+    "@yggdrasil/cli": "workspace:*",
+    "@yggdrasil/client-web": "workspace:*",
+    "@yggdrasil/harness-llm": "workspace:*",
+    "@yggdrasil/harness-runtime": "workspace:*",
+    "@yggdrasil/provider-ollama": "workspace:*",
+    "@yggdrasil/provider-openai-compat": "workspace:*",
+    "@yggdrasil/tool-mcp": "workspace:*",
+    "@yggdrasil/tool-system": "workspace:*",
+    "ws": "^8.18.2",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0"
+  },
+  "devDependencies": {
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.1.2",
+    "@vitejs/plugin-react": "^4.5.2",
+    "electron": "^33.2.0",
+    "electron-builder": "^25.1.8",
+    "electron-vite": "^5.0.0",
+    "typescript": "^5.8.3",
+    "vite": "^7.3.5"
+  },
+  "engines": {
+    "node": ">=22"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/mauriciorossdev/yggdrasilOS.git",
+    "directory": "packages/app-avatar"
+  }
+}

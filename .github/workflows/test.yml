@@ -1,0 +1,43 @@
+name: Test
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+
+jobs:
+  test-fast:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm build
+      - run: pnpm test:unit
+      - run: pnpm test:integration
+      - run: pnpm test:e2e
+
+  test-live-ollama:
+    runs-on: ubuntu-latest
+    if: ${{ secrets.OLLAMA_API_KEY != '' }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 10
+      - uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+          cache: pnpm
+      - run: pnpm install
+      - run: pnpm build
+      - run: pnpm test:live
+        env:
+          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
+          YGGDRASIL_TEST_MODEL: gemma4:31b-cloud

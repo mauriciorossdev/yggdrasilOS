@@ -1,0 +1,8 @@
+{
+  "id": "channel-discord",
+  "name": "Discord Channel",
+  "version": "0.1.0",
+  "kind": ["channel"],
+  "entry": "./dist/index.js",
+  "compat": { "pluginApi": ">=0.3.0" }
+}

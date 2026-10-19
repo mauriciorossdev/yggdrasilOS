@@ -1,0 +1,8 @@
+{
+  "id": "tool-documents",
+  "kind": ["service"],
+  "entry": "./dist/index.js",
+  "name": "Documents Tools",
+  "version": "0.1.0",
+  "compat": { "pluginApi": ">=0.3.0" }
+}

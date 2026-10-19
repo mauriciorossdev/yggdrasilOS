@@ -1,0 +1,472 @@
+:root {
+  color-scheme: dark;
+  --bg: #14161c;
+  --panel: #1c1f28;
+  --border: #2c3040;
+  --text: #e6e8ef;
+  --muted: #8b92a5;
+  --accent: #6c8cff;
+  --danger: #ff6b6b;
+  font-family: system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+html,
+body,
+#root {
+  height: 100%;
+  margin: 0;
+}
+
+body {
+  background: var(--bg);
+  color: var(--text);
+}
+
+button {
+  background: var(--panel);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 12px;
+  cursor: pointer;
+  font-size: 13px;
+}
+button:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+button:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+input,
+select,
+textarea {
+  background: var(--bg);
+  color: var(--text);
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 8px;
+  font-size: 13px;
+  font-family: inherit;
+  width: 100%;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 12px;
+  font-size: 12px;
+  color: var(--muted);
+}
+
+.muted {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.error {
+  color: var(--danger);
+}
+
+.app-status {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+}
+
+.app-shell {
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+
+.app-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 16px;
+  border-bottom: 1px solid var(--border);
+}
+.app-header h1 {
+  font-size: 15px;
+  margin: 0;
+}
+.header-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.message-list {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.message {
+  max-width: 70%;
+  padding: 8px 12px;
+  border-radius: 10px;
+  border: 1px solid var(--border);
+}
+.message p {
+  margin: 2px 0 0;
+  white-space: pre-wrap;
+}
+.message-role {
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--muted);
+  letter-spacing: 0.04em;
+}
+.message-user {
+  align-self: flex-end;
+  background: #22283a;
+}
+.message-assistant {
+  align-self: flex-start;
+  background: var(--panel);
+}
+.message-system {
+  align-self: center;
+  background: transparent;
+  border-style: dashed;
+  color: var(--muted);
+}
+
+/* Persistent agent status bar (always visible, not just in scrollback) */
+
+.agent-status {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 16px;
+  font-size: 12px;
+  color: var(--muted);
+  border-bottom: 1px solid var(--border);
+  background: var(--panel);
+}
+.agent-status-detail {
+  color: var(--text);
+  font-family: monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.agent-status-approval {
+  color: #e0b84c;
+}
+.speech-controls {
+  display: flex;
+  gap: 8px;
+  padding: 0 16px 6px;
+}
+.speech-controls button {
+  font-size: 12px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--muted);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+/* Tool messages */
+
+.message-tool {
+  align-self: flex-start;
+  background: #1c1f24;
+}
+.tool-ok .message-role {
+  color: #6bd08a;
+}
+.tool-error .message-role {
+  color: #e0715c;
+}
+.tool-args {
+  margin: 4px 0 0;
+  color: var(--muted);
+  font-size: 11px;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.tool-result {
+  margin: 6px 0 0;
+  padding: 8px;
+  background: #14161a;
+  border-radius: 6px;
+  overflow: auto;
+  max-height: 200px;
+  font-size: 12px;
+}
+.tool-running {
+  color: var(--muted);
+}
+.spinner {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border: 2px solid var(--border);
+  border-top-color: var(--muted);
+  border-radius: 50%;
+  animation: spin 0.7s linear infinite;
+  vertical-align: -1px;
+}
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+/* Approval bar */
+
+.approval-bar {
+  margin: 0 16px 8px;
+  padding: 10px 14px;
+  border-radius: 8px;
+  background: #2a2312;
+  border: 1px solid #6b5a1f;
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+.approval-info {
+  flex: 1;
+  min-width: 0;
+}
+.approval-bar.risk-destructive {
+  background: #2a1414;
+  border-color: #6b1f1f;
+}
+.approval-info strong {
+  color: #f0c674;
+}
+.approval-bar.risk-destructive .approval-info strong {
+  color: #e0715c;
+}
+.risk-tag {
+  margin-left: 8px;
+  font-size: 11px;
+  text-transform: uppercase;
+  color: var(--muted);
+}
+.approval-info pre {
+  margin: 6px 0 0;
+  font-size: 12px;
+  color: var(--muted);
+  max-height: 200px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.approval-actions {
+  display: flex;
+  gap: 8px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+.approval-actions button {
+  padding: 6px 14px;
+  border-radius: 6px;
+  border: none;
+  cursor: pointer;
+  font-weight: 600;
+}
+.approve {
+  background: #6bd08a;
+  color: #14161a;
+}
+.deny {
+  background: #e0715c;
+  color: #14161a;
+}
+
+/* MCP */
+
+.mcp-server-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.mcp-id-input {
+  font-weight: 600;
+}
+.mcp-add-actions {
+  display: flex;
+  gap: 8px;
+}
+.mcp-import textarea {
+  font-family: monospace;
+  font-size: 12px;
+}
+.mcp-status-ok {
+  color: #6bd08a;
+  font-size: 12px;
+}
+
+.mic-error {
+  padding: 0 16px;
+}
+
+.composer {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px 16px;
+  border-top: 1px solid var(--border);
+}
+
+.mic-button {
+  padding: 14px;
+  font-size: 14px;
+  border-radius: 10px;
+  user-select: none;
+}
+.mic-button.recording {
+  background: #3a1c1c;
+  border-color: var(--danger);
+  color: var(--danger);
+}
+
+.text-fallback {
+  display: flex;
+  gap: 8px;
+}
+.text-fallback input {
+  flex: 1;
+}
+
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.modal {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 16px;
+  min-width: 320px;
+}
+.settings-view {
+  width: 640px;
+  max-height: 80vh;
+  display: flex;
+  flex-direction: column;
+}
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.icon-btn {
+  background: transparent;
+  border: none;
+}
+
+.banner {
+  background: #1c3a24;
+  border: 1px solid #2a5a36;
+  border-radius: 6px;
+  padding: 6px 10px;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.settings-body {
+  display: flex;
+  gap: 16px;
+  flex: 1;
+  overflow: hidden;
+}
+.settings-nav {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  width: 120px;
+  flex-shrink: 0;
+}
+.settings-nav-item {
+  text-align: left;
+}
+.settings-nav-item.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+.settings-panel {
+  flex: 1;
+  overflow-y: auto;
+  padding-right: 8px;
+}
+.settings-section h3 {
+  margin-top: 0;
+  font-size: 13px;
+}
+.settings-provider {
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  padding: 10px;
+  margin-bottom: 10px;
+}
+.provider-warning {
+  color: #e0b84c;
+  font-size: 12px;
+}
+
+.agent-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.input-with-button {
+  display: flex;
+  gap: 6px;
+}
+.input-with-button button.active {
+  border-color: var(--accent);
+  color: var(--accent);
+}
+
+.whisper-models {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 8px;
+}
+.whisper-model-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 6px 10px;
+}
+.whisper-model-row.active {
+  border-color: var(--accent);
+}
+.whisper-model-radio {
+  flex-direction: row;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  color: var(--text);
+  font-size: 13px;
+}

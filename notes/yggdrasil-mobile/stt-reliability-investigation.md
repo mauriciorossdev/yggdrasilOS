@@ -1,0 +1,99 @@
+# Investigación: confiabilidad de `speech_to_text` (por qué a veces no escucha o transcribe mal)
+
+Estado: **investigación, sin implementar**. Tarea separada de todo lo del chat-head/notificación de voz — no toca ese trabajo. Basado en lectura de `lib/chat/voice_mic_button.dart` (líneas citadas abajo) + código fuente y documentación de `speech_to_text` (pub.dev, changelog, y el plugin Android nativo en GitHub — `csdcorp/speech_to_text`, rama `main`, `speech_to_text/android/src/main/kotlin/com/csdcorp/speech_to_text/SpeechToTextPlugin.kt`, leído directo para confirmar comportamiento real en vez de asumirlo).
+
+## 0. Confirmación de los 4 puntos contra el código actual
+
+Los 4 puntos del usuario coinciden exactamente con el archivo tal como está hoy:
+
+- `_speech.initialize()` — `voice_mic_button.dart:102`, sin `onError`.
+- `speech.listen(...)` — `voice_mic_button.dart:229-241`, sin `onError` (ver §1, ese parámetro ni siquiera existe en `listen()`), `onSoundLevelChange: null` (línea 234), `pauseFor: const Duration(seconds: 3)` (línea 239, dentro de `SpeechListenOptions`).
+- Además, ninguna de las dos llamadas pasa `localeId` — relevante para §2, más abajo.
+
+## 1. `onError` — qué expone realmente el paquete, y una corrección de dónde vive
+
+**Corrección al planteo del usuario**: `onError` no es un parámetro de `listen()` — es un parámetro de `initialize()` únicamente (`SpeechErrorListener onError` en `SpeechToText.initialize()`). `listen()` solo tiene `cancelOnError` (bool, default `false`, dentro de `SpeechListenOptions` — no seteado hoy tampoco), que le dice al plugin si debe cancelar la sesión activa cuando un error es "permanente". El problema real entonces es más simple de lo planteado: **hoy nadie registra el único callback de error que existe**, en `initialize()` (línea 102).
+
+- **Tipo del callback**: `typedef SpeechErrorListener = void Function(SpeechRecognitionError errorNotification)`.
+- **`SpeechRecognitionError`** tiene 2 campos: `errorMsg` (String) y `permanent` (bool).
+- **Dato importante, no obvio de la documentación pub.dev, confirmado leyendo el código nativo de Android** (`SpeechToTextPlugin.kt`, función `sendError`, ~línea 791): en Android, `permanent` **siempre llega en `true`**, sin excepción — el plugin no distingue error transitorio de permanente en esa plataforma pese a que el campo existe en la API. Esto quiere decir que **no sirve usar `permanent` para decidir qué mensaje mostrar en Android** — hay que discriminar por el string de `errorMsg` directamente.
+- **Los valores reales de `errorMsg` en Android** (mapeo exacto de `SpeechRecognizer.ERROR_*` a string, confirmado en el código fuente, función `onError`, ~línea 754-777 de `SpeechToTextPlugin.kt`):
+
+  | `errorMsg` | Causa real (Android `SpeechRecognizer`) | Categoría útil para el usuario |
+  |---|---|---|
+  | `error_permission` | Permiso de audio insuficiente en tiempo de reconocimiento | Permiso (aunque `voice_mic_button.dart` ya pide `RECORD_AUDIO` antes de llegar acá — este error sería una segunda señal, ej. revocado a mitad de turno) |
+  | `error_network` / `error_network_timeout` | Reconocimiento server-side (no on-device) sin conexión o con timeout de red | Red — mensaje específico posible ("revisá tu conexión"), distinto de "no entendí" |
+  | `error_no_match` | El motor entendió audio pero no encontró ninguna transcripción candidata | Habló pero no se entendió — el "no entendí" actual es honesto acá |
+  | `error_speech_timeout` | No se detectó habla en absoluto durante la ventana de escucha | Mensaje distinto posible: "no te escuché" en vez de "no entendí" |
+  | `error_audio_error` | Falla de hardware/captura de audio | Mic/hardware — mensaje distinto, potencialmente "revisá el micrófono" |
+  | `error_busy` | El reconocedor ya está en uso (otra sesión concurrente) | Caso raro dado el flujo actual (un solo `SpeechToText` por widget), pero cubrible |
+  | `error_server` / `error_server_disconnected` / `error_too_many_requests` | Falla del lado del servicio de reconocimiento (cloud) | Servicio no disponible ahora — distinto de error del usuario |
+  | `error_client` | Error genérico del cliente Android | Catch-all, sin mensaje específico posible |
+  | `error_language_not_supported` / `error_language_unavailable` | El locale pedido (§2) no está disponible en el motor de ese device | **Directamente relevante a §2** — si se fuerza `es-CL` y el device no lo soporta, este es el error que va a aparecer, hay que probarlo |
+  | `error_unknown ($errorCode)` | Código no mapeado por el plugin | Catch-all |
+
+- **Hallazgo colateral, muy relevante para el punto 4**: el propio plugin nativo *ya* distingue "no hubo audio real" de "hubo audio pero no matcheó" — internamente, si llega `ERROR_NO_MATCH` pero el nivel de sonido máximo capturado (`maxRms`) quedó por debajo de un umbral interno (`speechThresholdRms = 9`, hardcodeado en el plugin), lo **reclasifica** como `error_speech_timeout` antes de mandarlo a Dart (`onError`, ~línea 757: `if (SpeechRecognizer.ERROR_NO_MATCH == errorCode && maxRms < speechThresholdRms) errorReturn = SpeechRecognizer.ERROR_SPEECH_TIMEOUT`). Esto es exactamente la distinción que el punto 4 pide poder hacer del lado de la app — el plugin ya la hace del lado nativo, solo que hoy nadie la lee porque no hay `onError` registrado.
+- **Recomendación**: registrar `onError` en `initialize()` (línea 102), guardar el último `errorMsg` en el estado de `_VoiceSheetViewState`, y en `_stopAndTranscribe()` (línea 244) — cuando el texto final queda vacío — elegir el mensaje de `notUnderstood` según el `errorMsg` recibido en vez de mostrar siempre el mismo texto genérico. No hace falta setear `cancelOnError` para esto (el error ya detiene la escucha a nivel nativo de cualquier forma, confirmado en el mismo código: `onError` llama `notifyListening(false)` sin condicionar a `cancelOnError`) — es una mejora de robustez aparte, no crítica para resolver el punto 1.
+
+## 2. Locale — confirmado el approach, y un hallazgo que explica el bug de raíz
+
+Aprobado (corrección ya hecha por el usuario sobre el pedido original): mapear `AppStrings.localeNotifier` (`lib/l10n/app_strings.dart:17`, `'es'`/`'en'`) → `es-CL` (o `es-ES`, a confirmar en hardware) / `en-US` respectivamente, pasado explícito a `initialize()`/`listen()` — nunca el locale de sistema.
+
+- **Por qué hoy se ve el bug que motivó pedir esto, confirmado leyendo el plugin nativo**: ni `initialize()` (línea 102) ni el `SpeechListenOptions` de `listen()` (líneas 235-240) pasan `localeId`. Del lado nativo (`SpeechToTextPlugin.kt`, handler de `listen`, ~línea 199-203), cuando `localeId` llega nulo desde Dart, **cae directo a `Locale.getDefault().toLanguageTag()`** — el idioma de sistema del teléfono, no el de la app. Esto confirma exactamente el problema que motivó el pedido: hoy, si el sistema del teléfono está en inglés pero la app está en `AppStrings.current == 'es'`, el reconocedor escucha en inglés sin que nada en el código lo decida a propósito.
+- **Formato de `localeId`**: el paquete acepta guión (`es-CL`) o guión bajo (`es_CL`) indistintamente — el plugin nativo hace `localeId.replace('_', '-')` antes de usarlo (misma función, línea 203), así que no importa cuál de los dos formatos use el mapeo `AppStrings.current` → locale.
+- **`_speech.locales()`** — el método que hay que correr en el Samsung real antes de decidir `es-CL` vs `es-ES` — devuelve strings con formato `"<lang>_<country>:<nombre visible>"` (confirmado en `buildIdNameForLocale`, ~línea 866-868 del plugin nativo, ej. `"es_CL:español (Chile)"` si ese locale está instalado). "Estar en la lista no garantiza que el device pueda reconocerlo" es una advertencia textual de la documentación del propio método — por eso el punto queda abierto en vez de asumir que `es-CL` va a funcionar bien solo por aparecer en la lista.
+- **Punto abierto, no resuelto acá, a confirmar en el Samsung real** (tal como pidió el usuario): correr `_speech.locales()` en ese dispositivo específico, confirmar si `es_CL` aparece, y si aparece, probar precisión real contra `es_ES` antes de fijar cuál usar — no hay forma de resolver esto solo con documentación, varía por dispositivo/versión del motor de Google instalado.
+- Si se termina fijando un `es-CL`/`es-ES` que el device no soporta, el error visible va a ser `error_language_not_supported`/`error_language_unavailable` (tabla de §1) — buena señal para detectar el caso en vez de que se vea como un "no entendí" genérico.
+
+## 3. `pauseFor` — contexto real de la plataforma, no solo un número a subir
+
+- **El propio código ya envía este valor a Android**: `setupRecognizerIntent` (`SpeechToTextPlugin.kt`, ~línea 692) hace `putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, pauseFor)` — o sea, el valor de 3 segundos actual sí llega al reconocedor de Android, no se ignora a nivel del plugin Flutter.
+- **Pero la plataforma no garantiza respetarlo al 100%**: el changelog de la propia librería (entrada `7.4.0-beta`, "Android now respects the pauseFor value") sugiere que en versiones anteriores del plugin este valor podía no aplicarse bien en Android — corregido ya en la versión actual (§6, ya estamos en 7.4.0 estable). Aun así, el README del proyecto sigue advirtiendo, sin haberlo retirado en la versión vigente: *"Android speech recognition has a very short timeout when the speaker pauses. The duration seems to vary by device and version of the Android OS."* — es decir, aunque el extra llegue al recognizer, el comportamiento final depende del recognizer instalado en cada device/OEM (típicamente el de Google), no es 100% determinístico solo por setear el valor en el `Intent`. Mismo criterio del proyecto de no asumir sin probar en el Samsung real.
+- **Trade-off de subirlo**: 3s es agresivo para una pausa natural a mitad de frase (pensar la próxima palabra, dudar) — cortar ahí produce transcripciones truncadas. Subir a algo como **5-6 segundos** da más margen para pausas naturales sin ser tan largo como para que el usuario perciba que "no pasa nada" después de terminar de hablar (el label de `_content()` en modo `recording`, `voice_mic_button.dart:334-344`, no muestra ningún indicador de "detectando fin de frase", así que un `pauseFor` largo se percibe como demora antes de pasar a `processing`). Recomendación: probar 5s como punto de partida — no hay forma de afinar el número exacto sin medirlo en uso real en el Samsung, es una decisión de UX tanto como técnica.
+- **No confundir con `_maxDurationTimer`** (`voice_mic_button.dart:192`, hardcodeado a 30s en `_VoiceSheetViewState._startListening`, junto con `listenFor: const Duration(seconds: 30)` en `SpeechListenOptions`, línea 238-239 aprox.) — ese es el tope absoluto de duración de la grabación completa, no relacionado a pausas intermedias. `pauseFor` corta antes si hay silencio; `listenFor`/`_maxDurationTimer` cortan a los 30s pase lo que pase. No hace falta tocar ese número para resolver el punto 3.
+
+## 4. `onSoundLevelChange` — qué da, y cómo usarlo
+
+- **Firma**: `typedef SpeechSoundLevelChange = Function(double level)` — un `double` por evento, descripto en la documentación oficial como "a measure of the decibels of the current sound on the recognition input". En Android específicamente viene de `RecognitionListener.onRmsChanged(rmsdB: Float)` (confirmado en el plugin nativo, ~línea 801) — **no es un dBFS estándar calibrado**, es el valor RMS crudo que entrega el `SpeechRecognizer` de Android, cuyo rango práctico observado por el propio plugin va aproximadamente de valores negativos (silencio) a un dígito de un solo dígito alto en voz fuerte — el plugin usa internamente `speechThresholdRms = 9` como corte (§1) para "hubo voz real". **Esto no es un dato oficialmente documentado por Android como una escala fija** — es un valor heurístico interno de este plugin específico, no garantizado estable entre versiones del plugin ni entre dispositivos/OEMs — cualquier umbral que se fije del lado de la app debe calibrarse con valores reales logueados en el Samsung, no copiar el `9` del plugin a ciegas (ese número existe para una decisión interna distinta — reclasificar un error — no está pensado como una constante pública a reusar).
+- **Costo real de pasar `null` hoy (línea 234)**: ninguno, en términos de tráfico — confirmado en el plugin nativo: `onRmsChanged` invoca el canal de método hacia Dart (`channel?.invokeMethod(soundLevelChange, rmsdB)`, ~línea 811) **incondicionalmente**, sin chequear si el lado Dart tiene un callback registrado. Pasar `null` solo evita que el lado Flutter *reaccione* al evento — el evento cruza el canal igual. Es decir, wirear esto no agrega costo de plataforma nuevo, solo agrega lógica del lado Dart que hoy se descarta.
+- **Cómo usarlo para distinguir los dos casos del punto 4**: en `_startListening()` (`voice_mic_button.dart:226`), acumular un máximo de `level` visto durante la sesión de grabación (misma idea que el `maxRms` del plugin, del lado Dart). En `_stopAndTranscribe()` (línea 244), cuando el texto final queda vacío, elegir el mensaje según ese máximo:
+  - Máximo bajo (por debajo de un umbral a calibrar en hardware) → "no te escuché" (mic tapado, volumen bajo, hardware) — coincide además con el caso que el plugin ya resuelve como `error_speech_timeout` en vez de `error_no_match` (§1), así que ambas señales (nivel de sonido propio + `errorMsg` del `onError` de §1) apuntan al mismo diagnóstico y se refuerzan entre sí.
+  - Máximo alto pero sin texto → "no entendí" (hubo audio, el motor no lo pudo transcribir) — el mensaje actual (`voice.notUnderstood`) sigue siendo correcto para este caso puntual.
+- Efecto colateral útil, no pedido pero gratis: el mismo stream de niveles podría alimentar una barra de audio real en vez de las 7 barras con animación fija por temporizador que hay hoy (`_barControllers`/`_barDurationsMs`, líneas 187-209) — lo anoto como posibilidad, no como parte de esta investigación (es una mejora de UX visual, no de confiabilidad).
+
+## 5. Hallazgo adicional, no pedido explícitamente pero relevante a los 4 puntos: falta un `<queries>` en el manifest
+
+Investigando el setup de Android del paquete (su propio README, sección de instalación) encontré algo que no estaba en los 4 puntos pero es candidato real a explicar comportamiento intermitente — lo dejo documentado, a confirmar en hardware antes de asumir que es la causa de algo puntual:
+
+- El README oficial de `speech_to_text` pide, para **Android SDK 30+** (este proyecto ya corre `targetSdk 36`, confirmado en comentarios de `MainActivity.kt` sobre `phone-find-files-design.md §1.2`), declarar un bloque `<queries>` adicional:
+  ```xml
+  <queries>
+      <intent>
+          <action android:name="android.speech.RecognitionService" />
+      </intent>
+  </queries>
+  ```
+- **`AndroidManifest.xml` de este proyecto no lo tiene** — el único `<queries>` existente (líneas 83-94) cubre `PROCESS_TEXT` y `MAIN`/`LAUNCHER` (para `phone_*` open_app/list_apps), nada de `RecognitionService`.
+- **Por qué importa**: `completeInitialize()` en el plugin nativo (~línea 522-547) llama a `SpeechRecognizer.isRecognitionAvailable(context)` para decidir si `initialize()` devuelve `true`/`false` — esa función de Android internamente consulta qué apps exponen el servicio `RecognitionService`, una consulta sujeta a las reglas de package visibility de Android 11+ (API 30+). Sin el `<queries>` declarado, esa consulta puede no ver el reconocedor instalado (típicamente el de Google) y `isRecognitionAvailable` devolver `false` — lo cual haría que `_speech.initialize()` (línea 102) devuelva `false` y la app muestre "no entendí" (línea 105, `_VoiceSheet.showNotUnderstood`) **sin haber llegado siquiera a escuchar**.
+- **A confirmar en el Samsung real, no asumido**: si la voz ya funciona hoy en ese dispositivo sin este bloque, probablemente Samsung/One UI exponga el reconocedor de otra forma que no dispara esta restricción particular en ese modelo puntual — no hay garantía de que se comporte igual en otro Android/OEM, ni de que siga comportándose igual tras una actualización de One UI o de la Play Store del propio reconocedor (mismo patrón de sorpresa de OEM ya visto en este proyecto con `ACTION_SET_ALARM`, que Samsung sí bloqueaba sin el permiso extra, y con `MANAGE_EXTERNAL_STORAGE`). Como es gratis agregarlo (no pide permiso nuevo al usuario, es solo package-visibility) y está explícitamente pedido por el propio README del paquete para la versión de SDK que este proyecto ya usa, lo marco como agregado recomendado de bajo riesgo — pero la palabra final sobre si esto explica algo del comportamiento reportado necesita probarse en el Samsung real, no la doy por asumida.
+
+## 6. ¿Conviene subir de versión `speech_to_text`?
+
+**No, no hace falta para ninguno de los 4 puntos.** Confirmado contra pub.dev:
+
+- **7.4.0 es la versión estable vigente** (publicada hace ~3 meses al momento de esta investigación) — ya incluye el fix de "Android now respects the pauseFor value" (entrada de changelog `7.4.0-beta`, ya integrada a la estable).
+- Existe un prerelease **7.5.0-beta.1** — sin cambios documentados relevantes a ninguno de los 4 puntos (locale, onError, pauseFor, onSoundLevelChange) en lo que pude confirmar del changelog público; al ser beta, no lo recomiendo para producción sin una razón concreta que lo justifique, y hoy no la hay.
+- Todo lo necesario para los 4 puntos — `onError` en `initialize()`, `localeId` en `listen()`/`initialize()`, `pauseFor` vía `SpeechListenOptions`, `onSoundLevelChange` vía `listen()` — ya está disponible en la 7.4.0 que el proyecto usa hoy (`pubspec.yaml:41`). No hay que tocar la versión del paquete para implementar ninguno de los 4.
+
+## 7. Resumen
+
+1. **`onError`**: vive en `initialize()`, no en `listen()` (corrección de terminología). En Android, `permanent` siempre da `true` — hay que discriminar por el string `errorMsg` (tabla en §1). El plugin nativo ya distingue internamente "no hubo audio" de "no matcheó" (reclasifica `error_no_match` → `error_speech_timeout` según nivel de sonido) — hoy esa señal se pierde por no tener `onError` registrado.
+2. **Locale**: confirmado el approach (mapear `AppStrings.current` → `es-CL`/`en-US`/etc., nunca sistema). Hallazgo: el bug reportado se explica exactamente por no pasar `localeId` hoy — cae al locale de sistema del device (`Locale.getDefault()`, confirmado en el plugin nativo). `es-CL` vs `es-ES` queda abierto, a confirmar con `_speech.locales()` en el Samsung real.
+3. **`pauseFor`**: sí llega a Android (confirmado en el código nativo), pero la plataforma no garantiza el timing exacto por OEM/versión (advertencia propia del README, no retirada en la versión vigente). Recomendación de punto de partida: 5-6s en vez de 3s, a confirmar en hardware real.
+4. **`onSoundLevelChange`**: pasarlo en `null` hoy no ahorra nada (el evento cruza la plataforma igual, confirmado en el código nativo) — wirearlo permite distinguir "no te escuché" (nivel bajo) de "no entendí" (nivel alto, sin texto), reforzado por la misma señal que ya usa el plugin internamente para lo mismo (§1). Umbral a calibrar en hardware, no copiar el `9` interno del plugin sin medir.
+5. **Hallazgo extra**: falta el `<queries>` de `android.speech.RecognitionService` que el propio README pide para SDK 30+ (este proyecto va en targetSdk 36) — candidato de bajo riesgo y alto valor a agregar, pero su impacto real en el comportamiento reportado queda a confirmar en el Samsung real, no asumido.
+6. **Versión del paquete**: no hace falta subir de 7.4.0 — los 4 puntos son alcanzables con la API ya disponible.
+7. Nada de esto se implementa en esta ronda — queda en la cola después de lo del overlay/chat-head, sin bloquear nada de lo ya implementado.
+
+---
+Generado con Claude Code — sesión: https://claude.ai/code/session_01WYAisFZiCxEX1YPyCKM7P7

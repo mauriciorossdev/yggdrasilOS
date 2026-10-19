@@ -1,0 +1,81 @@
+{
+  "_description": "Config example for remote access: TLS enabled, gateway on all interfaces, multiple API keys.",
+
+  "agents": [
+    {
+      "id": "default",
+      "label": "Default Agent",
+      "provider": "openai-compat",
+      "model": "your-model-here",
+      "contextProviders": ["prompt-files", "project-context"]
+    }
+  ],
+  "defaultAgent": "default",
+  "harness": {
+    "policy": "pinned",
+    "pinnedId": "llm",
+    "streaming": true,
+    "toolApproval": "destructive-only"
+  },
+  "gateway": {
+    "port": 18789,
+    "host": "0.0.0.0",
+    "tls": {
+      "cert": "/path/to/cert.pem",
+      "key": "/path/to/key.pem"
+    }
+  },
+  "providers": {
+    "openai-compat": {
+      "baseUrl": "https://api.openai.com/v1",
+      "defaultModel": "gpt-4o-mini"
+    }
+  },
+  "sessions": {
+    "maxMessages": 50,
+    "compactThreshold": 40,
+    "compactionPolicy": "summarize",
+    "maxTokens": 12000
+  },
+  "plugins": {
+    "load": {
+      "paths": ["extensions"]
+    },
+    "discoverNodeModules": true,
+    "installed": [],
+    "disabled": []
+  },
+  "auth": {
+    "gateway": {
+      "apiKeys": [
+        {
+          "key": "replace-with-openssl-rand-hex-32",
+          "name": "admin"
+        },
+        {
+          "key": "replace-with-another-key",
+          "name": "tester-1",
+          "expiresAt": 9999999999999
+        },
+        {
+          "key": "replace-with-another-key-2",
+          "name": "tester-2",
+          "expiresAt": 9999999999999
+        }
+      ]
+    }
+  },
+  "pluginConfig": {
+    "context-prompt-files": {
+      "paths": ["prompts"]
+    }
+  },
+  "context": {
+    "defaultProviders": ["prompt-files", "project-context"],
+    "tokenBudget": 4000
+  },
+  "channels": {
+    "tui": { "enabled": false },
+    "http": { "enabled": false }
+  }
+}

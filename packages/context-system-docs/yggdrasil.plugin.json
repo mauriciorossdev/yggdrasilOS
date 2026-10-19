@@ -1,0 +1,8 @@
+{
+  "id": "context-system-docs",
+  "name": "System Docs",
+  "version": "0.1.0",
+  "kind": ["context"],
+  "entry": "./dist/index.js",
+  "compat": { "pluginApi": ">=0.3.0" }
+}
