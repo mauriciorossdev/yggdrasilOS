@@ -14,6 +14,10 @@ pnpm test         # unit + integration + e2e with mock providers — no API key 
 pnpm typecheck
 ```
 
+Tests run on plain Node, but the desktop app's `postinstall` rebuilds native modules for Electron. If tests fail with
+`ERR_DLOPEN_FAILED` / "Module did not self-register" from `better-sqlite3`, run `pnpm rebuild better-sqlite3`
+(and `pnpm --filter @yggdrasil/app-desktop run postinstall` to switch back before running the desktop app).
+
 Live tests (`pnpm test:live`) call a real model and need `OLLAMA_API_KEY`; they skip themselves without it.
 
 The desktop app: `pnpm desktop`. See `AGENTS.md` for the monorepo layout, test architecture and how to scaffold a

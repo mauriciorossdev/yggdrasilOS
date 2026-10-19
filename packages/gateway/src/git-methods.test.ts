@@ -7,6 +7,13 @@ import { mergeConfig } from "@yggdrasil/config";
 import { createDefaultGatewayContext, handleGatewayRequest, registerConnectionRemoteAddress } from "./methods.js";
 import { parseBranches, parseLog, parseNameStatus, parseStatusV2 } from "./git-methods.js";
 
+// The git.* methods under test run plain `git commit` / `git merge`; give them an identity so the
+// suite also passes on machines without a global git config (e.g. CI runners).
+process.env.GIT_AUTHOR_NAME ??= "Test";
+process.env.GIT_AUTHOR_EMAIL ??= "t@t.dev";
+process.env.GIT_COMMITTER_NAME ??= "Test";
+process.env.GIT_COMMITTER_EMAIL ??= "t@t.dev";
+
 let n = 0;
 
 function git(cwd: string, ...args: string[]): string {

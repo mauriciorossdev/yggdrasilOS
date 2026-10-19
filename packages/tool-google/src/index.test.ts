@@ -11,7 +11,13 @@ vi.mock("@yggdrasil/kernel", () => ({
 import { getKernelContext } from "@yggdrasil/kernel";
 import { readConfigFile } from "@yggdrasil/config";
 import type { GatewayHandler } from "@yggdrasil/sdk";
-import plugin, { gcalCreateEventTool, gcalListEventsTool, gmailReadTool, gmailSearchTool } from "./index.js";
+import plugin, {
+  driveUploadDocumentTool,
+  gcalCreateEventTool,
+  gcalListEventsTool,
+  gmailReadTool,
+  gmailSearchTool,
+} from "./index.js";
 
 type FakeApi = {
   registerTool: Mock;
@@ -31,7 +37,7 @@ function fakeApi(): FakeApi {
 }
 
 describe("tool-google plugin registration", () => {
-  it("registers all 4 v1 tools with the riskLevels the doc specifies", () => {
+  it("registers all 5 tools with the riskLevels the doc specifies", () => {
     const api = fakeApi();
     plugin.register(api as never);
 
@@ -42,7 +48,8 @@ describe("tool-google plugin registration", () => {
     expect(byName("gcal_create_event").riskLevel).toBe("moderate");
     expect(byName("gmail_search").riskLevel).toBe("safe");
     expect(byName("gmail_read").riskLevel).toBe("safe");
-    expect(registered).toHaveLength(4);
+    expect(byName("drive_upload_document").riskLevel).toBe("moderate");
+    expect(registered).toHaveLength(5);
   });
 
   it("exports the same tool objects it registers (so other code, e.g. an MCP shim, can reuse them)", () => {
@@ -50,17 +57,24 @@ describe("tool-google plugin registration", () => {
     plugin.register(api as never);
     const registered = api.registerTool.mock.calls.map((c) => c[0]);
     expect(registered).toEqual(
-      expect.arrayContaining([gcalListEventsTool, gcalCreateEventTool, gmailSearchTool, gmailReadTool]),
+      expect.arrayContaining([
+        gcalListEventsTool,
+        gcalCreateEventTool,
+        gmailSearchTool,
+        gmailReadTool,
+        driveUploadDocumentTool,
+      ]),
     );
   });
 
-  it("registers exactly the three connectors.google gateway methods", () => {
+  it("registers exactly the connectors.google methods plus the Drive upload method", () => {
     const api = fakeApi();
     plugin.register(api as never);
     expect([...api.gatewayMethods.keys()].sort()).toEqual([
       "connectors.google.authUrl",
       "connectors.google.completeAuth",
       "connectors.google.status",
+      "documents.uploadToDrive",
     ]);
   });
 });

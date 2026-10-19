@@ -31,6 +31,11 @@ jobs:
 
       - run: pnpm install --frozen-lockfile
 
+      # app-desktop's postinstall rebuilds native modules for Electron, which
+      # leaves better-sqlite3 unusable from plain Node (where the tests run).
+      # Rebuild it for Node before testing.
+      - run: pnpm rebuild better-sqlite3
+
       # Builds every workspace package in dependency order; the desktop app
       # and gateway depend on the others being compiled first.
       - run: pnpm build
@@ -66,6 +71,9 @@ jobs:
 
       - if: env.OLLAMA_API_KEY != ''
         run: pnpm install --frozen-lockfile
+
+      - if: env.OLLAMA_API_KEY != ''
+        run: pnpm rebuild better-sqlite3
 
       - if: env.OLLAMA_API_KEY != ''
         run: pnpm build
