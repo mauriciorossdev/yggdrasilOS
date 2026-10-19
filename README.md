@@ -4,6 +4,18 @@ Plug-and-play agent platform — the world tree spine for channels, harnesses, a
 
 > **Status: pre-1.0.** APIs and file formats can still change. Issues and pull requests are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
+## What's in the box
+
+- **Gateway** — a WebSocket RPC bus that connects channels (terminal, HTTP, Discord, Slack, Telegram), agent harnesses,
+  tools and LLM providers (Anthropic, Ollama, any OpenAI-compatible API).
+- **Plugin system** — channels, tools, harnesses and providers are plugins loaded from `extensions/` or
+  `node_modules/@yggdrasil/*`, without modifying the core.
+- **CLI** (`@yggdrasil/cli`) — `init`, `run`, `tui`, `gateway`, plugin install and scaffolding.
+- **Desktop app** (`packages/app-desktop`, Electron) — chat, terminals running agents side by side, Documents (a notes
+  folder agents can read and write), workflows, a file viewer (including 3D models and audio), skills registry, and
+  project management.
+- **Mobile client** (`mobile/app`, Flutter) — talks to your gateway from your phone.
+
 ## Architecture
 
 - **Kernel** (`@yggdrasil/kernel`) — plugin registry, discovery, lifecycle
@@ -15,14 +27,24 @@ Plug-and-play agent platform — the world tree spine for channels, harnesses, a
 - **Sessions** (`@yggdrasil/sessions`) — persistence, compaction, token budgets
 - **Channel TUI** (`@yggdrasil/channel-tui`) — terminal as first-class channel
 
+See [ARCHITECTURE.md](ARCHITECTURE.md) for the full picture.
+
 ## Quick start (monorepo)
+
+Requirements: Node >= 22 and pnpm.
 
 ```bash
 pnpm install
 pnpm build
-pnpm test          # unit + integration + e2e mock
-pnpm test:live     # Ollama Cloud (requiere OLLAMA_API_KEY)
+pnpm test          # unit + integration + e2e with mock providers
+pnpm test:live     # Ollama Cloud (requires OLLAMA_API_KEY)
 node packages/cli/dist/index.js tui
+```
+
+To run the desktop app from source:
+
+```bash
+pnpm desktop
 ```
 
 ## Install (npm)
@@ -35,14 +57,13 @@ export OLLAMA_API_KEY=...
 npx yggdrasil tui
 ```
 
-Ver [instalación desde npm](docs/installation.md).
-
-With an LLM provider, set `OLLAMA_API_KEY` or `OPENAI_API_KEY` (see [provider config](docs/provider-config.md)).
+See [installing from npm](docs/installation.md). With an LLM provider, set `OLLAMA_API_KEY` or `OPENAI_API_KEY`
+(see [provider config](docs/provider-config.md)).
 
 ## CLI
 
 ```bash
-yggdrasil init                           # crear yggdrasil.config.json
+yggdrasil init                           # create yggdrasil.config.json
 yggdrasil run                            # gateway + all enabled channels
 yggdrasil tui                            # gateway with TUI channel
 yggdrasil gateway                        # headless gateway
@@ -52,14 +73,14 @@ yggdrasil create-plugin my-tool --kind tool
 
 ## Docs
 
-Ver [`docs/`](docs/README.md):
+See [`docs/`](docs/README.md). Part of the documentation is written in Spanish.
 
-- [Roadmap de iteraciones](docs/roadmap-iteraciones.md)
-- [Web Console](docs/web-console.md)
-- [Sesiones y memoria](docs/sessions.md) — compaction, `sessions.patch`, `tools.list`
-- [Testing](docs/testing.md) — capas E2E, Ollama Cloud live
-- [Crear plugins](docs/creating-plugins.md)
-- [Configuración del provider](docs/provider-config.md)
+- [Iteration roadmap](docs/roadmap-iteraciones.md)
+- [Web console](docs/web-console.md)
+- [Sessions and memory](docs/sessions.md) — compaction, `sessions.patch`, `tools.list`
+- [Testing](docs/testing.md) — E2E layers, Ollama Cloud live tests
+- [Creating plugins](docs/creating-plugins.md)
+- [Provider configuration](docs/provider-config.md)
 
 ## Create a plugin
 
@@ -68,7 +89,8 @@ node packages/cli/dist/index.js create-plugin my-tool --kind tool
 cd extensions/my-tool && pnpm install && pnpm build
 ```
 
-Plugins load from `extensions/` and `node_modules/@yggdrasil/*` without modifying the CLI. See `extensions/echo-channel/` for a minimal channel example.
+Plugins load from `extensions/` and `node_modules/@yggdrasil/*` without modifying the CLI. See `extensions/echo-channel/`
+for a minimal channel example.
 
 ## Bring your own credentials
 
