@@ -15,7 +15,7 @@ pnpm typecheck
 ```
 
 Tests run on plain Node, but the desktop app's `postinstall` rebuilds native modules for Electron. If tests fail with
-`ERR_DLOPEN_FAILED` / "Module did not self-register" from `better-sqlite3`, run `pnpm rebuild better-sqlite3`
+`ERR_DLOPEN_FAILED` / "Module did not self-register" from `better-sqlite3`, run `pnpm --filter @yggdrasil/context-memory-db rebuild better-sqlite3`
 (CI installs with `--ignore-scripts` and does exactly this). Run `pnpm --filter @yggdrasil/app-desktop run postinstall`
 to switch back to the Electron build before running the desktop app.
 

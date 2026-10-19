@@ -33,7 +33,9 @@ jobs:
       # for Electron (and downloads it), which leaves better-sqlite3 unusable from
       # plain Node, where the tests run. Build it for Node explicitly instead.
       - run: pnpm install --frozen-lockfile --ignore-scripts
-      - run: pnpm rebuild better-sqlite3
+      # Filtered on purpose: a bare `pnpm rebuild better-sqlite3` at the workspace root is a no-op,
+      # because the root project does not depend on it.
+      - run: pnpm --filter @yggdrasil/context-memory-db rebuild better-sqlite3
 
       # Builds every workspace package in dependency order; the desktop app
       # and gateway depend on the others being compiled first.
@@ -72,7 +74,7 @@ jobs:
         run: pnpm install --frozen-lockfile --ignore-scripts
 
       - if: env.OLLAMA_API_KEY != ''
-        run: pnpm rebuild better-sqlite3
+        run: pnpm --filter @yggdrasil/context-memory-db rebuild better-sqlite3
 
       - if: env.OLLAMA_API_KEY != ''
         run: pnpm build
