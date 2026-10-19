@@ -2,6 +2,7 @@
   "name": "yggdrasil",
   "version": "0.1.0",
   "license": "MIT",
+  "packageManager": "pnpm@9.12.2",
   "private": true,
   "type": "module",
   "description": "Plug-and-play agent platform — the world tree spine for channels, harnesses, and providers",

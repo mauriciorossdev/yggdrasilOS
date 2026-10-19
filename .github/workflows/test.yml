@@ -1,43 +1,76 @@
-name: Test
+name: CI
 
 on:
   push:
-    branches: [main, master]
+    branches: [main]
   pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer push to the same branch/PR makes the older run pointless.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
-  test-fast:
+  test:
     runs-on: ubuntu-latest
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v4
+
+      # pnpm version comes from "packageManager" in package.json.
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
+
       - uses: actions/setup-node@v4
         with:
           node-version: "22"
           cache: pnpm
-      - run: pnpm install
+
+      - run: pnpm install --frozen-lockfile
+
+      # Builds every workspace package in dependency order; the desktop app
+      # and gateway depend on the others being compiled first.
       - run: pnpm build
+      - run: pnpm typecheck
       - run: pnpm test:unit
       - run: pnpm test:integration
       - run: pnpm test:e2e
 
+  # Real-model tests. Secrets are not available to pull requests from forks, so
+  # this only runs on pushes to main, and skips itself when the key is not set.
   test-live-ollama:
+    if: github.event_name == 'push'
     runs-on: ubuntu-latest
-    if: ${{ secrets.OLLAMA_API_KEY != '' }}
+    timeout-minutes: 25
+    env:
+      OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
     steps:
+      - name: Skip when no API key is configured
+        if: env.OLLAMA_API_KEY == ''
+        run: echo "OLLAMA_API_KEY is not set; skipping live tests."
+
       - uses: actions/checkout@v4
+        if: env.OLLAMA_API_KEY != ''
+
       - uses: pnpm/action-setup@v4
-        with:
-          version: 10
+        if: env.OLLAMA_API_KEY != ''
+
       - uses: actions/setup-node@v4
+        if: env.OLLAMA_API_KEY != ''
         with:
           node-version: "22"
           cache: pnpm
-      - run: pnpm install
-      - run: pnpm build
-      - run: pnpm test:live
+
+      - if: env.OLLAMA_API_KEY != ''
+        run: pnpm install --frozen-lockfile
+
+      - if: env.OLLAMA_API_KEY != ''
+        run: pnpm build
+
+      - if: env.OLLAMA_API_KEY != ''
+        run: pnpm test:live
         env:
-          OLLAMA_API_KEY: ${{ secrets.OLLAMA_API_KEY }}
           YGGDRASIL_TEST_MODEL: gemma4:31b-cloud
