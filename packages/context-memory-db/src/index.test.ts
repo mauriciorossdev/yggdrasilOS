@@ -227,15 +227,15 @@ describe("memory tools", () => {
   it("memory_add stores a memory and memory_list returns it", async () => {
     const added = (await tools.get("memory_add")!.execute(ctxFor(), { content: "remember this" })) as {
       id: number;
-      content: string;
     };
-    expect(added.content).toBe("remember this");
+    expect(added.id).toEqual(expect.any(Number));
 
     const listed = (await tools.get("memory_list")!.execute(ctxFor(), {})) as {
       memories: Array<{ id: number; content: string }>;
     };
     expect(listed.memories).toHaveLength(1);
     expect(listed.memories[0]!.content).toBe("remember this");
+    expect(listed.memories[0]!.id).toBe(added.id);
   });
 
   it("memory_search finds memories by keyword", async () => {
