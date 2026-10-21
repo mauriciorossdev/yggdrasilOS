@@ -10,6 +10,7 @@ export type SplitPane = Extract<PaneNode, { type: "split" }>;
 export type PaneAction =
   | { type: "HYDRATE"; layout: TerminalLayout }
   | { type: "ADD_ROOT"; leaf: LeafPane }
+  | { type: "ADOPT_LIVE"; leaves: LeafPane[] }
   | { type: "SPLIT"; targetId: string; direction: "row" | "column"; newLeaf: LeafPane }
   | { type: "CLOSE"; id: string }
   | { type: "RESIZE"; splitId: string; sizes: number[] }
@@ -126,6 +127,16 @@ export function paneReducer(state: TerminalLayout, action: PaneAction): Terminal
         activePaneId: activeSurvived ? action.layout.activePaneId : survivors[0]!.id,
         viewMode: action.layout.viewMode,
       };
+    }
+
+    // Live ptys the window has no leaf for (an agent's create_pane workers
+    // after a reload, which HYDRATE drops). Leaves already present are left alone.
+    case "ADOPT_LIVE": {
+      const known = new Set(collectLeaves(state.root).map((l) => l.id));
+      const fresh = action.leaves.filter((l, i, all) => !known.has(l.id) && all.findIndex((o) => o.id === l.id) === i);
+      if (fresh.length === 0) return state;
+      const root = buildArrangedRoot("row", [...collectLeaves(state.root), ...fresh]);
+      return { ...state, root, activePaneId: state.activePaneId ?? fresh[0]!.id };
     }
 
     case "ADD_ROOT": {

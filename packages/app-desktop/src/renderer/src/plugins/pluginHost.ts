@@ -30,17 +30,29 @@ export type Send = (msg: YggRes | YggEvent) => void;
 // border color — see TitleBar.tsx); everything else here is a fixed palette
 // constant matching styles.css's own hardcoded dark theme, since there's no
 // broader theme system yet for a plugin to actually read from.
+/** A token's concrete color. Derived tokens are color-mix() expressions, so resolve through a probe element instead of reading the raw custom property. */
+function tokenColor(name: string, fallback: string): string {
+  const probe = document.createElement("span");
+  probe.style.color = `var(${name}, ${fallback})`;
+  probe.style.display = "none";
+  document.body.appendChild(probe);
+  const resolved = getComputedStyle(probe).color;
+  probe.remove();
+  return resolved || fallback;
+}
+
 function themeSnapshot() {
   const root = getComputedStyle(document.documentElement);
   return {
     colorScheme: "dark" as const,
     accent: root.getPropertyValue("--project-accent-color").trim() || "#4a9eff",
     border: root.getPropertyValue("--project-border-color").trim() || "transparent",
-    bg: "#14161a",
-    panel: "#191b20",
-    line: "#2a2d33",
-    fg: "#e6e6e6",
-    muted: "#8a8f98",
+    // Resolved from the app's tokens (see ui/theme) so plugins follow the user's theme.
+    bg: tokenColor("--ygg-bg", "#1a1918"),
+    panel: tokenColor("--ygg-sidebar", "#151413"),
+    line: tokenColor("--ygg-border", "#3a3835"),
+    fg: tokenColor("--ygg-text", "#f1efe7"),
+    muted: tokenColor("--ygg-text-muted", "#9c9a92"),
   };
 }
 

@@ -17,9 +17,10 @@ import {
   writeToTerminal,
 } from "./terminals.js";
 import { readAgentTeams, recordAutoCapturedNode } from "./agentTeams.js";
-import { composeSpecMessage, resolveSpecFile, SpecPathError } from "./paneSpec.js";
+import { composeSpecContext, composeSpecMessage, resolveSpecFile, SpecPathError } from "./paneSpec.js";
 import type { PickedElement } from "./browserTabView.js";
 import type { PluginRecord, PluginScope, PluginView, ScaffoldPluginSpec } from "./plugins.js";
+import { WorkspaceError } from "./workspace.js";
 import { getDesktopAutomationAdapter, PermissionRequiredError, type PermissionKind } from "./automation/index.js";
 
 const execFileAsync = promisify(execFile);
@@ -64,6 +65,20 @@ export type PaneControlHandle = {
   createPane: (spec: CreatePaneSpec) => Promise<{ id: string }>;
   /** Same as POST /panes/:id/write — see writePane below. */
   writePane: (id: string, text: string, pressEnter: boolean, sourcePaneId?: string) => Promise<void>;
+  /** Recent plain-text output of a live pane (undefined if it is gone) — what the cross-project workspace reads through. */
+  readPane: (id: string, maxChars: number) => string | undefined;
+};
+
+/**
+ * What the /workspace/* routes call into (main/index.ts wires it to the
+ * WorkspaceBroker for *this* project). Each method throws a WorkspaceError whose
+ * message and status go straight back to the calling agent.
+ */
+export type WorkspaceBridge = {
+  projects: () => Promise<Array<{ id: string; name: string; open: boolean }>>;
+  panes: (project: string) => Promise<Array<{ id: string; title: string }>>;
+  read: (project: string, pane: string, maxChars?: number) => Promise<string>;
+  write: (project: string, pane: string, text: string, fromPaneTitle?: string) => Promise<void>;
 };
 
 export type RateLimitWindow = { usedPercentage: number; resetsAt: number };
@@ -82,9 +97,13 @@ export type CreatePaneSpec = {
   args?: string[];
   /** Becomes this pane's --append-system-prompt context (a "claude" pane only) — never a submitted prompt, see doCreatePane. */
   purpose?: string;
+  /** Feature doc assigned to this pane (notes/features/x.md). Validated before the pane exists; the pane stays idle. */
+  specPath?: string;
   /** The *live* renderer-side pane id of the caller, if any — lets TerminalContainer.tsx split the new pane next to its actual source and lets the auto-capture Team recording resolve a stable source node. */
   sourcePaneId?: string;
 };
+
+const SYSTEM_PROMPT_SEPARATOR = "\n\n";
 
 const DEFAULT_COLS = 120;
 const DEFAULT_ROWS = 40;
@@ -155,6 +174,8 @@ export async function startPaneControlServer(
   projects?: {
     create: (name: string) => Promise<{ id: string; name: string; path: string; port: number | null }>;
   },
+  /** Backs the /workspace/* routes (agent access to other linked projects' panes). */
+  workspace?: WorkspaceBridge,
 ): Promise<PaneControlHandle> {
   const token = randomBytes(24).toString("hex");
   const panes = new Map<string, PaneRecord>();
@@ -171,7 +192,9 @@ export async function startPaneControlServer(
     // falling back to a team-node name lookup by flowNodeId
     // (agent-teams.json) for ones this server never saw a title for.
     const known = new Set(panes.keys());
-    const extra = listTerminals().filter((t) => !known.has(t.id));
+    // Only this project's ptys: the registry is process-wide, so without the
+    // projectId check another open project's panes would leak into this list.
+    const extra = listTerminals().filter((t) => t.projectId === projectId && !known.has(t.id));
     let teamNodeNames: Map<string, string> | undefined;
     if (extra.length > 0) {
       const teams = await readAgentTeams(projectPath);
@@ -201,6 +224,11 @@ export async function startPaneControlServer(
     const purpose = spec.purpose && spec.purpose.trim() ? spec.purpose.trim() : undefined;
     const sourcePaneId = spec.sourcePaneId;
 
+    // Validate first so a bad path never leaves a half-created pane behind
+    // (throws SpecPathError; the HTTP handler maps it to 400).
+    const resolvedSpec =
+      spec.specPath && spec.specPath.trim() ? await resolveSpecFile(projectPath, spec.specPath) : undefined;
+
     // Server-enforced, not left to the calling agent's own judgment:
     // `purpose` always becomes this pane's --append-system-prompt context,
     // never a submitted prompt. Instantiating a pane must never trigger work
@@ -211,7 +239,10 @@ export async function startPaneControlServer(
     // write_pane (a real instruction, sent when there's actually one ready)
     // should do that — see the create_pane tool description in
     // paneControlMcpShim.ts.
-    const args = command === "claude" && purpose ? [...(rawArgs ?? []), "--append-system-prompt", purpose] : rawArgs;
+    const systemPrompt = [purpose, resolvedSpec ? composeSpecContext(resolvedSpec.absolutePath) : undefined]
+      .filter(Boolean)
+      .join(SYSTEM_PROMPT_SEPARATOR);
+    const args = command === "claude" && systemPrompt ? [...(rawArgs ?? []), "--append-system-prompt", systemPrompt] : rawArgs;
 
     createTerminal(
       { id, projectId, cwd, cols: DEFAULT_COLS, rows: DEFAULT_ROWS, command, args },
@@ -235,6 +266,7 @@ export async function startPaneControlServer(
       // — TerminalContainer.tsx needs it to split the new pane next to its
       // actual source rather than whatever pane happens to have UI focus.
       win.webContents.send("pane:created", { id, title, cwd, command, args, sourcePaneId });
+      if (resolvedSpec) win.webContents.send("pane:spec", { paneId: id, specPath: resolvedSpec.projectRelativePath });
     }
 
     // A stated purpose on a real `claude` pane is worth remembering — save
@@ -257,7 +289,11 @@ export async function startPaneControlServer(
             name: panes.get(sourcePaneId)?.title ?? "Orchestrator",
           }
         : undefined;
-      void recordAutoCapturedNode(projectPath, { id, name: title, initialPrompt: purpose }, source);
+      void recordAutoCapturedNode(
+        projectPath,
+        { id, name: title, initialPrompt: purpose, specPath: resolvedSpec?.projectRelativePath },
+        source,
+      );
       // Live mirror for whichever Agent Flow canvas is open right now —
       // recordAutoCapturedNode above only persists to agent-teams.json,
       // invisible until the user manually reopens that team. This lets
@@ -267,7 +303,7 @@ export async function startPaneControlServer(
       // recordAutoCapturedNode's own upsertTeamNode builds.
       if (win && !win.isDestroyed()) {
         win.webContents.send("agentFlow:autoCapture", {
-          node: { id, name: title, initialPrompt: purpose },
+          node: { id, name: title, initialPrompt: purpose, specPath: resolvedSpec?.projectRelativePath },
           source,
         });
       }
@@ -351,15 +387,45 @@ export async function startPaneControlServer(
 
       if (req.method === "POST" && parts.length === 1 && parts[0] === "panes") {
         const body = await readJsonBody(req);
-        const result = await doCreatePane({
-          cwd: typeof body.cwd === "string" ? body.cwd : undefined,
-          title: typeof body.title === "string" ? body.title : undefined,
-          command: typeof body.command === "string" ? body.command : undefined,
-          args: Array.isArray(body.args) ? body.args.map(String) : undefined,
-          purpose: typeof body.purpose === "string" ? body.purpose : undefined,
-          sourcePaneId: typeof body.sourcePaneId === "string" ? body.sourcePaneId : undefined,
-        });
+        let result: { id: string };
+        try {
+          result = await doCreatePane({
+            cwd: typeof body.cwd === "string" ? body.cwd : undefined,
+            title: typeof body.title === "string" ? body.title : undefined,
+            command: typeof body.command === "string" ? body.command : undefined,
+            args: Array.isArray(body.args) ? body.args.map(String) : undefined,
+            purpose: typeof body.purpose === "string" ? body.purpose : undefined,
+            specPath: typeof body.specPath === "string" ? body.specPath : undefined,
+            sourcePaneId: typeof body.sourcePaneId === "string" ? body.sourcePaneId : undefined,
+          });
+        } catch (err) {
+          if (!(err instanceof SpecPathError)) throw err;
+          sendJson(res, 400, { error: err.message });
+          return;
+        }
         sendJson(res, 200, result);
+        return;
+      }
+
+      if (req.method === "POST" && parts.length === 3 && parts[0] === "panes" && parts[2] === "show") {
+        // Asks the renderer to draw (or un-minimize and focus) a pane that is
+        // alive here but may not be on screen, e.g. after a window reload.
+        const id = parts[1]!;
+        if (!terminalExists(id)) {
+          sendJson(res, 404, { error: "unknown pane id" });
+          return;
+        }
+        const listed = (await doListPanes()).panes.find((p) => p.id === id);
+        const win = getWindow();
+        if (win && !win.isDestroyed()) {
+          win.webContents.send("pane:show", {
+            id,
+            title: listed?.title ?? id,
+            cwd: listed?.cwd ?? projectPath,
+            command: listed?.command,
+          });
+        }
+        sendJson(res, 200, { ok: true });
         return;
       }
 
@@ -725,6 +791,54 @@ export async function startPaneControlServer(
         return;
       }
 
+      if (parts[0] === "workspace") {
+        if (!workspace) {
+          sendJson(res, 501, { error: "workspace not available" });
+          return;
+        }
+        try {
+          if (req.method === "GET" && parts[1] === "projects") {
+            sendJson(res, 200, { projects: await workspace.projects() });
+            return;
+          }
+          if (req.method === "GET" && parts[1] === "panes") {
+            sendJson(res, 200, { panes: await workspace.panes(url.searchParams.get("project") ?? "") });
+            return;
+          }
+          if (req.method === "GET" && parts[1] === "read") {
+            const maxChars = Number(url.searchParams.get("maxChars"));
+            const text = await workspace.read(
+              url.searchParams.get("project") ?? "",
+              url.searchParams.get("pane") ?? "",
+              Number.isFinite(maxChars) && maxChars > 0 ? maxChars : undefined,
+            );
+            sendJson(res, 200, { text });
+            return;
+          }
+          if (req.method === "POST" && parts[1] === "write") {
+            const body = await readJsonBody(req);
+            const sourcePaneId = typeof body.sourcePaneId === "string" ? body.sourcePaneId : undefined;
+            const fromPaneTitle = sourcePaneId
+              ? (await doListPanes()).panes.find((p) => p.id === sourcePaneId)?.title
+              : undefined;
+            await workspace.write(
+              typeof body.project === "string" ? body.project : "",
+              typeof body.pane === "string" ? body.pane : "",
+              typeof body.text === "string" ? body.text : "",
+              fromPaneTitle,
+            );
+            sendJson(res, 200, { ok: true });
+            return;
+          }
+        } catch (err) {
+          if (err instanceof WorkspaceError) {
+            sendJson(res, err.status, { error: err.message });
+            return;
+          }
+          throw err;
+        }
+      }
+
       sendJson(res, 404, { error: "not found" });
     } catch (err) {
       sendJson(res, 500, { error: err instanceof Error ? err.message : "internal error" });
@@ -751,5 +865,6 @@ export async function startPaneControlServer(
     listPanes: doListPanes,
     createPane: doCreatePane,
     writePane: doWritePane,
+    readPane: (id, maxChars) => (terminalExists(id) ? readTerminalOutput(id, maxChars) : undefined),
   };
 }

@@ -342,9 +342,16 @@ export function findTerminalIdByPid(pid: number): TerminalId | undefined {
  * a Team reloaded via the ordinary Terminal-tab hydration path is otherwise
  * invisible to list_panes even though the panes are genuinely alive here.
  */
-export function listTerminals(): Array<{ id: TerminalId; flowNodeId?: string; sessionKey?: string; command?: string }> {
+export function listTerminals(): Array<{
+  id: TerminalId;
+  projectId: string;
+  flowNodeId?: string;
+  sessionKey?: string;
+  command?: string;
+}> {
   return [...terminals.values()].map((h) => ({
     id: h.id,
+    projectId: h.projectId,
     flowNodeId: h.flowNodeId,
     sessionKey: h.sessionKey,
     command: h.command,

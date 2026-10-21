@@ -77,7 +77,7 @@ const GRID_COLS = 3;
 const GRID_STEP_X = 320;
 const GRID_STEP_Y = 260;
 
-function upsertTeamNode(team: AgentTeam, node: { id: string; name: string; initialPrompt?: string }): void {
+function upsertTeamNode(team: AgentTeam, node: { id: string; name: string; initialPrompt?: string; specPath?: string }): void {
   const index = team.nodes.findIndex((n) => n.id === node.id);
   const existing = index === -1 ? undefined : team.nodes[index];
   const position =
@@ -94,6 +94,8 @@ function upsertTeamNode(team: AgentTeam, node: { id: string; name: string; initi
     position,
     harness: { type: "claude", initialPrompt },
   };
+  const specPath = node.specPath ?? existing?.specPath;
+  if (specPath) agentFlowNode.specPath = specPath;
   if (index === -1) team.nodes.push(agentFlowNode);
   else team.nodes[index] = agentFlowNode;
 }
@@ -128,7 +130,7 @@ function defaultTeamName(purpose: string): string {
  */
 export async function recordAutoCapturedNode(
   projectRoot: string,
-  node: { id: string; name: string; initialPrompt: string },
+  node: { id: string; name: string; initialPrompt: string; specPath?: string },
   source?: { id: string; name: string },
 ): Promise<void> {
   const file = await readTeamsFile(projectRoot);

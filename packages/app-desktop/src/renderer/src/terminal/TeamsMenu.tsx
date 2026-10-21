@@ -1,6 +1,7 @@
-import { useEffect, useRef, useState } from "react";
+import { useRef, useState } from "react";
 import { ChevronDownIcon, TrashIcon } from "@heroicons/react/20/solid";
 import type { AgentTeam } from "../types.js";
+import { useDismiss } from "../ui/useDismiss.js";
 
 type Props = {
   teams: AgentTeam[];
@@ -24,21 +25,7 @@ export function TeamsMenu({ teams, label, title, onLoad, onDeleted }: Props) {
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const onMouseDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) setOpen(false);
-    };
-    const onKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape") setOpen(false);
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onMouseDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [open]);
+  useDismiss(ref, () => setOpen(false), open);
 
   if (teams.length === 0) return null;
 

@@ -3,10 +3,13 @@ import {
   ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
   CodeBracketIcon,
+  HomeIcon,
   MinusIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { SettingsView } from "../settings/SettingsView.js";
+import { ClaudeUsage } from "./ClaudeUsage.js";
+import { useActiveTab, useExtraTabs, viewLabel } from "../ui/mainTabsStore.js";
 
 /**
  * Every project window is frameless (main/index.ts's createProjectBrowserWindow
@@ -63,16 +66,27 @@ export function TitleBar() {
   );
 
   useEffect(() => {
-    document.documentElement.style.setProperty("--project-border-color", borderColor || "transparent");
-    document.documentElement.style.setProperty("--project-accent-color", borderColor || "#2f5d8a");
+    // No project color: drop the inline override so tokens.css defaults apply
+    // (the accent default follows the user's theme).
+    const root = document.documentElement.style;
+    if (borderColor) {
+      root.setProperty("--project-border-color", borderColor);
+      root.setProperty("--project-accent-color", borderColor);
+    } else {
+      root.removeProperty("--project-border-color");
+      root.removeProperty("--project-accent-color");
+    }
   }, [borderColor]);
 
   const projectId = window.yggdrasil.projectId;
+  const activeTab = useActiveTab();
+  const extraTabs = useExtraTabs();
 
   return (
     <div className="title-bar">
       <div className="title-bar-drag">
         <span className="title-bar-project">{window.yggdrasil.projectName ?? "Yggdrasil"}</span>
+        <span className="title-bar-view">/ {viewLabel(activeTab, extraTabs)}</span>
         {window.yggdrasil.gatewayLanUrl && (
           <span className="title-bar-gateway">{window.yggdrasil.gatewayLanUrl}</span>
         )}
@@ -106,6 +120,17 @@ export function TitleBar() {
         )}
       </div>
       <div className="title-bar-controls">
+        <ClaudeUsage />
+        {!window.yggdrasil.isDefaultProject && (
+          <button
+            type="button"
+            className="title-bar-btn"
+            title="Home — main window"
+            onClick={() => void window.yggdrasil.projects.openHome()}
+          >
+            <HomeIcon className="hero-icon" />
+          </button>
+        )}
         {projectId && (
           <button
             type="button"

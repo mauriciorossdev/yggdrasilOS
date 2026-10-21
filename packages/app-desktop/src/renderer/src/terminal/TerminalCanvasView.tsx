@@ -189,7 +189,7 @@ export function TerminalCanvasView({
         fitView
         minZoom={0.15}
       >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#2a2d33" />
+        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--ygg-border)" />
         <Controls />
       </ReactFlow>
     </div>

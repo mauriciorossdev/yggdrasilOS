@@ -58,6 +58,15 @@ export async function setProjectColor(id: string, color: string | null): Promise
   return project;
 }
 
+/** Bumps lastOpenedAt for a project opened from the project list, so "most recently opened" ordering is real. */
+export async function touchProject(id: string): Promise<void> {
+  const projects = await readRegistry();
+  const project = projects.find((p) => p.id === id);
+  if (!project) return;
+  project.lastOpenedAt = Date.now();
+  await writeRegistry(projects);
+}
+
 /** Registers a project folder if new, or bumps lastOpenedAt if already known (keyed by path). */
 export async function upsertProject(input: { path: string; name?: string }): Promise<ProjectRecord> {
   const projects = await readRegistry();

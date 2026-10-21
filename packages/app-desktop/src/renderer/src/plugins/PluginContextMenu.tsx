@@ -1,5 +1,6 @@
-import { useEffect, useRef } from "react";
+import { useRef } from "react";
 import type { PluginRecord } from "../types.js";
+import { useDismiss } from "../ui/useDismiss.js";
 
 type Props = {
   plugin: PluginRecord;
@@ -17,20 +18,7 @@ type Props = {
 export function PluginContextMenu({ plugin, x, y, onClose, onOpenTab, onOpenPanel, onReload, onReveal, onShare }: Props) {
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onMouseDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [onClose]);
+  useDismiss(ref, onClose);
 
   const views = plugin.manifest.views ?? [];
 

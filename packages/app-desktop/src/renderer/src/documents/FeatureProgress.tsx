@@ -1,5 +1,6 @@
 import { useMemo } from "react";
 import { parseStatus, parseTasks } from "./featureDoc.js";
+import { ProgressBar, StatusChip } from "../ui/index.js";
 
 type Props = { content: string };
 
@@ -27,10 +28,10 @@ export function FeatureProgress({ content }: Props) {
         <span className="feature-progress-count">
           {tasks.done}/{tasks.total}
         </span>
-        <span className="feature-progress-bar" aria-hidden>
-          <span className="feature-progress-fill" style={{ width: `${pct}%` }} />
+        <span className="feature-progress-bar">
+          <ProgressBar value={pct / 100} tone={status === "ready" ? "ready" : "accent"} label="Avance de la feature" />
         </span>
-        {status && <span className={`feature-progress-status status-${status}`}>{STATUS_LABEL[status]}</span>}
+        {status && <StatusChip status={status}>{STATUS_LABEL[status]}</StatusChip>}
       </summary>
       <ul className="feature-progress-tasks">
         {tasks.items.map((task, i) => (

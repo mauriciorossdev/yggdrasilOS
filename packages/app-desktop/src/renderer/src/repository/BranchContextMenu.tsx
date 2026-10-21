@@ -1,6 +1,7 @@
-import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { branchRemoteTarget, branchUrl, compareUrl, remoteWeb } from "./branchUrl.js";
 import type { BranchInfo, RemoteInfo } from "./types.js";
+import { useDismiss } from "../ui/useDismiss.js";
 
 type Props = {
   x: number;
@@ -28,20 +29,7 @@ export function BranchContextMenu({ x, y, branch, currentBranch, remotes, disabl
   const [pos, setPos] = useState({ left: x, top: y });
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const onKey = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    document.addEventListener("keydown", onKey);
-    return () => {
-      document.removeEventListener("mousedown", onMouseDown);
-      document.removeEventListener("keydown", onKey);
-    };
-  }, [onClose]);
+  useDismiss(ref, onClose);
 
   // Keep the menu on screen (the rail is at the left edge but the bottom is easy to overflow).
   useLayoutEffect(() => {

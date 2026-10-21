@@ -41,6 +41,12 @@ L1 — (the user's original request, verbatim)
 `;
 }
 
+/** The doc's first `# Heading`, or null. Used as the feature's name in the Terminal header. */
+export function featureTitle(md: string): string | null {
+  const m = /^#\s+(.+?)\s*$/m.exec(md);
+  return m?.[1] ?? null;
+}
+
 function tasksSection(md: string): string[] {
   const lines = md.split(/\r?\n/);
   const start = lines.findIndex((l) => /^##\s+Tasks\s*$/i.test(l));

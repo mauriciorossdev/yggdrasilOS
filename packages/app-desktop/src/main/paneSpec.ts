@@ -44,6 +44,15 @@ export async function resolveSpecFile(
 }
 
 /**
+ * Context line appended to a pane's system prompt when create_pane gets a
+ * specPath. It names the doc but asks for nothing: the pane stays idle until a
+ * write_pane instruction arrives.
+ */
+export function composeSpecContext(absolutePath: string): string {
+  return `Your assigned feature doc is ${absolutePath}. Do not start working yet. When you are given a task (for example "Do task T2"), read that doc in full first and follow its Specs, Tasks and Log.`;
+}
+
+/**
  * The text typed into the worker. The absolute path is used on purpose: a pane
  * can be created with its own `cwd`, and only an absolute path reads correctly
  * from any working directory.

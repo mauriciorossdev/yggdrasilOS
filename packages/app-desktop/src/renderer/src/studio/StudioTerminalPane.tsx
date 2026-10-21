@@ -3,6 +3,8 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import type { PluginRecord } from "../types.js";
+import { getThemeColors, onThemeApplied } from "../ui/theme/themeRuntime.js";
+import { terminalColors } from "../ui/theme/surfaces.js";
 import { buildStudioTerminalLaunch, type StudioTerminalHarness } from "./studioContext.js";
 
 type Props = {
@@ -38,7 +40,7 @@ export function StudioTerminalPane({ plugin, projectPath, harness }: Props) {
     const term = new Terminal({
       fontFamily: 'ui-monospace, "SF Mono", Consolas, monospace',
       fontSize: 13,
-      theme: { background: "#000000", foreground: "#e6e6e6" },
+      theme: terminalColors(getThemeColors()),
     });
     const fitAddon = new FitAddon();
     term.loadAddon(fitAddon);
@@ -56,6 +58,9 @@ export function StudioTerminalPane({ plugin, projectPath, harness }: Props) {
     });
 
     term.onData((data) => void window.yggdrasil.terminals.write(id, data));
+    const unsubTheme = onThemeApplied((core) => {
+      term.options.theme = terminalColors(core);
+    });
     const unsubData = window.yggdrasil.terminals.onData((tid, chunk) => {
       if (tid === id) term.write(chunk);
     });
@@ -69,6 +74,7 @@ export function StudioTerminalPane({ plugin, projectPath, harness }: Props) {
     resizeObserver.observe(container);
 
     return () => {
+      unsubTheme();
       unsubData();
       unsubExit();
       resizeObserver.disconnect();

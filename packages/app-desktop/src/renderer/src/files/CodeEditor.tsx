@@ -1,5 +1,5 @@
 import Editor, { type OnMount } from "@monaco-editor/react";
-import "./monacoSetup.js";
+import { YGG_MONACO_THEME, ensureYggTheme } from "./monacoSetup.js";
 import { languageFromPath } from "./languageFromPath.js";
 
 type Props = {
@@ -23,7 +23,8 @@ export function CodeEditor({ path, value, onChange, readOnly, fontSize = 13, onM
       value={value}
       onChange={(v) => onChange(v ?? "")}
       onMount={onMount}
-      theme="vs-dark"
+      theme={YGG_MONACO_THEME}
+      beforeMount={() => ensureYggTheme()}
       options={{
         readOnly,
         minimap: { enabled: false },
