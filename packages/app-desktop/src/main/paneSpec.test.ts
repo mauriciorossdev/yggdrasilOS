@@ -2,7 +2,7 @@ import { mkdtemp, mkdir, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, expect, it } from "vitest";
-import { composeSpecMessage, resolveSpecFile, SpecPathError } from "./paneSpec.js";
+import { composeSpecContext, composeSpecMessage, resolveSpecFile, SpecPathError } from "./paneSpec.js";
 
 async function project(): Promise<string> {
   const dir = await mkdtemp(join(tmpdir(), "ygg-spec-"));
@@ -52,5 +52,13 @@ describe("composeSpecMessage", () => {
   it("falls back to the default instruction without text", () => {
     expect(composeSpecMessage("/p/n.md")).toContain("Do the open tasks assigned to you");
     expect(composeSpecMessage("/p/n.md", "   ")).toContain("append what you did to ## Log");
+  });
+});
+
+describe("composeSpecContext", () => {
+  it("names the doc but does not start work", () => {
+    const ctx = composeSpecContext("/p/notes/features/x.md");
+    expect(ctx).toContain("/p/notes/features/x.md");
+    expect(ctx).toContain("Do not start working yet");
   });
 });

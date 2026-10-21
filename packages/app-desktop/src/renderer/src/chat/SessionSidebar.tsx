@@ -9,6 +9,7 @@ import { FileTree } from "../files/FileTree.js";
 import { RemoteFilesPanel } from "../files/RemoteFilesPanel.js";
 import { ScriptsSection } from "../files/ScriptsSection.js";
 import { PluginsSection } from "../plugins/PluginsSection.js";
+import { MainNav } from "./MainNav.js";
 
 import { useProjects } from "../projects/useProjects.js";
 import { CollapsibleSection } from "../components/CollapsibleSection.js";
@@ -95,6 +96,8 @@ export function SessionSidebar({
       <button type="button" className="new-chat" onClick={onNewChat}>
         + New chat
       </button>
+
+      <MainNav />
 
       <div className="sidebar-sections">
         {window.yggdrasil.isDefaultProject && (
@@ -229,7 +232,7 @@ export function SessionSidebar({
                   display: "flex",
                   gap: 8,
                   padding: "4px 12px",
-                  borderBottom: "1px solid #2a2d33",
+                  borderBottom: "1px solid var(--ygg-border)",
                 }}
               >
                 <button
@@ -248,7 +251,7 @@ export function SessionSidebar({
                 <div
                   style={{
                     flex: 1,
-                    background: "#2a2d33",
+                    background: "var(--ygg-border)",
                     borderRadius: 2,
                     height: 4,
                     alignSelf: "center",

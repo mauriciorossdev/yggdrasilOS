@@ -75,7 +75,10 @@ export function MessageList({ messages, streamingText, isStreaming, isTurnActive
     <div className="message-list" ref={containerRef} onScroll={handleScroll}>
       {isEmpty && (
         <div className="message-list-empty">
-          <p>No conversation yet — say or type something to get started.</p>
+          <div>
+            <p className="message-list-empty-title">What should we work on?</p>
+            <p>No conversation yet. Type below, or mention a file with @.</p>
+          </div>
         </div>
       )}
       {messages.map((m) =>

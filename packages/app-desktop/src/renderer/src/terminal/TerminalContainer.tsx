@@ -3,12 +3,15 @@ import { PencilIcon, TrashIcon } from "@heroicons/react/20/solid";
 import type { AgentTeam, PaneNode } from "../types.js";
 import { collectLeaves, newLeaf, paneReducer, projectVisibleTree, type LeafPane } from "./paneTree.js";
 import { TerminalPane } from "./TerminalPane.js";
+import { liveOrphans } from "./liveOrphans.js";
+import { requestTab } from "../chat/mainTabsBridge.js";
 import { PaneDivider } from "./PaneDivider.js";
 import type { TerminalRegistry } from "./terminalRegistry.js";
 import { onLoadFlow, onLoadTeam, onNewTerminal, onTerminalTabVisible } from "./terminalBridge.js";
 import { buildFlowLinks, setFlowLinks } from "./flowLinks.js";
 import { buildFlowLeaves, selectTeamRootNodes } from "./buildFlowLeaves.js";
 import { TerminalNavbar } from "./TerminalNavbar.js";
+import { FeatureHeader } from "./FeatureHeader.js";
 import { MinimizedDock } from "./MinimizedDock.js";
 import { TerminalCanvasView } from "./TerminalCanvasView.js";
 
@@ -192,7 +195,10 @@ export function TerminalContainer() {
       window.yggdrasil.terminals.getLayout(),
       window.yggdrasil.agentFlow.get(),
       window.yggdrasil.agentTeams.list(),
-    ]).then(([layout, flow, teams]) => {
+      // Ptys still alive in main (an agent's create_pane workers survive a
+      // window reload, but HYDRATE drops their saved leaves) — re-adopted below.
+      window.yggdrasil.panes.list().catch(() => []),
+    ]).then(([layout, flow, teams, livePanes]) => {
       if (layout.root) {
         dispatch({ type: "HYDRATE", layout });
         // Delegate buttons (flowLinks) are renderer-memory-only and don't
@@ -214,6 +220,8 @@ export function TerminalContainer() {
         // saved Team if this project has any) via the empty state below.
         setSavedTeams(teams);
       }
+      const orphans = liveOrphans([], livePanes);
+      if (orphans.length > 0) dispatch({ type: "ADOPT_LIVE", leaves: orphans });
       setHydrated(true);
     });
   }, [projectPath]);
@@ -304,6 +312,11 @@ export function TerminalContainer() {
   useEffect(
     () =>
       window.yggdrasil.terminals.onPaneCreated((pane) => {
+        // A repeated event must not mount a second TerminalPane on the same pty.
+        if (leaves.some((l) => l.id === pane.id)) {
+          restorePane(pane.id);
+          return;
+        }
         const leaf: LeafPane = {
           type: "leaf",
           id: pane.id,
@@ -326,6 +339,25 @@ export function TerminalContainer() {
         }
       }),
     [state.root, state.activePaneId, leaves],
+  );
+
+  // show_pane (paneControlServer.ts): an agent asks for a live pane to be
+  // visible — draw it if this window has no leaf for it (e.g. after a reload),
+  // otherwise bring it out of the minimized dock and focus it.
+  useEffect(
+    () =>
+      window.yggdrasil.terminals.onPaneShow((pane) => {
+        if (leaves.some((l) => l.id === pane.id)) restorePane(pane.id);
+        else {
+          dispatch({
+            type: "ADOPT_LIVE",
+            leaves: [{ type: "leaf", id: pane.id, title: pane.title, cwd: pane.cwd, command: pane.command, attach: true }],
+          });
+          dispatch({ type: "FOCUS", id: pane.id });
+        }
+        requestTab("terminal");
+      }),
+    [leaves],
   );
 
   useEffect(
@@ -355,6 +387,7 @@ export function TerminalContainer() {
       if (liveIds.has(id)) continue;
       entry.unsubData?.();
       entry.unsubExit?.();
+      entry.unsubTheme?.();
       entry.term.dispose();
       void window.yggdrasil.terminals.dispose(id);
       registryRef.current.delete(id);
@@ -380,6 +413,7 @@ export function TerminalContainer() {
         onCompactAll={compactAllPanes}
         onSendCommand={sendCommandToOrchestrator}
       />
+      <FeatureHeader />
       <div className={`terminal-body${visibleRoot ? "" : " terminal-body-empty"}`}>
         {!hydrated ? (
           <p className="muted">Loading terminal…</p>

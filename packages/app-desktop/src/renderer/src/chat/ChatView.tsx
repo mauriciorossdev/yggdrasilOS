@@ -18,6 +18,7 @@ import { AgentFlowView } from "../agentFlow/AgentFlowView.js";
 import { WorkflowsView } from "../workflows/WorkflowsView.js";
 import { BrowserTabView } from "../browser/BrowserTabView.js";
 import { RepositoryView } from "../repository/RepositoryView.js";
+import { HomeView } from "../home/HomeView.js";
 import { StudioView } from "../studio/StudioView.js";
 import { usePlugins } from "../plugins/usePlugins.js";
 import { PluginFrame } from "../plugins/PluginFrame.js";
@@ -62,7 +63,7 @@ export function ChatView() {
     setPanelWidth(window.innerWidth * 0.6);
     setSidePanel({ kind: "plugin", key });
   }, []);
-  const [activeMainTab, setActiveMainTab] = useState<MainTab>("chat");
+  const [activeMainTab, setActiveMainTab] = useState<MainTab>(window.yggdrasil.isDefaultProject ? "home" : "chat");
   const [attachedFiles, setAttachedFiles] = useState<Attachment[]>([]);
 
   const { plugins, version: pluginsVersion, reload: reloadPlugins } = usePlugins();
@@ -456,6 +457,7 @@ export function ChatView() {
       <PluginToolRuntime plugins={plugins} />
       <div className="chat-main">
         <MainTabs
+          homeContent={window.yggdrasil.isDefaultProject ? <HomeView /> : undefined}
           chatContent={
             <>
               <MessageList

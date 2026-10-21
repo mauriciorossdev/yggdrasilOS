@@ -25,10 +25,14 @@ import { SyncSection } from "./sections/SyncSection.js";
 import { AutomationSection } from "./sections/AutomationSection.js";
 import { VoiceSection } from "./sections/VoiceSection.js";
 import { TransferSection } from "./sections/TransferSection.js";
+import { AppearanceSection } from "./sections/AppearanceSection.js";
+import { WorkspaceSection } from "./sections/WorkspaceSection.js";
 import type { IdeSettings, SttSettings, SyncSettings, WhisperSettings } from "../types.js";
 
 type Section =
   | "general"
+  | "appearance"
+  | "workspace"
   | "agent"
   | "providers"
   | "mcp"
@@ -47,6 +51,8 @@ type Section =
 
 const SECTIONS: Array<{ id: Section; label: string }> = [
   { id: "general", label: "General" },
+  { id: "appearance", label: "Apariencia" },
+  { id: "workspace", label: "Workspace" },
   { id: "agent", label: "Agent" },
   { id: "providers", label: "Providers" },
   { id: "mcp", label: "MCP" },
@@ -199,6 +205,8 @@ export function SettingsView({ onClose, initialSection }: Props) {
 
           <div className="settings-panel">
             {section === "general" && <GeneralSection config={config} setConfig={setConfig} />}
+            {section === "appearance" && <AppearanceSection />}
+            {section === "workspace" && <WorkspaceSection />}
             {section === "agent" && <AgentSection config={config} setConfig={setConfig} providers={providers} />}
             {section === "providers" && (
               <ProvidersSection

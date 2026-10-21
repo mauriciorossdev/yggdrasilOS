@@ -126,6 +126,7 @@ export function AgentFlowCanvas({
           sourceHandle: handles?.sourceHandle,
           targetHandle: handles?.targetHandle,
           label: edge.label,
+          type: "smoothstep",
           // react-flow's own built-in moving-dashes treatment — see
           // .react-flow__edge.animated in styles.css for the color/width.
           animated: activeEdgeIds?.has(edge.id) ?? false,
@@ -203,9 +204,9 @@ export function AgentFlowCanvas({
         fitView
         minZoom={0.2}
       >
-        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="#2a2d33" />
+        <Background variant={BackgroundVariant.Dots} gap={16} size={1} color="var(--ygg-border)" />
         <Controls />
-        <MiniMap pannable zoomable style={{ background: "#191b20" }} maskColor="rgba(20,22,26,0.6)" />
+        <MiniMap pannable zoomable style={{ background: "var(--ygg-sidebar)" }} maskColor="color-mix(in srgb, var(--ygg-bg) 60%, transparent)" />
       </ReactFlow>
     </div>
   );

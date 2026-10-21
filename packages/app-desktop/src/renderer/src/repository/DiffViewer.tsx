@@ -1,5 +1,5 @@
 import { DiffEditor } from "@monaco-editor/react";
-import "../files/monacoSetup.js";
+import { YGG_MONACO_THEME, ensureYggTheme } from "../files/monacoSetup.js";
 import { languageFromPath } from "../files/languageFromPath.js";
 import type { DiffContent } from "./types.js";
 
@@ -17,7 +17,8 @@ export function DiffViewer({ path, modelKey, content, loading }: Props) {
       language={languageFromPath(path)}
       original={content.original}
       modified={content.modified}
-      theme="vs-dark"
+      theme={YGG_MONACO_THEME}
+      beforeMount={() => ensureYggTheme()}
       options={{
         readOnly: true,
         renderSideBySide: true,

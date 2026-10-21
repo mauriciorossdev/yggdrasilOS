@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
 import { ChatView } from "./chat/ChatView.js";
 import { TitleBar } from "./components/TitleBar.js";
+import { WorkspaceOverlay } from "./workspace/WorkspaceOverlay.js";
 
 export function App() {
   const { connected, authenticated, connect } = useGateway();
@@ -49,6 +50,7 @@ export function App() {
       <TitleBar />
       {!ready && <div className="gateway-reconnect-banner">Reconnecting to gateway…</div>}
       <ChatView />
+      <WorkspaceOverlay />
     </div>
   );
 }

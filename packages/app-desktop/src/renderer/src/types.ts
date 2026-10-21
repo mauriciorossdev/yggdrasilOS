@@ -411,6 +411,8 @@ export type PaneNode =
       initialPrompt?: string;
       /** How to pass initialPrompt to this harness's CLI — undefined means a bare positional, e.g. "-i" for antigravity. See buildLaunchCommand.ts. */
       initialPromptFlag?: string;
+      /** Feature doc this pane was handed (create_pane/write_pane specPath) — seeds the status chip after a Team reload. */
+      specPath?: string;
       /** Free-form position for Terminal Canvas mode (TerminalNavbar's "Canvas" toggle) — undefined until dragged at least once; TerminalCanvasView computes a cascade default when absent. */
       canvasPosition?: { x: number; y: number };
     }
@@ -475,6 +477,25 @@ export type ScaffoldPluginSpec = {
   permissions?: PluginPermission[];
   description?: string;
   status?: PluginStatus;
+};
+
+// Cross-project workspace (packages/app-desktop/src/main/workspace.ts), mirrored structurally.
+export type WorkspaceAction = "read" | "write";
+/** A permission prompt: an agent in this project wants to touch another project's pane. */
+export type WorkspaceAsk = {
+  id: string;
+  fromName: string;
+  toName: string;
+  action: WorkspaceAction;
+  paneTitle: string;
+  excerpt: string;
+};
+/** Something reached a pane in this project from another one without a prompt (a remembered trust). */
+export type WorkspaceNotice = { fromName: string; action: WorkspaceAction; paneTitle: string };
+export type WorkspaceView = {
+  projects: Array<{ id: string; name: string; linked: boolean; open: boolean }>;
+  trust: Array<{ key: string; toName: string; action: WorkspaceAction }>;
+  audit: Array<{ at: number; from: string; to: string; pane: string; action: WorkspaceAction; via: "ask" | "trust" | "denied" }>;
 };
 
 // Electron main-process concept (packages/app-desktop/src/main/paneControlServer.ts)
@@ -543,6 +564,8 @@ export type AgentFlowNode = {
   position: { x: number; y: number };
   harness: AgentFlowHarness;
   communication?: string;
+  /** Feature doc (project-relative) this node was created with — create_pane's specPath. */
+  specPath?: string;
 };
 
 // Electron main-process concept (packages/app-desktop/src/main/agentTeams.ts),
@@ -561,7 +584,7 @@ export type AgentFlowEdge = { id: string; from: string; to: string; label?: stri
 // + edge on live instead of only being visible after reopening the
 // auto-captured Team it was also persisted into (agentTeams.ts).
 export type AgentFlowAutoCapturePayload = {
-  node: { id: string; name: string; initialPrompt: string };
+  node: { id: string; name: string; initialPrompt: string; specPath?: string };
   source?: { id: string; name: string };
 };
 

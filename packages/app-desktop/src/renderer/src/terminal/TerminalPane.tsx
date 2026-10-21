@@ -9,6 +9,7 @@ import {
   PlayIcon,
   SpeakerWaveIcon,
   StopIcon,
+  EllipsisHorizontalIcon,
   ViewColumnsIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
@@ -24,12 +25,17 @@ import { captureVisibleText } from "./captureBuffer.js";
 import { formatElapsed, useDictation } from "./useDictation.js";
 import { useSpeakLastResponse } from "./useSpeakLastResponse.js";
 import { SpeakModeMenu } from "./SpeakModeMenu.js";
+import { SplitMenu } from "./SplitMenu.js";
 import { PathLinkProvider } from "./pathLinkProvider.js";
 import type { SessionRecord } from "../types.js";
 import { FILE_DRAG_MIME, type FileDragPayload } from "../files/dragMimeType.js";
 import { requestOpenDocument } from "../chat/documentsBridge.js";
 import { requestTab } from "../chat/mainTabsBridge.js";
 import { usePaneSpec } from "./usePaneSpec.js";
+import { Chip, IconButton, Menu, MenuItem, MenuSeparator, statusTone } from "../ui/index.js";
+import { useElementWidth } from "../ui/useElementWidth.js";
+import { getThemeColors, onThemeApplied } from "../ui/theme/themeRuntime.js";
+import { terminalColors } from "../ui/theme/surfaces.js";
 
 // Strips a trailing "claude code"-style ":line" or ":line:col" locator —
 // TextEditor has no jump-to-line yet, so only the path itself is used.
@@ -101,7 +107,7 @@ export function TerminalPane({
   canvasMode,
 }: Props) {
   const { call } = useGateway();
-  const { specPath, badge: specBadge } = usePaneSpec(leaf.id);
+  const { specPath, badge: specBadge } = usePaneSpec(leaf.id, leaf.specPath);
   const containerRef = useRef<HTMLDivElement>(null);
   const [exited, setExited] = useState(false);
   const [taskSent, setTaskSent] = useState(false);
@@ -113,7 +119,11 @@ export function TerminalPane({
   const [delegateError, setDelegateError] = useState<string | null>(null);
   const [isExpanded, setIsExpanded] = useState(false);
   const [isClosingExpanded, setIsClosingExpanded] = useState(false);
+  const [splitMenu, setSplitMenu] = useState<{ x: number; y: number } | null>(null);
   const [speakMenu, setSpeakMenu] = useState<{ x: number; y: number } | null>(null);
+  const [actionsMenu, setActionsMenu] = useState<{ x: number; y: number } | null>(null);
+  const headerRef = useRef<HTMLDivElement>(null);
+  const headerWidth = useElementWidth(headerRef);
   // Set once the user edits the draft, so the async sessions.get upgrade
   // (openDelegate below) never clobbers an in-progress hand edit.
   const delegateDraftTouchedRef = useRef(false);
@@ -128,7 +138,7 @@ export function TerminalPane({
       const term = new Terminal({
         fontFamily: 'ui-monospace, "SF Mono", Consolas, monospace',
         fontSize: 13,
-        theme: { background: "#000000", foreground: "#e6e6e6" },
+        theme: terminalColors(getThemeColors()),
         // Without this, ConPTY's line-wrap padding makes xterm.js misplace or
         // drop characters (spaces included) when a redrawing TUI like the
         // `claude` CLI repaints a line — see preload's windowsBuildNumber.
@@ -159,6 +169,10 @@ export function TerminalPane({
       );
 
       entry = { term, fitAddon, opened: false, exited: false, exitCode: null, taskSent: false };
+      // Re-tone live when the user changes the theme (the terminal cannot read CSS variables).
+      entry.unsubTheme = onThemeApplied((core) => {
+        term.options.theme = terminalColors(core);
+      });
       registry.set(leaf.id, entry);
 
       const spawn = () =>
@@ -362,6 +376,16 @@ export function TerminalPane({
   // `position: fixed` relative to THAT ancestor instead of the viewport.
   // Portaling to document.body sidesteps that entirely — harmless in grid
   // mode too, since there's no transformed ancestor there to begin with.
+  // A narrow pane can't fit six icon buttons next to its title: below this width
+  // (wider when text buttons like "Start task" are also showing) they fold into one "…" menu.
+  const hasTextActions = Boolean((leaf.initialPrompt && !taskSent) || (flowLink && flowLink.targets.length > 0));
+  const compactHeader = headerWidth > 0 && headerWidth < (hasTextActions ? 560 : 400);
+  const toggleExpanded = () => {
+    if (isExpanded) collapseExpanded();
+    else setIsExpanded(true);
+    onFocus();
+  };
+
   const paneContent = (
     <>
       {isExpanded && (
@@ -426,6 +450,7 @@ export function TerminalPane({
       >
         <div
           className="terminal-pane-header"
+          ref={headerRef}
           draggable={!canvasMode}
           onDragStart={(e) => {
             // Drag handle lives on the header, not the whole pane — the pane
@@ -448,12 +473,13 @@ export function TerminalPane({
               onKeyDown={(e) => e.key === "Enter" && commitTitle()}
             />
           ) : (
-            <span onDoubleClick={() => setEditingTitle(true)}>{leaf.title}</span>
+            <span className="terminal-pane-title" title={leaf.title} onDoubleClick={() => setEditingTitle(true)}>
+              {leaf.title}
+            </span>
           )}
           {specPath && specBadge && (
-            <button
-              type="button"
-              className={`pane-spec-badge status-${specBadge.status}`}
+            <Chip
+              tone={statusTone(specBadge.status)}
               title={`${specPath} — click to open`}
               onClick={() => {
                 requestOpenDocument(specPath);
@@ -461,9 +487,21 @@ export function TerminalPane({
               }}
             >
               {specBadge.label}
-              {specBadge.total > 0 ? ` ${specBadge.done}/${specBadge.total}` : ""}
-            </button>
+            </Chip>
           )}
+          {compactHeader ? (
+            <div className="terminal-pane-actions">
+              <IconButton
+                label="Acciones del panel"
+                onClick={(e) => {
+                  const rect = e.currentTarget.getBoundingClientRect();
+                  setActionsMenu({ x: rect.right - 200, y: rect.bottom + 4 });
+                }}
+              >
+                <EllipsisHorizontalIcon className="hero-icon" />
+              </IconButton>
+            </div>
+          ) : (
           <div className="terminal-pane-actions">
             {leaf.initialPrompt && !taskSent && (
               <button
@@ -518,23 +556,13 @@ export function TerminalPane({
             </button>
             <button
               type="button"
-              title="Split horizontally"
-              onClick={() => {
-                setIsExpanded(false);
-                onSplit("row");
+              title="Split"
+              onClick={(e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                setSplitMenu({ x: rect.left, y: rect.bottom + 4 });
               }}
             >
               <ViewColumnsIcon className="hero-icon" />
-            </button>
-            <button
-              type="button"
-              title="Split vertically"
-              onClick={() => {
-                setIsExpanded(false);
-                onSplit("column");
-              }}
-            >
-              <ViewColumnsIcon className="hero-icon terminal-pane-split-vertical" />
             </button>
             <button
               type="button"
@@ -552,6 +580,7 @@ export function TerminalPane({
               </button>
             )}
           </div>
+          )}
         </div>
         <div className="terminal-pane-body-wrapper">
           <div className={`terminal-pane-body${exited ? " terminal-pane-exited" : ""}`} ref={containerRef} />
@@ -604,6 +633,103 @@ export function TerminalPane({
   return (
     <>
       {isExpanded ? createPortal(paneContent, document.body) : paneContent}
+      {actionsMenu &&
+        createPortal(
+          <Menu x={actionsMenu.x} y={actionsMenu.y} onClose={() => setActionsMenu(null)}>
+            {leaf.initialPrompt && !taskSent && (
+              <MenuItem
+                onClick={() => {
+                  setActionsMenu(null);
+                  sendInitialTask();
+                }}
+              >
+                <PlayIcon className="hero-icon" /> Start task
+              </MenuItem>
+            )}
+            {flowLink && flowLink.targets.length > 0 && (
+              <MenuItem
+                onClick={() => {
+                  setActionsMenu(null);
+                  openDelegate();
+                }}
+              >
+                <ArrowRightIcon className="hero-icon" /> Delegate
+              </MenuItem>
+            )}
+            <MenuItem
+              disabled={exited || dictation.phase === "transcribing"}
+              onClick={() => {
+                setActionsMenu(null);
+                dictation.toggle();
+              }}
+            >
+              <MicrophoneIcon className="hero-icon" /> {dictation.phase === "recording" ? "Parar dictado" : "Dictar"}
+            </MenuItem>
+            <MenuItem
+              disabled={exited || speakLastResponse.phase !== "idle"}
+              onClick={() => {
+                setSpeakMenu({ x: actionsMenu.x, y: actionsMenu.y });
+                setActionsMenu(null);
+              }}
+            >
+              <SpeakerWaveIcon className="hero-icon" /> Hablar última respuesta
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setActionsMenu(null);
+                toggleExpanded();
+              }}
+            >
+              {isExpanded ? <ArrowsPointingInIcon className="hero-icon" /> : <ArrowsPointingOutIcon className="hero-icon" />}{" "}
+              {isExpanded ? "Collapse" : "Expand"}
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setSplitMenu({ x: actionsMenu.x, y: actionsMenu.y });
+                setActionsMenu(null);
+              }}
+            >
+              <ViewColumnsIcon className="hero-icon" /> Split…
+            </MenuItem>
+            <MenuItem
+              onClick={() => {
+                setActionsMenu(null);
+                setIsExpanded(false);
+                onMinimize();
+              }}
+            >
+              <MinusIcon className="hero-icon" /> Minimize
+            </MenuItem>
+            {!isExpanded && (
+              <>
+                <MenuSeparator />
+                <MenuItem
+                  danger
+                  onClick={() => {
+                    setActionsMenu(null);
+                    onClose();
+                  }}
+                >
+                  <XMarkIcon className="hero-icon" /> Close
+                </MenuItem>
+              </>
+            )}
+          </Menu>,
+          document.body,
+        )}
+      {splitMenu &&
+        createPortal(
+          <SplitMenu
+            x={splitMenu.x}
+            y={splitMenu.y}
+            onClose={() => setSplitMenu(null)}
+            onPick={(direction) => {
+              setIsExpanded(false);
+              onSplit(direction);
+            }}
+          />,
+          document.body,
+        )}
       {speakMenu &&
         createPortal(
           <SpeakModeMenu

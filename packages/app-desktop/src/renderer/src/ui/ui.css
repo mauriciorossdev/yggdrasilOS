@@ -1,0 +1,466 @@
+/*
+ * Component library styles. Every rule here uses only --ygg-* tokens
+ * (tokens.css), so a theme change re-tones all of it. Class names are
+ * `ygg-<component>` plus BEM-style modifiers; the legacy classes in
+ * styles.css (icon-btn, context-menu, modal...) are migrated to these gradually.
+ */
+
+/* ── Button ─────────────────────────────────────────────────────────── */
+.ygg-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  border: 1px solid transparent;
+  border-radius: var(--ygg-radius-md);
+  font: inherit;
+  font-weight: 500;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.ygg-btn--md {
+  padding: 8px 16px;
+  font-size: 13px;
+}
+
+.ygg-btn--sm {
+  padding: 4px 11px;
+  font-size: 12px;
+  border-radius: var(--ygg-radius-sm);
+}
+
+.ygg-btn--primary {
+  background: var(--ygg-accent);
+  color: var(--ygg-accent-fg);
+  font-weight: 600;
+}
+
+.ygg-btn--primary:hover:not(:disabled) {
+  background: var(--ygg-accent-hover);
+}
+
+.ygg-btn--secondary {
+  background: var(--ygg-surface);
+  border-color: var(--ygg-border-strong);
+  color: var(--ygg-text);
+}
+
+.ygg-btn--secondary:hover:not(:disabled) {
+  background: var(--ygg-surface-2);
+}
+
+.ygg-btn--ghost {
+  background: transparent;
+  color: var(--ygg-text-2);
+}
+
+.ygg-btn--ghost:hover:not(:disabled) {
+  background: var(--ygg-surface);
+  color: var(--ygg-text);
+}
+
+.ygg-btn--danger {
+  background: var(--ygg-danger-soft);
+  border-color: var(--ygg-danger-border);
+  color: var(--ygg-danger-text);
+}
+
+.ygg-btn--danger:hover:not(:disabled) {
+  background: var(--ygg-danger-border);
+}
+
+.ygg-btn:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+.ygg-btn:focus-visible,
+.ygg-icon-btn:focus-visible,
+.ygg-nav-item:focus-visible,
+.ygg-tab:focus-visible {
+  outline: 2px solid var(--ygg-accent);
+  outline-offset: 2px;
+}
+
+/* ── IconButton ─────────────────────────────────────────────────────── */
+.ygg-icon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 4px 6px;
+  background: none;
+  border: none;
+  border-radius: var(--ygg-radius-sm);
+  color: var(--ygg-text-muted);
+  font-size: 16px;
+  cursor: pointer;
+}
+
+.ygg-icon-btn:hover:not(:disabled) {
+  background: var(--ygg-surface);
+  color: var(--ygg-text);
+}
+
+.ygg-icon-btn:disabled {
+  opacity: 0.45;
+  cursor: default;
+}
+
+/* ── Chip ───────────────────────────────────────────────────────────── */
+.ygg-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 10px;
+  border: none;
+  border-radius: 999px;
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  line-height: 1.6;
+  white-space: nowrap;
+}
+
+button.ygg-chip {
+  cursor: pointer;
+}
+
+.ygg-chip__dot {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+
+.ygg-chip--neutral {
+  background: var(--ygg-surface-2);
+  color: var(--ygg-text-2);
+}
+
+.ygg-chip--accent {
+  background: var(--ygg-accent-soft);
+  color: var(--ygg-accent);
+}
+
+.ygg-chip--working {
+  background: var(--ygg-status-working-soft);
+  color: var(--ygg-status-working);
+}
+
+.ygg-chip--checking {
+  background: var(--ygg-status-checking-soft);
+  color: var(--ygg-status-checking);
+}
+
+.ygg-chip--ready {
+  background: var(--ygg-status-ready-soft);
+  color: var(--ygg-status-ready);
+}
+
+.ygg-chip--attention,
+.ygg-chip--danger {
+  background: var(--ygg-danger-soft);
+  color: var(--ygg-danger-text);
+}
+
+/* ── ProgressBar ────────────────────────────────────────────────────── */
+.ygg-progress {
+  display: block;
+  height: 6px;
+  border-radius: 3px;
+  background: var(--ygg-surface-2);
+  overflow: hidden;
+}
+
+.ygg-progress__fill {
+  display: block;
+  height: 100%;
+  border-radius: 3px;
+  background: var(--ygg-accent);
+  transition: width 0.2s ease;
+}
+
+.ygg-progress--working .ygg-progress__fill {
+  background: var(--ygg-status-working);
+}
+
+.ygg-progress--checking .ygg-progress__fill {
+  background: var(--ygg-status-checking);
+}
+
+.ygg-progress--ready .ygg-progress__fill {
+  background: var(--ygg-status-ready);
+}
+
+.ygg-progress--danger .ygg-progress__fill {
+  background: var(--ygg-danger);
+}
+
+/* ── Card / Panel ───────────────────────────────────────────────────── */
+.ygg-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px;
+  background: var(--ygg-surface);
+  border: 1px solid var(--ygg-border);
+  border-radius: var(--ygg-radius-lg);
+  color: var(--ygg-text);
+  text-align: left;
+  min-width: 0;
+}
+
+button.ygg-card {
+  font: inherit;
+  cursor: pointer;
+}
+
+button.ygg-card:hover,
+.ygg-card--interactive:hover {
+  background: var(--ygg-surface-2);
+}
+
+.ygg-card--accent {
+  border-color: var(--ygg-accent);
+}
+
+/* ── Menu ───────────────────────────────────────────────────────────── */
+.ygg-menu {
+  position: fixed;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 160px;
+  padding: 4px;
+  background: var(--ygg-surface);
+  border: 1px solid var(--ygg-border-strong);
+  border-radius: var(--ygg-radius-md);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.ygg-menu__item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--ygg-radius-sm);
+  color: var(--ygg-text);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ygg-menu__item:hover:not(:disabled) {
+  background: var(--ygg-surface-2);
+}
+
+.ygg-menu__item:disabled {
+  color: var(--ygg-text-dim);
+  cursor: default;
+}
+
+.ygg-menu__item--danger {
+  color: var(--ygg-danger-text);
+}
+
+.ygg-menu__item--danger:hover:not(:disabled) {
+  background: var(--ygg-danger-soft);
+}
+
+.ygg-menu__separator {
+  height: 1px;
+  margin: 3px 4px;
+  background: var(--ygg-border);
+}
+
+/* ── Modal ──────────────────────────────────────────────────────────── */
+.ygg-modal-overlay {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.55);
+}
+
+.ygg-modal {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  width: 480px;
+  max-width: 90vw;
+  max-height: 80vh;
+  overflow-y: auto;
+  padding: 18px 22px 22px;
+  background: var(--ygg-surface);
+  border: 1px solid var(--ygg-border-strong);
+  border-radius: var(--ygg-radius-lg);
+  color: var(--ygg-text);
+}
+
+.ygg-modal:focus {
+  outline: none;
+}
+
+.ygg-modal__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.ygg-modal__title {
+  margin: 0;
+  font-family: var(--ygg-font-serif);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.ygg-modal__footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+
+/* ── Field ──────────────────────────────────────────────────────────── */
+.ygg-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  font-size: 12px;
+  color: var(--ygg-text-muted);
+}
+
+.ygg-input {
+  width: 100%;
+  padding: 8px 12px;
+  background: var(--ygg-surface);
+  border: 1px solid var(--ygg-border-strong);
+  border-radius: var(--ygg-radius-md);
+  color: var(--ygg-text);
+  font: inherit;
+  font-size: 13px;
+}
+
+.ygg-input::placeholder {
+  color: var(--ygg-text-dim);
+}
+
+.ygg-input:focus {
+  outline: none;
+  border-color: var(--ygg-accent);
+}
+
+/* ── Tabs (underline) ───────────────────────────────────────────────── */
+.ygg-tabs {
+  display: flex;
+  align-items: flex-end;
+  overflow: hidden;
+  border-bottom: 1px solid var(--ygg-border);
+}
+
+.ygg-tab {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+  margin-bottom: -1px;
+  padding: 9px 14px;
+  background: none;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: var(--ygg-text-muted);
+  font: inherit;
+  font-size: 13px;
+  white-space: nowrap;
+  cursor: pointer;
+}
+
+.ygg-tab:hover {
+  color: var(--ygg-text);
+}
+
+.ygg-tab--active {
+  border-bottom-color: var(--ygg-accent);
+  color: var(--ygg-text);
+}
+
+.ygg-tab__close {
+  color: var(--ygg-text-dim);
+  line-height: 1;
+}
+
+.ygg-tab__close:hover {
+  color: var(--ygg-text);
+}
+
+/* ── NavItem (sidebar list) ─────────────────────────────────────────── */
+.ygg-nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 8px 10px;
+  background: none;
+  border: none;
+  border-radius: var(--ygg-radius-sm);
+  color: var(--ygg-text-2);
+  font: inherit;
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.ygg-nav-item:hover {
+  background: var(--ygg-surface);
+}
+
+.ygg-nav-item--active {
+  background: var(--ygg-surface-2);
+  color: var(--ygg-text);
+  font-weight: 600;
+}
+
+/* ── Catalog (Settings -> Apariencia preview) ───────────────────────── */
+.ygg-catalog {
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+  margin-top: 8px;
+  padding: 18px;
+  background: var(--ygg-bg);
+  border: 1px solid var(--ygg-border);
+  border-radius: var(--ygg-radius-lg);
+}
+
+.ygg-catalog__title {
+  margin: 0;
+  font-family: var(--ygg-font-serif);
+  font-size: 18px;
+  font-weight: 600;
+}
+
+.ygg-catalog__label {
+  margin-bottom: 8px;
+  font-size: 11px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--ygg-text-muted);
+}
+
+.ygg-catalog__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 10px;
+}
+
+.ygg-catalog__menu .ygg-menu {
+  position: static;
+}

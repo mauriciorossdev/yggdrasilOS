@@ -25,7 +25,8 @@ function withTeamRosterNote(node: AgentFlowNode, nodes: AgentFlowNode[], edges: 
   const roster = children
     .map((c) => {
       const task = c.harness.type !== "yggdrasil" ? c.harness.initialPrompt : undefined;
-      return `- ${c.name}: ${task ?? "(no stated task)"}`;
+      const doc = c.specPath ? ` (feature doc: ${c.specPath})` : "";
+      return `- ${c.name}: ${task ?? "(no stated task)"}${doc}`;
     })
     .join("\n");
 
@@ -125,6 +126,7 @@ export function buildFlowLeaves(
       flowNodeId: node.id,
       initialPrompt: rostered.harness.type !== "yggdrasil" ? rostered.harness.initialPrompt : undefined,
       initialPromptFlag,
+      specPath: node.specPath,
     };
   });
 

@@ -12,6 +12,7 @@ import {
   registryPath,
   renameProject,
   setProjectColor,
+  touchProject,
   upsertProject,
   type ProjectRecord,
 } from "./projects.js";
@@ -24,6 +25,13 @@ import { readDocumentTabs, writeDocumentTabs, type DocumentTabsLayout } from "./
 import { importExternalPaths } from "./fileImport.js";
 import { readClipboardFilePaths } from "./clipboardFiles.js";
 import { startPaneControlServer, type CreatePaneSpec, type PaneControlHandle } from "./paneControlServer.js";
+import {
+  createWorkspaceBroker,
+  WorkspaceError,
+  type AskAnswer,
+  type AskRequest,
+  type WorkspaceBroker,
+} from "./workspace.js";
 import { getDesktopAutomationAdapter, type PermissionKind } from "./automation/index.js";
 import {
   desktopSettingsFilePath,
@@ -91,6 +99,7 @@ import {
   type DetectedIde,
   type IdeSettings,
 } from "./ideSettings.js";
+import { defaultThemeSettings, loadThemeSettings, saveThemeSettings, type ThemeSettings } from "./themeSettings.js";
 import { loadSyncSettings, saveSyncSettings, type SyncSettings } from "./syncSettings.js";
 import { resourceKeyFor, type ResourceRef } from "./sharedResources.js";
 import {
@@ -281,12 +290,59 @@ const projectWindows = new Map<string, OpenProjectWindow>();
 const pendingPluginToolCalls = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 
 /**
+ * Cross-project workspace (notes/features/cross-project-workspace.md). The broker
+ * is the only code that reaches from one project's panes into another's; an
+ * agent's request pauses here until the human answers the prompt shown in the
+ * *caller's* window (`workspace:ask` -> `workspace:answer`), or the timeout
+ * counts as a denial.
+ */
+let workspaceBroker: WorkspaceBroker | undefined;
+const pendingWorkspaceAsks = new Map<string, (answer: AskAnswer) => void>();
+const WORKSPACE_ASK_TIMEOUT_MS = 120_000;
+
+function requireWorkspaceBroker(): WorkspaceBroker {
+  if (!workspaceBroker) throw new WorkspaceError("workspace is not ready yet", 409);
+  return workspaceBroker;
+}
+
+function askWorkspace(request: AskRequest): Promise<AskAnswer> {
+  const win = projectWindows.get(request.fromProject.id)?.window;
+  if (!win || win.isDestroyed()) return Promise.resolve({ allow: false, trust: false });
+  const id = randomUUID();
+  return new Promise((resolve) => {
+    const finish = (answer: AskAnswer) => {
+      clearTimeout(timer);
+      pendingWorkspaceAsks.delete(id);
+      resolve(answer);
+    };
+    const timer = setTimeout(() => {
+      if (!win.isDestroyed()) win.webContents.send("workspace:askClosed", { id });
+      finish({ allow: false, trust: false });
+    }, WORKSPACE_ASK_TIMEOUT_MS);
+    pendingWorkspaceAsks.set(id, finish);
+    // The human may be looking at another window: make this one hard to miss.
+    win.flashFrame(true);
+    win.webContents.send("workspace:ask", {
+      id,
+      fromName: request.fromProject.name,
+      toName: request.toProject.name,
+      action: request.action,
+      paneTitle: request.paneTitle,
+      excerpt: request.excerpt,
+    });
+  });
+}
+
+/**
  * The "Default Workspace" project (see `defaultWorkspaceRoot`) is the only
  * window that shows the Projects section in its sidebar — it's the hub you
  * open other projects from. Any other project's window is scoped to just
  * that project (Sessions/Agents only), set once at startup.
  */
 let defaultProjectId: string | undefined;
+// Loaded once at startup and kept in sync by theme:set; new windows get it as an
+// argument so they paint with the user's colors from the first frame.
+let currentTheme: ThemeSettings = defaultThemeSettings();
 
 function pluginSearchDir(): string {
   // See gateway.ts's seedWorkspaceConfig for why this needs to be explicit.
@@ -358,6 +414,7 @@ function createProjectBrowserWindow(project: ProjectRecord, gatewayUrl: string, 
     `--ygg-project-color=${project.color ?? ""}`,
     `--ygg-gateway-url=${gatewayUrl}`,
     `--ygg-gateway-lan-url=${gatewayLanUrl}`,
+    `--ygg-theme=${JSON.stringify(currentTheme)}`,
   ];
   if (project.id === defaultProjectId) additionalArguments.push("--ygg-is-default=1");
 
@@ -504,6 +561,7 @@ async function openProject(project: ProjectRecord): Promise<void> {
 async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
   const existing = projectWindows.get(project.id);
   if (existing && !existing.window.isDestroyed()) {
+    if (existing.window.isMinimized()) existing.window.restore();
     existing.window.focus();
     return;
   }
@@ -563,6 +621,13 @@ async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
       },
     },
     { create: createProjectFromPhone },
+    {
+      projects: () => requireWorkspaceBroker().projectsFor(project.id),
+      panes: (target) => requireWorkspaceBroker().listPanes(project.id, target),
+      read: (target, pane, maxChars) => requireWorkspaceBroker().readPane(project.id, target, pane, maxChars),
+      write: (target, pane, text, fromPaneTitle) =>
+        requireWorkspaceBroker().writePane(project.id, target, pane, text, fromPaneTitle),
+    },
   );
   const gateway = await ensureGateway(
     project.path,
@@ -683,7 +748,18 @@ function registerIpc(): void {
   ipcMain.handle("projects:open", async (_event, id: string) => {
     const project = await getProject(id);
     if (!project) return false;
+    await touchProject(project.id);
     await openProject(project);
+    return true;
+  });
+
+  // The Home button in a project window's title bar: focus the main (default
+  // workspace) window, or reopen it if it was closed. Deliberately no
+  // touchProject — going home must not reorder "most recently opened".
+  ipcMain.handle("projects:openHome", async () => {
+    const home = defaultProjectId ? await getProject(defaultProjectId) : undefined;
+    if (!home) return false;
+    await openProject(home);
     return true;
   });
 
@@ -1127,6 +1203,34 @@ function registerIpc(): void {
 
   ipcMain.handle("ide:detectInstalled", async (): Promise<DetectedIde[]> => detectInstalledIdes());
 
+  // Theme: persisted in desktop-settings.json and broadcast to every window,
+  // same shape as projects:setColor.
+  ipcMain.handle("theme:get", () => currentTheme);
+
+  const applyTheme = async (next: ThemeSettings): Promise<ThemeSettings> => {
+    currentTheme = await saveThemeSettings(app.getPath("userData"), next);
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send("theme:changed", currentTheme);
+    }
+    return currentTheme;
+  };
+  ipcMain.handle("theme:set", (_event, settings: ThemeSettings) => applyTheme(settings));
+  ipcMain.handle("theme:reset", () => applyTheme(defaultThemeSettings()));
+
+  // Cross-project workspace: Settings -> Workspace reads/edits links and trust,
+  // and the permission prompt answers come back through workspace:answer.
+  ipcMain.handle("workspace:view", (_event, projectId: string) => requireWorkspaceBroker().view(projectId));
+  ipcMain.handle("workspace:setLink", (_event, projectId: string, targetId: string, linked: boolean) =>
+    requireWorkspaceBroker().setLink(projectId, targetId, linked === true),
+  );
+  ipcMain.handle("workspace:revokeTrust", (_event, key: string) => requireWorkspaceBroker().revokeTrust(String(key)));
+  ipcMain.handle("workspace:answer", (_event, id: string, answer: { allow?: boolean; trust?: boolean }) => {
+    const finish = pendingWorkspaceAsks.get(id);
+    if (!finish) return;
+    const allow = answer?.allow === true;
+    finish({ allow, trust: allow && answer?.trust === true });
+  });
+
   ipcMain.handle("ide:getSettings", async (): Promise<IdeSettings> => loadIdeSettings(app.getPath("userData")));
 
   ipcMain.handle("ide:saveSettings", async (_event, settings: IdeSettings) => {
@@ -1310,6 +1414,25 @@ app.whenReady().then(async () => {
     }
   });
 
+  currentTheme = await loadThemeSettings(app.getPath("userData"));
+  workspaceBroker = await createWorkspaceBroker({
+    userDataDir: app.getPath("userData"),
+    listProjects: async () => (await listProjects()).map((p) => ({ id: p.id, name: p.name })),
+    paneApi: (id) => {
+      const entry = projectWindows.get(id);
+      if (!entry || entry.window.isDestroyed()) return undefined;
+      return {
+        listPanes: entry.paneControl.listPanes,
+        readPane: entry.paneControl.readPane,
+        writePane: (paneId, text, pressEnter) => entry.paneControl.writePane(paneId, text, pressEnter),
+      };
+    },
+    ask: askWorkspace,
+    notify: (projectId, notice) => {
+      const win = projectWindows.get(projectId)?.window;
+      if (win && !win.isDestroyed()) win.webContents.send("workspace:notice", notice);
+    },
+  });
   await resetOpenGateways();
   registerPhoneLinkIpc();
   startPhoneLink();

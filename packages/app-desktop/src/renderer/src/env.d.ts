@@ -27,6 +27,9 @@ import type {
   PluginStatus,
   PullResult,
   PushResult,
+  WorkspaceAsk,
+  WorkspaceNotice,
+  WorkspaceView,
   ResourceRef,
   ResourceStatus,
   ShareMember,
@@ -45,6 +48,7 @@ import type {
   WhisperSettings,
   PhoneLinkInfo,
 } from "./types.js";
+import type { ThemeSettings } from "./ui/theme/types.js";
 
 // Adding the `import type` above makes this file a module, not an ambient
 // script — `declare global` is required for `interface Window` to actually
@@ -66,11 +70,28 @@ declare global {
         publishNow: () => Promise<PhoneLinkInfo>;
         qr: () => Promise<string>;
       };
+      theme: {
+        initial: ThemeSettings;
+        get: () => Promise<ThemeSettings>;
+        set: (settings: ThemeSettings) => Promise<ThemeSettings>;
+        reset: () => Promise<ThemeSettings>;
+        onChange: (handler: (settings: ThemeSettings) => void) => () => void;
+      };
+      workspace: {
+        view: () => Promise<WorkspaceView>;
+        setLink: (targetId: string, linked: boolean) => Promise<void>;
+        revokeTrust: (key: string) => Promise<void>;
+        answer: (id: string, answer: { allow: boolean; trust: boolean }) => Promise<void>;
+        onAsk: (handler: (ask: WorkspaceAsk) => void) => () => void;
+        onAskClosed: (handler: (payload: { id: string }) => void) => () => void;
+        onNotice: (handler: (notice: WorkspaceNotice) => void) => () => void;
+      };
       projects: {
         list: () => Promise<ProjectRecord[]>;
         openExisting: () => Promise<ProjectRecord | null>;
         createNew: () => Promise<ProjectRecord | null>;
         open: (id: string) => Promise<boolean>;
+        openHome: () => Promise<boolean>;
         rename: (id: string, name: string) => Promise<ProjectRecord | undefined>;
         setColor: (id: string, color: string | null) => Promise<ProjectRecord | undefined>;
         onColorChange: (handler: (id: string, color: string | null) => void) => () => void;
@@ -110,6 +131,7 @@ declare global {
             sourcePaneId?: string;
           }) => void,
         ) => () => void;
+        onPaneShow: (handler: (pane: { id: string; title: string; cwd: string; command?: string }) => void) => () => void;
         onMobileFocus: (handler: (id: string, active: boolean) => void) => () => void;
       };
       window: {

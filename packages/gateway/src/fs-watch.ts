@@ -1,5 +1,7 @@
 import chokidar, { type FSWatcher } from "chokidar";
-import { relative, sep } from "node:path";
+import { watch as nativeWatch, type FSWatcher as NativeFSWatcher } from "node:fs";
+import { stat } from "node:fs/promises";
+import { join, relative, sep } from "node:path";
 import { loadIgnoreMatcher } from "./fs-ignore.js";
 import type { GatewayContext } from "./methods.js";
 
@@ -33,14 +35,6 @@ const DEBOUNCE_MS = 300;
 export async function startFsWatcher(root: string, events: GatewayContext["events"]): Promise<() => Promise<void>> {
   const ig = await loadIgnoreMatcher(root);
 
-  const watcher: FSWatcher = chokidar.watch(root, {
-    ignoreInitial: true,
-    ignored: (path: string) => {
-      const rel = relative(root, path).split(sep).join("/");
-      return rel !== "" && ig.ignores(rel);
-    },
-  });
-
   let timer: ReturnType<typeof setTimeout> | null = null;
   let pendingStructuralPaths = new Set<string>();
   let pendingContentPaths = new Set<string>();
@@ -64,6 +58,53 @@ export async function startFsWatcher(root: string, events: GatewayContext["event
     if (timer) clearTimeout(timer);
     timer = setTimeout(flush, DEBOUNCE_MS);
   };
+
+  // macOS only (untested on Windows, which keeps chokidar): one native recursive fs.watch() handle (FSEvents /
+  // ReadDirectoryChangesW) for the whole tree. chokidar 5 has no native
+  // backend and opens one fd PER FILE and per directory — a real project
+  // (30k+ non-ignored files, e.g. a folder holding several monorepo
+  // checkouts) blows through the process fd limit (EMFILE) even with
+  // node_modules/dist ignored.
+  if (process.platform === "darwin") {
+    const known = new Set<string>();
+    const native: NativeFSWatcher = nativeWatch(root, { recursive: true }, (eventType, filename) => {
+      if (!filename) return;
+      const rel = filename.toString().split(sep).join("/");
+      if (ig.ignores(rel)) return;
+      const abs = join(root, rel);
+      void stat(abs).then(
+        (st) => {
+          if (st.isDirectory()) {
+            if (eventType === "rename") schedule(true, false, abs);
+            return;
+          }
+          const isNew = !known.has(rel);
+          known.add(rel);
+          schedule(eventType === "rename" && isNew, true, abs);
+        },
+        () => {
+          // Gone: unlink (or unlinkDir — content channel is harmless for a dir).
+          known.delete(rel);
+          schedule(true, true, abs);
+        },
+      );
+    });
+    native.on("error", (err) => {
+      console.warn("[fs-watch] watcher error (ignored, watching continues):", err);
+    });
+    return async () => {
+      if (timer) clearTimeout(timer);
+      native.close();
+    };
+  }
+
+  const watcher: FSWatcher = chokidar.watch(root, {
+    ignoreInitial: true,
+    ignored: (path: string) => {
+      const rel = relative(root, path).split(sep).join("/");
+      return rel !== "" && ig.ignores(rel);
+    },
+  });
 
   // add/unlink matter to both channels — a new/deleted file changes what a
   // directory listing shows (structural) *and* needs indexing/de-indexing

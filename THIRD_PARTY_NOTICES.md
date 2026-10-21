@@ -23,8 +23,9 @@ Desktop builds also bundle Electron and Chromium; their notices are included in 
 | 0BSD | 1 |
 | (MIT OR CC0-1.0) | 1 |
 | (WTFPL OR MIT) | 1 |
+| OFL-1.1 | 3 |
 
-Attribution notes: `caniuse-lite` (CC-BY-4.0) data is credited to the Can I Use project; `argparse` is under the PSF-style Python-2.0 license; a few small utilities are WTFPL (permissive).
+Attribution notes: `caniuse-lite` (CC-BY-4.0) data is credited to the Can I Use project; `argparse` is under the PSF-style Python-2.0 license; a few small utilities are WTFPL (permissive); the desktop app bundles the Inter, JetBrains Mono and Source Serif 4 variable fonts (SIL Open Font License 1.1, via `@fontsource-variable/*`), which may be redistributed with the app but not sold on their own.
 
 ## MIT
 
@@ -85,3 +86,7 @@ Attribution notes: `caniuse-lite` (CC-BY-4.0) data is credited to the Can I Use 
 ## (WTFPL OR MIT)
 
 `utf8-byte-length@1.0.5`
+
+## OFL-1.1
+
+`@fontsource-variable/inter@5.3.0`, `@fontsource-variable/jetbrains-mono@5.3.0`, `@fontsource-variable/source-serif-4@5.3.1`

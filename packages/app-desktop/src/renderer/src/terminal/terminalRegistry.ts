@@ -19,6 +19,7 @@ export type TerminalEntry = {
   exitCode: number | null;
   unsubData?: () => void;
   unsubExit?: () => void;
+  unsubTheme?: () => void;
   /** Set by whichever TerminalPane instance currently owns this leaf's DOM, so a later spontaneous exit can update its `exited` UI state. */
   onExitedChange?: () => void;
   /** Whether this leaf's stored `initialPrompt` has already been sent via the "Send task" button — lives here (not component state) for the same reason `exited` does: a remount must not forget it and re-offer to send a task twice. */

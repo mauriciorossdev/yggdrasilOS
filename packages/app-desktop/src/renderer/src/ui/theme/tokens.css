@@ -1,0 +1,56 @@
+/*
+ * Design tokens. Four core colors are user-editable (see ui/theme): the rest is
+ * derived from them with color-mix(), so changing the accent or the background
+ * re-tones the whole app. Never write a raw color in another stylesheet; add or
+ * reuse a token here (ui/theme/noRawColors.test.ts enforces a shrinking budget).
+ */
+:root {
+  color-scheme: dark;
+
+  /* core (editable) */
+  --ygg-bg: #1a1918;
+  --ygg-surface: #262523;
+  --ygg-text: #f1efe7;
+  --ygg-accent: #d97757;
+
+  /* derived surfaces */
+  --ygg-sidebar: color-mix(in srgb, var(--ygg-bg) 78%, black);
+  --ygg-surface-2: color-mix(in srgb, var(--ygg-surface) 95%, var(--ygg-text));
+  --ygg-border: color-mix(in srgb, var(--ygg-surface) 90%, var(--ygg-text));
+  --ygg-border-strong: color-mix(in srgb, var(--ygg-surface) 82%, var(--ygg-text));
+
+  /* derived text */
+  --ygg-text-strong: #ffffff;
+  --ygg-text-2: color-mix(in srgb, var(--ygg-text) 85%, var(--ygg-bg));
+  --ygg-text-muted: color-mix(in srgb, var(--ygg-text) 60%, var(--ygg-bg));
+  --ygg-text-dim: color-mix(in srgb, var(--ygg-text) 40%, var(--ygg-bg));
+
+  /* derived accent */
+  --ygg-accent-hover: color-mix(in srgb, var(--ygg-accent) 85%, white);
+  --ygg-accent-soft: color-mix(in srgb, var(--ygg-accent) 18%, var(--ygg-bg));
+  --ygg-accent-fg: #1a1918; /* readable text on --ygg-accent; recomputed by the theme engine */
+
+  /* status */
+  --ygg-status-working: #f0c36d;
+  --ygg-status-working-soft: #3d3220;
+  --ygg-status-checking: #9ec1f5;
+  --ygg-status-checking-soft: #22304a;
+  --ygg-status-ready: #8fd19e;
+  --ygg-status-ready-soft: #1f3524;
+  --ygg-danger: #e0715c;
+  --ygg-danger-text: #f4a79a;
+  --ygg-danger-soft: #3d2220;
+  --ygg-danger-border: #5a2f2a;
+
+  /* shape and type */
+  --ygg-radius-sm: 6px;
+  --ygg-radius-md: 10px;
+  --ygg-radius-lg: 14px;
+  --ygg-font-sans: "Inter Variable", system-ui, -apple-system, "Segoe UI", sans-serif;
+  --ygg-font-serif: "Source Serif 4 Variable", Georgia, "Times New Roman", serif;
+  --ygg-font-mono: "JetBrains Mono Variable", ui-monospace, "SF Mono", Consolas, monospace;
+
+  /* per-project color (TitleBar sets these when the user picks a project color) */
+  --project-border-color: transparent;
+  --project-accent-color: var(--ygg-accent);
+}

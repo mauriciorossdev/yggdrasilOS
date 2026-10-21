@@ -48,6 +48,8 @@ export type AgentFlowNode = {
   harness: AgentFlowHarness;
   /** Free-form note, e.g. "reports findings to Supervisor" — still just a human-readable annotation, not read by "Run Flow". */
   communication?: string;
+  /** Feature doc (project-relative, notes/features/x.md) this node was created with — create_pane's specPath. */
+  specPath?: string;
 };
 
 /**

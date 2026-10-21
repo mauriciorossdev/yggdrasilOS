@@ -65,6 +65,21 @@ function windowsBuildNumber(): number | undefined {
   return Number.isNaN(build) ? undefined : build;
 }
 
+type ThemeSettings = {
+  presetId: string;
+  overrides: Partial<Record<"bg" | "surface" | "text" | "accent", string>>;
+};
+
+function readThemeArg(): ThemeSettings {
+  try {
+    const raw = readArg("--ygg-theme");
+    if (raw) return JSON.parse(raw) as ThemeSettings;
+  } catch {
+    // fall through to the default
+  }
+  return { presetId: "warm-dark", overrides: {} };
+}
+
 const api = {
   /** Set only for project windows (via additionalArguments at window creation). Null in the launcher window. */
   projectId: readArg("--ygg-project-id"),
@@ -80,11 +95,51 @@ const api = {
   projectColor: readArg("--ygg-project-color") || null,
   /** True only for the "Default Workspace" window — the hub with a Projects section. Other project windows are scoped to just that project. */
   isDefaultProject: readArg("--ygg-is-default") === "1",
+  theme: {
+    /** The user's theme as of this window's creation (main passes it as an argument so the first paint is already themed). */
+    initial: readThemeArg(),
+    get: (): Promise<ThemeSettings> => ipcRenderer.invoke("theme:get"),
+    set: (settings: ThemeSettings): Promise<ThemeSettings> => ipcRenderer.invoke("theme:set", settings),
+    reset: (): Promise<ThemeSettings> => ipcRenderer.invoke("theme:reset"),
+    /** Fires in every window when any window changes the theme. */
+    onChange: (handler: (settings: ThemeSettings) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, payload: ThemeSettings) => handler(payload);
+      ipcRenderer.on("theme:changed", listener);
+      return () => ipcRenderer.removeListener("theme:changed", listener);
+    },
+  },
+  workspace: {
+    view: (): Promise<unknown> => ipcRenderer.invoke("workspace:view", readArg("--ygg-project-id")),
+    setLink: (targetId: string, linked: boolean): Promise<void> =>
+      ipcRenderer.invoke("workspace:setLink", readArg("--ygg-project-id"), targetId, linked),
+    revokeTrust: (key: string): Promise<void> => ipcRenderer.invoke("workspace:revokeTrust", key),
+    answer: (id: string, answer: { allow: boolean; trust: boolean }): Promise<void> =>
+      ipcRenderer.invoke("workspace:answer", id, answer),
+    /** An agent in this project wants to read/write another project's pane and needs the human's OK. */
+    onAsk: (handler: (ask: unknown) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, payload: unknown) => handler(payload);
+      ipcRenderer.on("workspace:ask", listener);
+      return () => ipcRenderer.removeListener("workspace:ask", listener);
+    },
+    /** The prompt timed out in main — drop it from the screen. */
+    onAskClosed: (handler: (payload: { id: string }) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, payload: { id: string }) => handler(payload);
+      ipcRenderer.on("workspace:askClosed", listener);
+      return () => ipcRenderer.removeListener("workspace:askClosed", listener);
+    },
+    /** Something from another project reached a pane here without a prompt (a remembered trust). */
+    onNotice: (handler: (notice: unknown) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, payload: unknown) => handler(payload);
+      ipcRenderer.on("workspace:notice", listener);
+      return () => ipcRenderer.removeListener("workspace:notice", listener);
+    },
+  },
   projects: {
     list: (): Promise<ProjectRecord[]> => ipcRenderer.invoke("projects:list"),
     openExisting: (): Promise<ProjectRecord | null> => ipcRenderer.invoke("projects:openExisting"),
     createNew: (): Promise<ProjectRecord | null> => ipcRenderer.invoke("projects:createNew"),
     open: (id: string): Promise<boolean> => ipcRenderer.invoke("projects:open", id),
+    openHome: (): Promise<boolean> => ipcRenderer.invoke("projects:openHome"),
     rename: (id: string, name: string): Promise<ProjectRecord | undefined> =>
       ipcRenderer.invoke("projects:rename", id, name),
     setColor: (id: string, color: string | null): Promise<ProjectRecord | undefined> =>
@@ -160,6 +215,13 @@ const api = {
       ) => handler(payload);
       ipcRenderer.on("pane:created", listener);
       return () => ipcRenderer.removeListener("pane:created", listener);
+    },
+    /** An agent asked (show_pane) for a live pane to be drawn or brought to front. */
+    onPaneShow: (handler: (pane: { id: string; title: string; cwd: string; command?: string }) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, payload: { id: string; title: string; cwd: string; command?: string }) =>
+        handler(payload);
+      ipcRenderer.on("pane:show", listener);
+      return () => ipcRenderer.removeListener("pane:show", listener);
     },
     /** A mobile client just expanded (active: true) or gave up (active: false) this pane's real pty width — see main/paneControlServer.ts's POST /panes/:id/expand|restore. */
     onMobileFocus: (handler: (id: string, active: boolean) => void): (() => void) => {

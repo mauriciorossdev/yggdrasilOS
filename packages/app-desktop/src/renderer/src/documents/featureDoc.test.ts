@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { buildFeatureDoc, featureDocPath, parseStatus, parseTasks, slugify } from "./featureDoc.js";
+import { buildFeatureDoc, featureDocPath, featureTitle, parseStatus, parseTasks, slugify } from "./featureDoc.js";
 
 describe("featureDocPath / slugify", () => {
   it("builds a safe path under notes/features", () => {
@@ -69,5 +69,16 @@ describe("parseStatus", () => {
   it("returns null for unknown or missing status", () => {
     expect(parseStatus("Status: banana")).toBeNull();
     expect(parseStatus("# no status")).toBeNull();
+  });
+});
+
+describe("featureTitle", () => {
+  it("reads the first level-1 heading", () => {
+    expect(featureTitle("# Fight Template — Kickoff\nStatus: working\n## Specs")).toBe("Fight Template — Kickoff");
+  });
+
+  it("ignores deeper headings and returns null without one", () => {
+    expect(featureTitle("## Specs\ntext")).toBeNull();
+    expect(featureTitle("no heading")).toBeNull();
   });
 });

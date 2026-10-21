@@ -1,5 +1,6 @@
-import { useEffect, useRef, useState, type KeyboardEvent } from "react";
+import { useRef, useState, type KeyboardEvent } from "react";
 import type { ProjectRecord } from "../types.js";
+import { useDismiss } from "../ui/useDismiss.js";
 
 type Mode = "menu" | "rename";
 
@@ -16,20 +17,7 @@ export function ProjectContextMenu({ project, x, y, onClose, onRename }: Props) 
   const [renameValue, setRenameValue] = useState(project.name);
   const ref = useRef<HTMLDivElement>(null);
 
-  useEffect(() => {
-    const onMouseDown = (e: MouseEvent) => {
-      if (ref.current && !ref.current.contains(e.target as Node)) onClose();
-    };
-    const onKeyDown = (e: globalThis.KeyboardEvent) => {
-      if (e.key === "Escape") onClose();
-    };
-    document.addEventListener("mousedown", onMouseDown);
-    document.addEventListener("keydown", onKeyDown);
-    return () => {
-      document.removeEventListener("mousedown", onMouseDown);
-      document.removeEventListener("keydown", onKeyDown);
-    };
-  }, [onClose]);
+  useDismiss(ref, onClose);
 
   const submitRename = () => {
     const name = renameValue.trim();
