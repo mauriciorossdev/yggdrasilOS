@@ -21,7 +21,7 @@
     "@yggdrasil/sdk": "workspace:*",
     "@yggdrasil/tools-sdk": "workspace:*",
     "better-sqlite3": "^11.8.1",
-    "ignore": "^7.0.9"
+    "ignore": "^7.0.12"
   },
   "devDependencies": {
     "@types/better-sqlite3": "^7.6.12"

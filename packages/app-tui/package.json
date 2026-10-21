@@ -26,7 +26,7 @@
     "ink-spinner": "^5.0.0",
     "ink-text-input": "^6.0.0",
     "react": "^18.3.1",
-    "ws": "^8.18.2",
+    "ws": "^8.22.0",
     "marked": "^14.0.0",
     "marked-terminal": "^7.3.0",
     "cli-highlight": "^2.1.11",
@@ -34,7 +34,7 @@
   },
   "devDependencies": {
     "@types/react": "^18.3.0",
-    "@types/ws": "^8.18.1",
+    "@types/ws": "^8.18.2",
     "ink-testing-library": "^4.0.0"
   },
   "files": [
