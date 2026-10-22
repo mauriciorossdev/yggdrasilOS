@@ -19,12 +19,12 @@ jobs:
     runs-on: ubuntu-latest
     timeout-minutes: 25
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       # pnpm version comes from "packageManager" in package.json.
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         with:
           node-version: "22"
           cache: pnpm
@@ -58,13 +58,13 @@ jobs:
         if: env.OLLAMA_API_KEY == ''
         run: echo "OLLAMA_API_KEY is not set; skipping live tests."
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         if: env.OLLAMA_API_KEY != ''
 
-      - uses: pnpm/action-setup@v4
+      - uses: pnpm/action-setup@v6
         if: env.OLLAMA_API_KEY != ''
 
-      - uses: actions/setup-node@v4
+      - uses: actions/setup-node@v7
         if: env.OLLAMA_API_KEY != ''
         with:
           node-version: "22"
