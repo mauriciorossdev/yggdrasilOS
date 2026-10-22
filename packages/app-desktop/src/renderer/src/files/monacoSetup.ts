@@ -2,7 +2,7 @@ import * as monaco from "monaco-editor";
 import { loader } from "@monaco-editor/react";
 import { getThemeColors, onThemeApplied } from "../ui/theme/themeRuntime.js";
 import { monacoThemeData } from "../ui/theme/surfaces.js";
-import EditorWorker from "monaco-editor/esm/vs/editor/editor.worker?worker";
+import EditorWorker from "monaco-editor/editor/editor.worker?worker";
 
 // @monaco-editor/react defaults to fetching Monaco from a CDN (jsdelivr) on
 // first mount — wrong for this Electron app, which should work offline and
