@@ -25,12 +25,12 @@
     "@yggdrasil/tools-runtime": "workspace:*",
     "@yggdrasil/tools-sdk": "workspace:*",
     "chokidar": "^5.0.0",
-    "ignore": "^7.0.9",
+    "ignore": "^7.0.12",
     "pdfjs-dist": "^4.10.38",
-    "ws": "^8.18.2"
+    "ws": "^8.22.0"
   },
   "devDependencies": {
-    "@types/ws": "^8.18.1",
+    "@types/ws": "^8.18.2",
     "@yggdrasil/harness-llm": "workspace:*"
   },
   "files": [
