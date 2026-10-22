@@ -12,7 +12,7 @@
   "dependencies": {
     "@yggdrasil/sdk": "workspace:*",
     "@yggdrasil/config": "workspace:*",
-    "@slack/bolt": "^4.4.0"
+    "@slack/bolt": "^5.1.0"
   },
   "devDependencies": {
     "typescript": "^5.8.3"
