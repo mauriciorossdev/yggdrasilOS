@@ -20,7 +20,7 @@
     "@yggdrasil/context-sdk": "workspace:*",
     "@yggdrasil/sdk": "workspace:*",
     "@yggdrasil/tools-sdk": "workspace:*",
-    "better-sqlite3": "^11.8.1",
+    "better-sqlite3": "^12.11.1",
     "ignore": "^7.0.12"
   },
   "devDependencies": {
