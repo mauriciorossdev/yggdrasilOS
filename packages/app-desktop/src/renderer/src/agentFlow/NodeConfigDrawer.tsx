@@ -2,6 +2,8 @@ import { useState } from "react";
 import { TrashIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { AgentFlowHarness, AgentFlowNode, AgentInfo } from "../types.js";
 import { AgentTemplatePicker } from "./AgentTemplatePicker.js";
+import { isCliVisible } from "../onboarding/harnessFilter.js";
+import { useOnboarding } from "../onboarding/store.js";
 
 type Props = {
   node: AgentFlowNode;
@@ -53,6 +55,10 @@ export function NodeConfigDrawer({
   onCreateRoleNode,
 }: Props) {
   const [showNewAgent, setShowNewAgent] = useState(false);
+  const { settings: onboardingSettings } = useOnboarding();
+  // A node already using a filtered-out harness keeps it in the list so the select never shows a blank value.
+  const harnessOption = (type: "claude" | "antigravity" | "omp" | "copilot") =>
+    node.harness.type === type || isCliVisible(type, onboardingSettings);
   const [newAgentId, setNewAgentId] = useState("");
 
   const setHarness = (harness: AgentFlowHarness) => onChange({ ...node, harness });
@@ -86,10 +92,10 @@ export function NodeConfigDrawer({
             onChange={(e) => setHarness(harnessFor(e.target.value as AgentFlowHarness["type"]))}
           >
             <option value="yggdrasil">yggdrasil</option>
-            <option value="claude">claude</option>
-            <option value="antigravity">antigravity</option>
-            <option value="omp">omp</option>
-            <option value="copilot">copilot</option>
+            {harnessOption("claude") && <option value="claude">claude</option>}
+            {harnessOption("antigravity") && <option value="antigravity">antigravity</option>}
+            {harnessOption("omp") && <option value="omp">omp</option>}
+            {harnessOption("copilot") && <option value="copilot">copilot</option>}
           </select>
         </label>
 

@@ -32,6 +32,7 @@ type Props = {
   browserContent?: ReactNode;
   studioContent?: ReactNode;
   repositoryContent?: ReactNode;
+  filesContent?: ReactNode;
   extraTabs?: ExtraTab[];
   /** Lets a parent (ChatView) know which tab is active — e.g. to render the file viewer as an overlay drawer only over Terminal. */
   onActiveTabChange?: (tab: MainTab) => void;
@@ -61,6 +62,7 @@ export function MainTabs({
   browserContent,
   studioContent,
   repositoryContent,
+  filesContent,
   extraTabs,
   onActiveTabChange,
 }: Props) {
@@ -136,6 +138,9 @@ export function MainTabs({
       </div>
       <div className="main-tab-panel" style={{ display: active === "repository" ? "flex" : "none" }}>
         {repositoryContent}
+      </div>
+      <div className="main-tab-panel" style={{ display: active === "files" ? "flex" : "none" }}>
+        {filesContent}
       </div>
       {extraTabs?.map((t) => (
         <div key={t.id} className="main-tab-panel" style={{ display: active === t.id ? "flex" : "none" }}>

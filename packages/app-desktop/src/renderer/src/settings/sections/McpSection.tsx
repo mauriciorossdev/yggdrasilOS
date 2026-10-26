@@ -6,6 +6,7 @@ type Props = {
   config: ConfigShape;
   setConfig: (config: ConfigShape) => void;
   mcpStatus: McpServerStatus[];
+  onMcpAction: (method: "mcp.reconnect" | "mcp.disconnect", serverId: string) => void;
   mcpSecretEdits: Record<string, string>;
   setMcpSecretEdits: (edits: Record<string, string>) => void;
 };
@@ -94,7 +95,7 @@ function parseMcpServersJson(raw: string): ParsedMcpServer[] {
   return results;
 }
 
-export function McpSection({ config, setConfig, mcpStatus, mcpSecretEdits, setMcpSecretEdits }: Props) {
+export function McpSection({ config, setConfig, mcpStatus, onMcpAction, mcpSecretEdits, setMcpSecretEdits }: Props) {
   const servers = config.mcpServers ?? {};
   const entries = Object.entries(servers);
   const [showImport, setShowImport] = useState(false);
@@ -165,8 +166,8 @@ export function McpSection({ config, setConfig, mcpStatus, mcpSecretEdits, setMc
     <section className="settings-section">
       <h3>MCP Servers</h3>
       <p className="muted">
-        Connect Model Context Protocol servers to give agents more tools. Takes effect after the
-        gateway restarts.
+        Connect Model Context Protocol servers to give agents more tools. Servers connect in the
+        background; save to apply changes, or use Reconnect on a single server.
       </p>
       {entries.map(([id, server]) => {
         const status = mcpStatus.find((s) => s.id === id);
@@ -192,8 +193,8 @@ export function McpSection({ config, setConfig, mcpStatus, mcpSecretEdits, setMc
                   updateServer(
                     id,
                     e.target.value === "stdio"
-                      ? { transport: "stdio", command: "", args: [] }
-                      : { transport: "http", url: "" },
+                      ? { transport: "stdio", command: "", args: [], autoStart: server.autoStart }
+                      : { transport: "http", url: "", autoStart: server.autoStart },
                   )
                 }
               >
@@ -257,17 +258,46 @@ export function McpSection({ config, setConfig, mcpStatus, mcpSecretEdits, setMc
               </>
             )}
 
+            <label className="mcp-autostart">
+              <input
+                type="checkbox"
+                checked={server.autoStart !== false}
+                onChange={(e) => updateServer(id, { ...server, autoStart: e.target.checked })}
+              />
+              Connect automatically when the project opens
+            </label>
+
             {status &&
               (status.connected ? (
                 <p className="mcp-status-ok">
                   <CheckIcon className="hero-icon" /> connected — {status.toolCount} tool
                   {status.toolCount === 1 ? "" : "s"}
                 </p>
+              ) : status.state === "connecting" ? (
+                <p className="muted">Connecting…</p>
+              ) : status.state === "stopped" ? (
+                <p className="muted">Not connected</p>
               ) : (
                 <p className="provider-warning">
                   <ExclamationTriangleIcon className="hero-icon" /> {status.error ?? "not connected"}
                 </p>
               ))}
+            {status && (
+              <div className="agent-form-actions">
+                <button
+                  type="button"
+                  disabled={status.state === "connecting"}
+                  onClick={() => onMcpAction("mcp.reconnect", id)}
+                >
+                  {status.connected ? "Reconnect" : "Connect"}
+                </button>
+                {status.connected && (
+                  <button type="button" onClick={() => onMcpAction("mcp.disconnect", id)}>
+                    Disconnect
+                  </button>
+                )}
+              </div>
+            )}
           </div>
         );
       })}

@@ -11,6 +11,8 @@ import { onLoadFlow, onLoadTeam, onNewTerminal, onTerminalTabVisible } from "./t
 import { buildFlowLinks, setFlowLinks } from "./flowLinks.js";
 import { buildFlowLeaves, selectTeamRootNodes } from "./buildFlowLeaves.js";
 import { TerminalNavbar } from "./TerminalNavbar.js";
+import { terminalLaunchClis } from "../onboarding/harnessFilter.js";
+import { useOnboarding } from "../onboarding/store.js";
 import { FeatureHeader } from "./FeatureHeader.js";
 import { MinimizedDock } from "./MinimizedDock.js";
 import { TerminalCanvasView } from "./TerminalCanvasView.js";
@@ -170,9 +172,12 @@ export function TerminalContainer() {
     }
   };
 
-  const startNewTerminal = (command?: "claude") => {
+  const { settings: onboardingSettings } = useOnboarding();
+  const launchClis = terminalLaunchClis(onboardingSettings);
+
+  const startNewTerminal = (command?: string, title?: string) => {
     if (!projectPath) return;
-    const leaf: LeafPane = { ...newLeaf(projectPath, command === "claude" ? "claude" : "Terminal 1"), command };
+    const leaf: LeafPane = { ...newLeaf(projectPath, command ? (title ?? command) : "Terminal 1"), command };
     dispatch({ type: "ADD_ROOT", leaf });
   };
 
@@ -443,9 +448,16 @@ export function TerminalContainer() {
           <div className="terminal-team-banner">
             <p className="muted">New terminal</p>
             <div className="terminal-team-banner-list">
-              <button type="button" className="new-chat" onClick={() => startNewTerminal("claude")}>
-                Claude Code
-              </button>
+              {launchClis.map((cli) => (
+                <button
+                  key={cli.id}
+                  type="button"
+                  className="new-chat"
+                  onClick={() => startNewTerminal(cli.command, cli.id === "claude" ? "claude" : cli.command)}
+                >
+                  {cli.label}
+                </button>
+              ))}
               <button type="button" className="new-chat" onClick={() => startNewTerminal()}>
                 System shell
               </button>

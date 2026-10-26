@@ -14,6 +14,7 @@
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.1",
     "@yggdrasil/config": "workspace:*",
+    "@yggdrasil/kernel": "workspace:*",
     "@yggdrasil/sdk": "workspace:*",
     "@yggdrasil/tools-sdk": "workspace:*"
   },

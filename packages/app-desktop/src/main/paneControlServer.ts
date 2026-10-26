@@ -18,7 +18,7 @@ import {
 } from "./terminals.js";
 import { readAgentTeams, recordAutoCapturedNode } from "./agentTeams.js";
 import { composeSpecContext, composeSpecMessage, resolveSpecFile, SpecPathError } from "./paneSpec.js";
-import type { PickedElement } from "./browserTabView.js";
+import type { BrowserPageRead, PickedElement } from "./browserTabView.js";
 import type { PluginRecord, PluginScope, PluginView, ScaffoldPluginSpec } from "./plugins.js";
 import { WorkspaceError } from "./workspace.js";
 import { getDesktopAutomationAdapter, PermissionRequiredError, type PermissionKind } from "./automation/index.js";
@@ -157,6 +157,10 @@ export async function startPaneControlServer(
   browserTab: {
     navigate: (url: string) => Promise<void>;
     startPick: (timeoutMs?: number) => Promise<PickedElement | null>;
+    readPage: (maxChars?: number) => Promise<BrowserPageRead>;
+    screenshot: () => Promise<{ base64: string; mimeType: string; width: number; height: number }>;
+    click: (selector: string) => Promise<{ tag: string; text: string; url: string; title: string }>;
+    type: (selector: string, text: string, submit?: boolean) => Promise<{ tag: string; url: string; title: string }>;
   },
   /** Backs the /plugins/* routes below (the plugins MCP shim's transport) — injected the same way as `browserTab` above, since the real plugin registry (plugins.ts) and project-window map live in main/index.ts, not this module. */
   plugins: {
@@ -579,6 +583,46 @@ export async function startPaneControlServer(
         if (win && !win.isDestroyed()) win.webContents.send("browserTab:requestShow");
         const picked = await browserTab.startPick(timeoutMs);
         sendJson(res, 200, { picked });
+        return;
+      }
+
+      // Agent-driven page access (browser_read / browser_screenshot / browser_click / browser_type).
+      // The page is untrusted web content: reads return it as data, and the MCP
+      // tool descriptions tell the model never to follow instructions found in it.
+      // Failures (no page loaded, selector matches nothing) are the model's to
+      // act on, so they come back as a 400 with the message instead of a 500.
+      if (
+        req.method === "POST" &&
+        parts.length === 2 &&
+        parts[0] === "browser" &&
+        ["read", "screenshot", "click", "type"].includes(parts[1]!)
+      ) {
+        const body = await readJsonBody(req);
+        const str = (v: unknown) => (typeof v === "string" ? v : "");
+        try {
+          // The screenshot needs the view attached and laid out, and the human
+          // should see what the agent is acting on — same auto-switch as /browser/open.
+          if (parts[1] === "screenshot" || parts[1] === "click" || parts[1] === "type") {
+            const win = getWindow();
+            if (win && !win.isDestroyed()) win.webContents.send("browserTab:requestShow");
+          }
+          if (parts[1] === "read") {
+            sendJson(res, 200, await browserTab.readPage(typeof body.maxChars === "number" ? body.maxChars : undefined));
+          } else if (parts[1] === "screenshot") {
+            // Let the renderer attach the view and report its bounds before capturing.
+            await new Promise((resolve) => setTimeout(resolve, 400));
+            sendJson(res, 200, await browserTab.screenshot());
+          } else if (parts[1] === "click") {
+            if (!str(body.selector)) throw new Error("selector is required");
+            sendJson(res, 200, await browserTab.click(str(body.selector)));
+          } else {
+            if (!str(body.selector)) throw new Error("selector is required");
+            if (typeof body.text !== "string") throw new Error("text is required");
+            sendJson(res, 200, await browserTab.type(str(body.selector), body.text, body.submit === true));
+          }
+        } catch (err) {
+          sendJson(res, 400, { error: err instanceof Error ? err.message : "browser action failed" });
+        }
         return;
       }
 
