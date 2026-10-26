@@ -7,13 +7,19 @@ import type {
   AgentTeam,
   AutomationSettings,
   BrowserTabBounds,
+  BrowserDownload,
+  BrowserTabState,
   CustomFlowTemplate,
   CustomRole,
   DesktopPermissions,
+  DetectedCli,
   DetectedIde,
   DocumentTabsLayout,
   IdeCatalogEntry,
   IdeSettings,
+  OllamaStatus,
+  OnboardingSettings,
+  OnboardingState,
   MyShareSummary,
   PickedElement,
   PullResult,
@@ -284,6 +290,43 @@ const api = {
   },
   browserTab: {
     navigate: (url: string): Promise<void> => ipcRenderer.invoke("browserTab:navigate", readArg("--ygg-project-id"), url),
+    /** Address-bar navigation: a URL/host navigates, anything else becomes a web search. */
+    go: (input: string): Promise<void> => ipcRenderer.invoke("browserTab:go", readArg("--ygg-project-id"), input),
+    /** Opens a new browser tab (and navigates it when `input` is given). Resolves with its id. */
+    newTab: (input?: string): Promise<string | null> =>
+      ipcRenderer.invoke("browserTab:newTab", readArg("--ygg-project-id"), input),
+    closeTab: (id: string): Promise<void> => ipcRenderer.invoke("browserTab:closeTab", readArg("--ygg-project-id"), id),
+    activateTab: (id: string): Promise<void> =>
+      ipcRenderer.invoke("browserTab:activateTab", readArg("--ygg-project-id"), id),
+    toggleDevTools: (): Promise<void> => ipcRenderer.invoke("browserTab:toggleDevTools", readArg("--ygg-project-id")),
+    zoom: (direction: "in" | "out" | "reset"): Promise<void> =>
+      ipcRenderer.invoke("browserTab:zoom", readArg("--ygg-project-id"), direction),
+    showDownload: (path: string): Promise<void> =>
+      ipcRenderer.invoke("browserTab:showDownload", readArg("--ygg-project-id"), path),
+    /** Common dev-server ports currently listening on this machine. */
+    scanPorts: (): Promise<number[]> => ipcRenderer.invoke("browserTab:scanPorts"),
+    /** Ctrl+L / Ctrl+T: main wants the address bar focused. */
+    onFocusAddress: (handler: () => void): (() => void) => {
+      const listener = () => handler();
+      ipcRenderer.on("browserTab:focusAddress", listener);
+      return () => ipcRenderer.removeListener("browserTab:focusAddress", listener);
+    },
+    onDownload: (handler: (download: BrowserDownload) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, download: BrowserDownload) => handler(download);
+      ipcRenderer.on("browserTab:download", listener);
+      return () => ipcRenderer.removeListener("browserTab:download", listener);
+    },
+    back: (): Promise<void> => ipcRenderer.invoke("browserTab:back", readArg("--ygg-project-id")),
+    forward: (): Promise<void> => ipcRenderer.invoke("browserTab:forward", readArg("--ygg-project-id")),
+    reload: (): Promise<void> => ipcRenderer.invoke("browserTab:reload", readArg("--ygg-project-id")),
+    stop: (): Promise<void> => ipcRenderer.invoke("browserTab:stop", readArg("--ygg-project-id")),
+    getState: (): Promise<BrowserTabState | null> =>
+      ipcRenderer.invoke("browserTab:getState", readArg("--ygg-project-id")),
+    onState: (handler: (state: BrowserTabState) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, state: BrowserTabState) => handler(state);
+      ipcRenderer.on("browserTab:state", listener);
+      return () => ipcRenderer.removeListener("browserTab:state", listener);
+    },
     setBounds: (bounds: BrowserTabBounds): Promise<void> =>
       ipcRenderer.invoke("browserTab:setBounds", readArg("--ygg-project-id"), bounds),
     show: (): Promise<void> => ipcRenderer.invoke("browserTab:show", readArg("--ygg-project-id")),
@@ -455,6 +498,13 @@ const api = {
     saveCustom: (template: { label: string; summary?: string; prompt: string }): Promise<CustomFlowTemplate[]> =>
       ipcRenderer.invoke("flowTemplates:saveCustom", template),
     deleteCustom: (id: string): Promise<CustomFlowTemplate[]> => ipcRenderer.invoke("flowTemplates:deleteCustom", id),
+  },
+  onboarding: {
+    getState: (): Promise<OnboardingState> => ipcRenderer.invoke("onboarding:getState"),
+    save: (settings: OnboardingSettings): Promise<OnboardingSettings> => ipcRenderer.invoke("onboarding:save", settings),
+    detectClis: (): Promise<DetectedCli[]> => ipcRenderer.invoke("onboarding:detectClis"),
+    detectOllama: (): Promise<OllamaStatus> => ipcRenderer.invoke("onboarding:detectOllama"),
+    openExternal: (url: string): Promise<void> => ipcRenderer.invoke("onboarding:openExternal", url),
   },
   ide: {
     listCatalog: (): Promise<IdeCatalogEntry[]> => ipcRenderer.invoke("ide:listCatalog"),

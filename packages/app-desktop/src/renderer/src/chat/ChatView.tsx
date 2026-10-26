@@ -11,6 +11,7 @@ import { AgentManager } from "../agents/AgentManager.js";
 import { SettingsView } from "../settings/SettingsView.js";
 import { FileContentPanel } from "../files/FileContentPanel.js";
 import { DocumentsView } from "../documents/DocumentsView.js";
+import { FilesView } from "../files/FilesView.js";
 import { MainTabs, type ExtraTab, type MainTab } from "./MainTabs.js";
 import { requestTab } from "./mainTabsBridge.js";
 import { TerminalContainer } from "../terminal/TerminalContainer.js";
@@ -499,6 +500,7 @@ export function ChatView() {
           browserContent={<BrowserTabView />}
           studioContent={<StudioView />}
           repositoryContent={<RepositoryView />}
+          filesContent={<FilesView />}
           extraTabs={extraTabs}
           onActiveTabChange={setActiveMainTab}
         />

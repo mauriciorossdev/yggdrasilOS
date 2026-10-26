@@ -25,7 +25,10 @@ const HOST = "127.0.0.1";
 // subprocess without touching the project's yggdrasil.config.json.
 const GATEWAY_BIND_HOST = "0.0.0.0";
 const PROBE_TIMEOUT_MS = 800;
-const BOOT_TIMEOUT_MS = 15_000;
+// Must exceed tool-mcp's per-server CONNECT_TIMEOUT_MS (10s) plus the rest of
+// gateway startup: the gateway only listens after every MCP server connects or
+// times out, so a slow one (e.g. blender-mcp via a cold `uvx`) used to blow 15s.
+const BOOT_TIMEOUT_MS = 30_000;
 const BOOT_POLL_INTERVAL_MS = 300;
 
 export type GatewayHandle = {
@@ -258,13 +261,16 @@ export async function ensureGateway(
   let child = spawnChild();
   let stopping = false;
   const recentRestarts: number[] = [];
+  // Last stderr the gateway wrote, across respawns — so a boot failure can
+  // say WHY (e.g. a missing better-sqlite3 native binding) instead of only
+  // "did not become ready".
+  let stderrTail = "";
 
   // The renderer, phone link and open-gateways registry all hold this exact
   // port, so a gateway that dies on its own (uncaught exception, OOM kill) is
   // respawned on the SAME port — the renderer's gateway-client reconnects by
   // itself. Capped so a gateway that crashes on boot doesn't spin forever.
   const supervise = (c: ChildProcess): void => {
-    let stderrTail = "";
     c.stderr?.on("data", (chunk) => {
       stderrTail = (stderrTail + chunk.toString()).slice(-2000);
     });
@@ -301,7 +307,13 @@ export async function ensureGateway(
   if (!booted) {
     stopping = true;
     child.kill();
-    throw new Error(`Gateway did not become ready within ${BOOT_TIMEOUT_MS}ms`);
+    const detail = stderrTail.trim();
+    throw new Error(
+      `Gateway did not become ready within ${BOOT_TIMEOUT_MS}ms` +
+        (detail ? `
+Last gateway output:
+${detail}` : ""),
+    );
   }
 
   return {

@@ -960,6 +960,9 @@ importers:
       '@yggdrasil/config':
         specifier: workspace:*
         version: link:../config
+      '@yggdrasil/kernel':
+        specifier: workspace:*
+        version: link:../kernel
       '@yggdrasil/sdk':
         specifier: workspace:*
         version: link:../sdk

@@ -1,66 +1,78 @@
 import type { YggdrasilConfig } from "@yggdrasil/config";
+import { getRegistry } from "@yggdrasil/kernel";
 import { definePlugin } from "@yggdrasil/sdk";
-import { bridgeMcpTools, connectMcpServer, type McpConnection } from "./client.js";
+import { bridgeMcpTools, connectMcpServer } from "./client.js";
+import { createMcpManager, type McpServers } from "./manager.js";
 
-export type McpServerStatus = {
-  id: string;
-  connected: boolean;
-  toolCount: number;
-  tools: string[];
-  error?: string;
-};
+export type { McpServerState, McpServerStatus } from "./manager.js";
+
+function serversOf(config: unknown): McpServers {
+  return (config as YggdrasilConfig).mcpServers ?? {};
+}
+
+// Tools are looked up in the kernel registry on every agent turn (see
+// tools-runtime resolveTools), so removing them here is enough to hide a
+// disconnected server's tools — same bookkeeping unregisterPlugin does.
+function removeToolsFromRegistry(names: string[]): void {
+  const registry = getRegistry();
+  const drop = new Set(names);
+  registry.tools = registry.tools.filter((t) => typeof t === "function" || !drop.has(t.name));
+  for (const name of drop) registry.toolOwners.delete(name);
+}
 
 const plugin = definePlugin({
   id: "tool-mcp",
   name: "MCP Tools",
   version: "0.1.0",
   register(api) {
-    const connections: McpConnection[] = [];
-    // Populated once per server during service start — mcp.status just
-    // reads this back rather than re-querying live connections, so it stays
-    // cheap to poll from Settings.
-    const status = new Map<string, McpServerStatus>();
+    let manager: ReturnType<typeof createMcpManager> | undefined;
+    const getManager = (logger: Parameters<typeof createMcpManager>[0]["logger"]) =>
+      (manager ??= createMcpManager({
+        connect: connectMcpServer,
+        bridge: (serverId, connection) => bridgeMcpTools(serverId, connection.client),
+        addTool: (tool) => api.registerTool(tool),
+        removeTools: removeToolsFromRegistry,
+        logger,
+      }));
 
     api.registerService({
       id: "tool-mcp",
-      async start({ config, logger }) {
-        const servers = (config as YggdrasilConfig).mcpServers ?? {};
-        status.clear();
-
-        await Promise.all(
-          Object.entries(servers).map(async ([serverId, serverConfig]) => {
-            try {
-              const connection = await connectMcpServer(serverId, serverConfig);
-              connections.push(connection);
-
-              const tools = await bridgeMcpTools(serverId, connection.client);
-              for (const tool of tools) {
-                api.registerTool(tool);
-              }
-              status.set(serverId, {
-                id: serverId,
-                connected: true,
-                toolCount: tools.length,
-                tools: tools.map((t) => t.name),
-              });
-              logger.info("connected MCP server", { serverId, tools: tools.length });
-            } catch (err) {
-              const error = err instanceof Error ? err.message : String(err);
-              status.set(serverId, { id: serverId, connected: false, toolCount: 0, tools: [], error });
-              logger.error("failed to connect MCP server", { serverId, error });
-            }
-          }),
-        );
+      // Deliberately does not wait for the servers: a slow or unreachable one
+      // (e.g. blender-mcp with Blender closed) must not delay the gateway
+      // listening. Tools show up as each server connects.
+      start({ config, logger }) {
+        getManager(logger).start(serversOf(config));
       },
       async stop() {
-        await Promise.all(connections.map((c) => c.close().catch(() => {})));
-        connections.length = 0;
+        await manager?.stop();
       },
     });
 
-    api.registerGatewayMethod("mcp.status", async () => ({
-      servers: [...status.values()],
+    api.registerGatewayMethod("mcp.status", async (_params, ctx) => ({
+      servers: getManager(ctx.logger).status(serversOf(ctx.config)),
     }));
+
+    // Apply the current config: connect new/changed servers, drop removed ones.
+    api.registerGatewayMethod("mcp.reload", async (_params, ctx) => ({
+      servers: await getManager(ctx.logger).reload(serversOf(ctx.config)),
+    }));
+
+    // Connect (or restart) one server and wait for the result — also the way
+    // to start a server configured with autoStart: false.
+    api.registerGatewayMethod("mcp.reconnect", async (params, ctx) => {
+      const serverId = String(params.serverId ?? "");
+      if (!serverId) throw new Error("mcp.reconnect: serverId required");
+      const servers = serversOf(ctx.config);
+      await getManager(ctx.logger).reconnect(serverId, servers);
+      return { servers: getManager(ctx.logger).status(servers) };
+    });
+
+    api.registerGatewayMethod("mcp.disconnect", async (params, ctx) => {
+      const serverId = String(params.serverId ?? "");
+      if (!serverId) throw new Error("mcp.disconnect: serverId required");
+      await getManager(ctx.logger).disconnect(serverId);
+      return { servers: getManager(ctx.logger).status(serversOf(ctx.config)) };
+    });
   },
 });
 

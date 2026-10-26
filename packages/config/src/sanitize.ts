@@ -74,10 +74,11 @@ function sanitizeMcpServers(
     // would overwrite the real secret with the literal string "***"; leaving
     // the key out entirely forces the write-only edit flow (see patch.ts)
     // instead.
+    const autoStart = s.autoStart === undefined ? {} : { autoStart: s.autoStart };
     out[id] =
       s.transport === "stdio"
-        ? { transport: "stdio", command: s.command, args: s.args }
-        : { transport: "http", url: s.url };
+        ? { transport: "stdio", command: s.command, args: s.args, ...autoStart }
+        : { transport: "http", url: s.url, ...autoStart };
   }
   return out;
 }

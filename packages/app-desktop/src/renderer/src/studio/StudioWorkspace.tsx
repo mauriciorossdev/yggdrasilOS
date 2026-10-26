@@ -4,6 +4,8 @@ import { StudioPreview } from "./StudioPreview.js";
 import { StudioTerminalPane } from "./StudioTerminalPane.js";
 import type { StudioTerminalHarness } from "./studioContext.js";
 import type { PluginRecord } from "../types.js";
+import { isCliVisible } from "../onboarding/harnessFilter.js";
+import { useOnboarding } from "../onboarding/store.js";
 
 type AuthoringMode = "terminal" | "chat";
 
@@ -26,6 +28,7 @@ export function StudioWorkspace({ plugin, projectPath, onDeleted }: Props) {
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<AuthoringMode>("terminal");
   const [harness, setHarness] = useState<StudioTerminalHarness>("claude");
+  const { settings: onboardingSettings } = useOnboarding();
   const isDraft = plugin.manifest.status === "draft";
 
   const publish = async () => {
@@ -91,8 +94,10 @@ export function StudioWorkspace({ plugin, projectPath, onDeleted }: Props) {
             onChange={(e) => setHarness(e.target.value as StudioTerminalHarness)}
             title="Elegí qué CLI corre en esta terminal"
           >
-            <option value="claude">claude</option>
-            <option value="agy">agy (Antigravity)</option>
+            {(harness === "claude" || isCliVisible("claude", onboardingSettings)) && <option value="claude">claude</option>}
+            {(harness === "agy" || isCliVisible("antigravity", onboardingSettings)) && (
+              <option value="agy">agy (Antigravity)</option>
+            )}
           </select>
         )}
         <div className="studio-workspace-actions">

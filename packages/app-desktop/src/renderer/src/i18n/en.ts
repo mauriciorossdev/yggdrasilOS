@@ -1,0 +1,58 @@
+// Source of truth for UI strings: es.ts must define every key here (enforced by its type).
+export const en = {
+  "ob.title": "Welcome to Yggdrasil",
+  "ob.subtitle": "Let's set up how you'll work. You can change all of this later in Settings.",
+  "ob.skip": "Skip",
+  "ob.back": "Back",
+  "ob.next": "Next",
+  "ob.finish": "Finish",
+  "ob.step": "Step {current} of {total}",
+
+  "ob.s1.title": "Language and agents",
+  "ob.language": "Language",
+  "ob.cli.title": "Agent CLIs on this computer",
+  "ob.cli.hint": "Mark the ones you use. Menus will only show these (you can show all again in Settings).",
+  "ob.cli.installed": "Installed",
+  "ob.cli.installedV": "Installed · v{version}",
+  "ob.cli.missing": "Not found",
+  "ob.cli.install": "How to install",
+  "ob.scan": "Scan again",
+  "ob.scanning": "Scanning…",
+
+  "ob.s2.title": "Models",
+  "ob.s2.hint": "Optional. Use your own API key or a local model, or skip this if the CLIs are enough.",
+  "ob.ollama.title": "Local models (Ollama)",
+  "ob.ollama.running": "Ollama is running",
+  "ob.ollama.notRunning": "Ollama is installed but not running. Start it and scan again.",
+  "ob.ollama.missing": "Ollama not found on this computer.",
+  "ob.ollama.install": "Download Ollama",
+  "ob.ollama.noModels": "No models pulled yet. Run “ollama pull llama3.2” and scan again.",
+  "ob.ollama.model": "Model",
+  "ob.ollama.use": "Use as default model",
+  "ob.ollama.applied": "Default model set to {model}",
+  "ob.api.title": "API key",
+  "ob.api.hint": "Connect an OpenAI-compatible provider with your own key.",
+  "ob.api.save": "Save provider",
+  "ob.api.saved": "Provider saved",
+  "ob.api.error": "Provider responded with an error: {error}",
+
+  "ob.s3.title": "Editor",
+  "ob.ide.hint": "Pick the editor to open your projects in.",
+  "ob.ide.none": "None",
+  "ob.ide.installed": "Installed",
+  "ob.ide.noneDetected": "No supported editors were detected. You can pick one later in Settings.",
+
+  "ob.s4.title": "All set",
+  "ob.sum.agents": "Agents",
+  "ob.sum.models": "Models",
+  "ob.sum.editor": "Editor",
+  "ob.sum.none": "None",
+  "ob.sum.warn": "You haven't set up an agent CLI or a model yet. You can do it any time from Settings.",
+
+  "ob.settings.title": "Setup wizard",
+  "ob.settings.desc": "Choose your agent CLIs, models and editor again.",
+  "ob.settings.open": "Open setup wizard",
+  "ob.settings.showAll": "Show all agent CLIs in menus, even ones I didn't pick",
+} as const;
+
+export type MessageKey = keyof typeof en;

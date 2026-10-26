@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Cog6ToothIcon, FolderOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { ArrowsPointingOutIcon, Cog6ToothIcon, FolderOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import type { IndexProgress } from "../types.js";
 import type { AgentInfo, PluginRecord, ProjectRecord, SessionInfo } from "../types.js";
@@ -10,6 +10,7 @@ import { RemoteFilesPanel } from "../files/RemoteFilesPanel.js";
 import { ScriptsSection } from "../files/ScriptsSection.js";
 import { PluginsSection } from "../plugins/PluginsSection.js";
 import { MainNav } from "./MainNav.js";
+import { setActiveTab } from "../ui/mainTabsStore.js";
 
 import { useProjects } from "../projects/useProjects.js";
 import { CollapsibleSection } from "../components/CollapsibleSection.js";
@@ -207,7 +208,20 @@ export function SessionSidebar({
           </ul>
         </CollapsibleSection>
 
-        <CollapsibleSection title="Files" className="files-section">
+        <CollapsibleSection
+          title="Files"
+          className="files-section"
+          actions={
+            <button
+              type="button"
+              className="icon-btn"
+              title="Open file explorer"
+              onClick={() => setActiveTab("files")}
+            >
+              <ArrowsPointingOutIcon className="hero-icon" />
+            </button>
+          }
+        >
           <div className="files-tab-bar">
             <button
               type="button"

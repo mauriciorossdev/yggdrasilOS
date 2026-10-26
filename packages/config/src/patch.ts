@@ -156,6 +156,7 @@ export function validateConfigPatch(input: Record<string, unknown>): ConfigPatch
             Object.entries(server.env as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
           );
         }
+        if (typeof server.autoStart === "boolean") entry.autoStart = server.autoStart;
         mcpServers[id] = entry;
       } else if (server.transport === "http") {
         const entry: Extract<McpServerConfig, { transport: "http" }> = {
@@ -167,6 +168,7 @@ export function validateConfigPatch(input: Record<string, unknown>): ConfigPatch
             Object.entries(server.headers as Record<string, unknown>).map(([k, v]) => [k, String(v)]),
           );
         }
+        if (typeof server.autoStart === "boolean") entry.autoStart = server.autoStart;
         mcpServers[id] = entry;
       } else {
         throw new Error(`config.patch: mcpServers.${id}.transport must be "stdio" or "http"`);

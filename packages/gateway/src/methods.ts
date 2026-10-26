@@ -2134,10 +2134,10 @@ function registerBuiltinMethods(): void {
       }
     }
 
-    // mcpServers changes don't take effect live — tool-mcp's ServicePlugin
-    // connects to every configured server once in startKernel() and doesn't
-    // watch config for changes, same restart-required story as sessions.
-    const requiresRestart = restartRequiredKeys.length > 0 || Boolean(patch.mcpServers);
+    // mcpServers changes don't connect on their own, but they no longer need
+    // a restart: callers follow up with `mcp.reload` (tool-mcp), which diffs
+    // the new config against what is connected.
+    const requiresRestart = restartRequiredKeys.length > 0;
 
     return {
       ok: true,

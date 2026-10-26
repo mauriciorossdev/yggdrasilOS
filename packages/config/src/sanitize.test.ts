@@ -42,6 +42,14 @@ describe("sanitizeConfigForClient", () => {
     expect(sanitized.harness?.pinnedId).toBe("builtin-echo");
   });
 
+  it("keeps mcpServers autoStart (not a secret) when sanitizing", () => {
+    const sanitized = sanitizeConfigForClient({
+      mcpServers: { blender: { transport: "stdio", command: "uvx", env: { K: "v" }, autoStart: false } },
+    });
+    expect(sanitized.mcpServers?.blender).toMatchObject({ autoStart: false });
+    expect(sanitized.mcpServers?.blender).not.toHaveProperty("env");
+  });
+
   it("strips mcpServers env/headers entirely instead of masking them", () => {
     const config = mergeConfig(
       {},
