@@ -70,7 +70,7 @@ describe("workspace broker", () => {
   let written: Array<{ id: string; text: string }>;
   let answer: AskAnswer;
   let ask: ReturnType<typeof vi.fn<(r: AskRequest) => Promise<AskAnswer>>>;
-  let notify: ReturnType<typeof vi.fn<(projectId: string, notice: { fromName: string; action: string; paneTitle: string }) => void>>;
+  let notify: ReturnType<typeof vi.fn<Parameters<typeof createWorkspaceBroker>[0]["notify"]>>;
   let open: Set<string>;
   let clock: number;
 
