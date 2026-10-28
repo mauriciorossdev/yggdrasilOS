@@ -258,8 +258,8 @@ importers:
         specifier: ^4.5.2
         version: 4.7.0(vite@7.3.7(@types/node@26.6.5))
       electron:
-        specifier: ^42.11.16
-        version: 42.11.16
+        specifier: ^45.0.0
+        version: 45.0.0
       electron-builder:
         specifier: ^25.1.8
         version: 25.1.8(electron-builder-squirrel-windows@25.1.8)
@@ -445,8 +445,8 @@ importers:
         specifier: ^4.5.2
         version: 4.7.0(vite@7.3.7(@types/node@26.6.5))
       electron:
-        specifier: ^42.11.16
-        version: 42.11.16
+        specifier: ^45.0.0
+        version: 45.0.0
       electron-builder:
         specifier: ^25.1.8
         version: 25.1.8(electron-builder-squirrel-windows@25.1.8)
@@ -2959,8 +2959,8 @@ packages:
       '@swc/core':
         optional: true
 
-  electron@42.11.16:
-    resolution: {integrity: sha512-CHCEsZbWm9zspEnYsro+g8FFllh0e82A1Jtofi/XqPs/XqlrpDPdLP0OhzfhG/IkxNXQ8iHEoYms+wVepZNzZA==}
+  electron@45.0.0:
+    resolution: {integrity: sha512-yjz4uhMBcO6L5X7CWgRMobf2EMJPnb9j4zuf+nu/TU/6E4Sqfx7fn/a2eACo4qngjml/0JnsoZhxYroJLxLd2w==}
     engines: {node: '>= 22.12.0'}
     hasBin: true
 
@@ -7086,7 +7086,7 @@ snapshots:
     transitivePeerDependencies:
       - supports-color
 
-  electron@42.11.16:
+  electron@45.0.0:
     dependencies:
       '@electron-internal/extract-zip': 1.0.6
       '@electron/get': 5.1.0
