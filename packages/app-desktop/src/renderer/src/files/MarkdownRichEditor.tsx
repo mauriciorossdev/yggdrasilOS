@@ -2,7 +2,7 @@ import { useEffect } from "react";
 import { EditorContent, useEditor } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Link from "@tiptap/extension-link";
-import Table from "@tiptap/extension-table";
+import { Table } from "@tiptap/extension-table";
 import TableRow from "@tiptap/extension-table-row";
 import TableHeader from "@tiptap/extension-table-header";
 import TableCell from "@tiptap/extension-table-cell";
@@ -11,6 +11,15 @@ import TaskItem from "@tiptap/extension-task-item";
 import { Markdown } from "tiptap-markdown";
 import { requestOpenDocument } from "../chat/documentsBridge.js";
 import { requestTab } from "../chat/mainTabsBridge.js";
+
+// tiptap-markdown puts its serializer on editor.storage.markdown; Tiptap 3's
+// `Storage` interface is empty (v2's was Record<string, any>), so declare the one
+// member we read.
+declare module "@tiptap/core" {
+  interface Storage {
+    markdown: { getMarkdown(): string };
+  }
+}
 
 type Props = {
   path: string;
@@ -52,7 +61,10 @@ export function MarkdownRichEditor({ path, value, onChange, readOnly }: Props) {
   const editor = useEditor({
     editable: !readOnly,
     extensions: [
-      StarterKit,
+      // Tiptap 3's StarterKit bundles Link and Underline; keep Link configured
+      // below (a second one would be a duplicate extension) and leave Underline
+      // out so markdown round-trips exactly as before.
+      StarterKit.configure({ link: false, underline: false }),
       // openOnClick: false — the extension's own click-to-open plugin always
       // sends the raw href to window.open(), which would hand a relative
       // path like "../db-schema.md" to Electron's setWindowOpenHandler /
@@ -107,7 +119,7 @@ export function MarkdownRichEditor({ path, value, onChange, readOnly }: Props) {
   // writer while focused is this editor's own onUpdate.
   useEffect(() => {
     if (!editor || editor.isFocused) return;
-    if (editor.storage.markdown.getMarkdown() !== value) editor.commands.setContent(value, false);
+    if (editor.storage.markdown.getMarkdown() !== value) editor.commands.setContent(value, { emitUpdate: false });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [editor, path, value]);
 
