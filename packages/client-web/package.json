@@ -24,7 +24,7 @@
   "devDependencies": {
     "@types/react": "^19.1.2",
     "react": "^19.3.1",
-    "typescript": "^5.8.3",
+    "typescript": "^7.0.2",
     "vitest": "^4.1.12"
   },
   "files": [
