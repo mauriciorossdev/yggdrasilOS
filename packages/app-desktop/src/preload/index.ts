@@ -101,6 +101,8 @@ const api = {
   projectColor: readArg("--ygg-project-color") || null,
   /** True only for the "Default Workspace" window — the hub with a Projects section. Other project windows are scoped to just that project. */
   isDefaultProject: readArg("--ygg-is-default") === "1",
+  /** The "Default Workspace" project's id (empty string = unknown) — lets any window's project list know which entry can't be removed/purged. */
+  defaultProjectId: readArg("--ygg-default-project-id") || null,
   theme: {
     /** The user's theme as of this window's creation (main passes it as an argument so the first paint is already themed). */
     initial: readThemeArg(),
@@ -150,6 +152,16 @@ const api = {
       ipcRenderer.invoke("projects:rename", id, name),
     setColor: (id: string, color: string | null): Promise<ProjectRecord | undefined> =>
       ipcRenderer.invoke("projects:setColor", id, color),
+    /** Opens the project's folder in the OS file explorer (Explorer/Finder). */
+    reveal: (id: string): Promise<OpenIdeResult> => ipcRenderer.invoke("projects:reveal", id),
+    /** Same `opened: false` fallback semantics as ide.openProject, but for any listed project. */
+    openInIde: (id: string): Promise<OpenIdeResult> => ipcRenderer.invoke("projects:openInIde", id),
+    /** Duplicates the project folder to a user-picked location and opens the copy. null = dialog cancelled. */
+    clone: (id: string): Promise<ProjectRecord | null> => ipcRenderer.invoke("projects:clone", id),
+    /** Removes from the list only; the folder stays on disk. */
+    remove: (id: string): Promise<boolean> => ipcRenderer.invoke("projects:remove", id),
+    /** Removes from the list AND deletes the folder from disk. */
+    purge: (id: string): Promise<boolean> => ipcRenderer.invoke("projects:purge", id),
     /** Fires for every project in every window (main/index.ts broadcasts to all
      * BrowserWindows) — the Default Workspace sidebar list and each project's
      * own TitleBar both need this live, not just the window that made the change. */

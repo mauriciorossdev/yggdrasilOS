@@ -68,6 +68,7 @@ declare global {
       projectName: string | null;
       projectColor: string | null;
       isDefaultProject: boolean;
+      defaultProjectId: string | null;
       platform: NodeJS.Platform;
       windowsBuildNumber: number | undefined;
       phoneLink: {
@@ -100,6 +101,11 @@ declare global {
         openHome: () => Promise<boolean>;
         rename: (id: string, name: string) => Promise<ProjectRecord | undefined>;
         setColor: (id: string, color: string | null) => Promise<ProjectRecord | undefined>;
+        reveal: (id: string) => Promise<OpenIdeResult>;
+        openInIde: (id: string) => Promise<OpenIdeResult>;
+        clone: (id: string) => Promise<ProjectRecord | null>;
+        remove: (id: string) => Promise<boolean>;
+        purge: (id: string) => Promise<boolean>;
         onColorChange: (handler: (id: string, color: string | null) => void) => () => void;
       };
       terminals: {

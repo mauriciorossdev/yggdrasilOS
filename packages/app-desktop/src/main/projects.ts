@@ -58,6 +58,15 @@ export async function setProjectColor(id: string, color: string | null): Promise
   return project;
 }
 
+/** Drops a project from the registry only — never touches its folder on disk. */
+export async function removeProject(id: string): Promise<boolean> {
+  const projects = await readRegistry();
+  const next = projects.filter((p) => p.id !== id);
+  if (next.length === projects.length) return false;
+  await writeRegistry(next);
+  return true;
+}
+
 /** Bumps lastOpenedAt for a project opened from the project list, so "most recently opened" ordering is real. */
 export async function touchProject(id: string): Promise<void> {
   const projects = await readRegistry();
