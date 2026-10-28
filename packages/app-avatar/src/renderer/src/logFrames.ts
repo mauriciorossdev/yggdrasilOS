@@ -31,7 +31,7 @@ export function installFrameLogging(): void {
       });
     }
 
-    send(data: string | ArrayBufferLike | Blob | ArrayBufferView): void {
+    send(data: Parameters<WebSocket["send"]>[0]): void {
       if (typeof data === "string") record("out", data);
       super.send(data);
     }
