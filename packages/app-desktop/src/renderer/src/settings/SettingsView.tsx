@@ -15,6 +15,7 @@ import { ProvidersSection, buildProvidersPatch } from "./sections/ProvidersSecti
 import { HarnessSection } from "./sections/HarnessSection.js";
 import { ChannelsSection } from "./sections/ChannelsSection.js";
 import { McpSection, buildMcpServersPatch } from "./sections/McpSection.js";
+import { OnboardingSection } from "./sections/OnboardingSection.js";
 import { WhisperSection } from "./sections/WhisperSection.js";
 import { PairedDevicesSection } from "./sections/PairedDevicesSection.js";
 import { PhoneLinkSection } from "./sections/PhoneLinkSection.js";
@@ -30,6 +31,7 @@ import { WorkspaceSection } from "./sections/WorkspaceSection.js";
 import type { IdeSettings, SttSettings, SyncSettings, WhisperSettings } from "../types.js";
 
 type Section =
+  | "onboarding"
   | "general"
   | "appearance"
   | "workspace"
@@ -63,6 +65,7 @@ const SECTIONS: Array<{ id: Section; label: string }> = [
   { id: "phone", label: "Teléfono" },
   { id: "connectors", label: "Connectors" },
   { id: "ide", label: "IDE" },
+  { id: "onboarding", label: "Setup" },
   { id: "skills", label: "Skills" },
   { id: "sync", label: "Compartir" },
   { id: "automation", label: "Automation" },
@@ -127,6 +130,33 @@ export function SettingsView({ onClose, initialSection }: Props) {
     })();
   }, [call]);
 
+  // Servers connect in the background, so keep refreshing while any is still
+  // coming up instead of showing a stale "connecting".
+  const anyConnecting = mcpStatus.some((s) => s.state === "connecting");
+  useEffect(() => {
+    if (!anyConnecting) return;
+    const timer = setInterval(() => {
+      call<{ servers: McpServerStatus[] }>("mcp.status")
+        .then((m) => setMcpStatus(m.servers ?? []))
+        .catch(() => undefined);
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [anyConnecting, call]);
+
+  const mcpAction = async (method: "mcp.reconnect" | "mcp.disconnect", serverId: string) => {
+    setError(null);
+    // Mark it connecting right away; the reconnect call itself only returns once it settles.
+    if (method === "mcp.reconnect") {
+      setMcpStatus((cur) => cur.map((s) => (s.id === serverId ? { ...s, state: "connecting", connected: false } : s)));
+    }
+    try {
+      const m = await call<{ servers: McpServerStatus[] }>(method, { serverId });
+      setMcpStatus(m.servers ?? []);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   if (!config) {
     return (
       <div className="modal-overlay" onClick={onClose}>
@@ -158,6 +188,8 @@ export function SettingsView({ onClose, initialSection }: Props) {
       setMcpSecretEdits({});
       setSavedRequiresRestart(result.requiresRestart);
       setSaved(true);
+      // Apply MCP changes live (connect new/changed, drop removed) — no restart.
+      await call("mcp.reload").catch(() => undefined);
       const [p, m] = await Promise.all([
         call<{ providers: ProviderInfo[] }>("providers.list"),
         call<{ servers: McpServerStatus[] }>("mcp.status").catch(() => ({ servers: [] })),
@@ -217,11 +249,13 @@ export function SettingsView({ onClose, initialSection }: Props) {
                 setApiKeyEdits={setApiKeyEdits}
               />
             )}
+            {section === "onboarding" && <OnboardingSection />}
             {section === "mcp" && (
               <McpSection
                 config={config}
                 setConfig={setConfig}
                 mcpStatus={mcpStatus}
+                onMcpAction={mcpAction}
                 mcpSecretEdits={mcpSecretEdits}
                 setMcpSecretEdits={setMcpSecretEdits}
               />

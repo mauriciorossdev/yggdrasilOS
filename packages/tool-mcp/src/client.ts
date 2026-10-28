@@ -48,15 +48,24 @@ export async function connectMcpServer(
   config: McpServerConfig,
 ): Promise<McpConnection> {
   const client = new Client({ name: "yggdrasil", version: "0.1.0" });
-  await Promise.race([
-    client.connect(createTransport(config)),
-    new Promise<never>((_, reject) =>
-      setTimeout(
-        () => reject(new Error(`Timed out connecting to MCP server "${serverId}" after ${CONNECT_TIMEOUT_MS}ms`)),
-        CONNECT_TIMEOUT_MS,
-      ),
-    ),
-  ]);
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  try {
+    await Promise.race([
+      client.connect(createTransport(config)),
+      new Promise<never>((_, reject) => {
+        timer = setTimeout(
+          () => reject(new Error(`Timed out connecting to MCP server "${serverId}" after ${CONNECT_TIMEOUT_MS}ms`)),
+          CONNECT_TIMEOUT_MS,
+        );
+      }),
+    ]);
+  } catch (err) {
+    // Don't leave a half-started subprocess (e.g. a hung `uvx`) running.
+    await client.close().catch(() => {});
+    throw err;
+  } finally {
+    clearTimeout(timer);
+  }
   return { serverId, client, close: () => client.close() };
 }
 

@@ -23,8 +23,20 @@ export type ProviderConfig = {
 };
 
 export type McpServerConfig =
-  | { transport: "stdio"; command: string; args?: string[]; env?: Record<string, string> }
-  | { transport: "http"; url: string; headers?: Record<string, string> };
+  | {
+      transport: "stdio";
+      command: string;
+      args?: string[];
+      env?: Record<string, string>;
+      /** Connect when the gateway boots (default true). When false the server only connects on demand via mcp.reconnect. */
+      autoStart?: boolean;
+    }
+  | {
+      transport: "http";
+      url: string;
+      headers?: Record<string, string>;
+      autoStart?: boolean;
+    };
 
 export type SessionsConfig = {
   dir?: string;

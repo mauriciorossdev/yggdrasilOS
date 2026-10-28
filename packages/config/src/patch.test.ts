@@ -46,6 +46,19 @@ describe("validateConfigPatch", () => {
     expect(Object.keys(patch.mcpServers?.fs ?? {})).not.toContain("env");
   });
 
+  it("keeps an explicit autoStart boolean and ignores other values", () => {
+    const { patch } = validateConfigPatch({
+      mcpServers: {
+        off: { transport: "stdio", command: "uvx", autoStart: false },
+        on: { transport: "http", url: "https://mcp.example.com", autoStart: true },
+        junk: { transport: "stdio", command: "x", autoStart: "no" },
+      },
+    });
+    expect(patch.mcpServers?.off).toMatchObject({ autoStart: false });
+    expect(patch.mcpServers?.on).toMatchObject({ autoStart: true });
+    expect(Object.keys(patch.mcpServers?.junk ?? {})).not.toContain("autoStart");
+  });
+
   it("accepts http mcpServers with headers", () => {
     const { patch } = validateConfigPatch({
       mcpServers: { remote: { transport: "http", url: "https://mcp.example.com", headers: { Authorization: "Bearer x" } } },

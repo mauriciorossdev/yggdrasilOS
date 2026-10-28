@@ -7,16 +7,22 @@ import type {
   AgentTeam,
   AutomationSettings,
   BrowserTabBounds,
+  BrowserDownload,
+  BrowserTabState,
   PickedElement,
   CustomFlowTemplate,
   CustomRole,
   DesktopPermissions,
+  DetectedCli,
   DetectedIde,
   SkillInfo,
   DocumentTabsLayout,
   CreatePaneSpec,
   IdeCatalogEntry,
   IdeSettings,
+  OllamaStatus,
+  OnboardingSettings,
+  OnboardingState,
   ImportFilesResult,
   MyShareSummary,
   OpenIdeResult,
@@ -62,6 +68,7 @@ declare global {
       projectName: string | null;
       projectColor: string | null;
       isDefaultProject: boolean;
+      defaultProjectId: string | null;
       platform: NodeJS.Platform;
       windowsBuildNumber: number | undefined;
       phoneLink: {
@@ -94,6 +101,11 @@ declare global {
         openHome: () => Promise<boolean>;
         rename: (id: string, name: string) => Promise<ProjectRecord | undefined>;
         setColor: (id: string, color: string | null) => Promise<ProjectRecord | undefined>;
+        reveal: (id: string) => Promise<OpenIdeResult>;
+        openInIde: (id: string) => Promise<OpenIdeResult>;
+        clone: (id: string) => Promise<ProjectRecord | null>;
+        remove: (id: string) => Promise<boolean>;
+        purge: (id: string) => Promise<boolean>;
         onColorChange: (handler: (id: string, color: string | null) => void) => () => void;
       };
       terminals: {
@@ -159,6 +171,22 @@ declare global {
       };
       browserTab: {
         navigate: (url: string) => Promise<void>;
+        go: (input: string) => Promise<void>;
+        newTab: (input?: string) => Promise<string | null>;
+        closeTab: (id: string) => Promise<void>;
+        activateTab: (id: string) => Promise<void>;
+        toggleDevTools: () => Promise<void>;
+        zoom: (direction: "in" | "out" | "reset") => Promise<void>;
+        showDownload: (path: string) => Promise<void>;
+        scanPorts: () => Promise<number[]>;
+        onFocusAddress: (handler: () => void) => () => void;
+        onDownload: (handler: (download: BrowserDownload) => void) => () => void;
+        back: () => Promise<void>;
+        forward: () => Promise<void>;
+        reload: () => Promise<void>;
+        stop: () => Promise<void>;
+        getState: () => Promise<BrowserTabState | null>;
+        onState: (handler: (state: BrowserTabState) => void) => () => void;
         setBounds: (bounds: BrowserTabBounds) => Promise<void>;
         show: () => Promise<void>;
         hide: () => Promise<void>;
@@ -256,6 +284,13 @@ declare global {
         listCustom: () => Promise<CustomFlowTemplate[]>;
         saveCustom: (template: { label: string; summary?: string; prompt: string }) => Promise<CustomFlowTemplate[]>;
         deleteCustom: (id: string) => Promise<CustomFlowTemplate[]>;
+      };
+      onboarding: {
+        getState: () => Promise<OnboardingState>;
+        save: (settings: OnboardingSettings) => Promise<OnboardingSettings>;
+        detectClis: () => Promise<DetectedCli[]>;
+        detectOllama: () => Promise<OllamaStatus>;
+        openExternal: (url: string) => Promise<void>;
       };
       ide: {
         listCatalog: () => Promise<IdeCatalogEntry[]>;

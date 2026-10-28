@@ -1,5 +1,5 @@
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
+import { cp, mkdir, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { homedir, tmpdir } from "node:os";
@@ -10,6 +10,7 @@ import {
   getProject,
   listProjects,
   registryPath,
+  removeProject,
   renameProject,
   setProjectColor,
   touchProject,
@@ -119,6 +120,7 @@ import {
 } from "./syncEngine.js";
 import { notesAbsoluteDir, watchNotesDir } from "./notesWatcher.js";
 import { createBrowserTabView, type BrowserTabBounds, type BrowserTabHandle } from "./browserTabView.js";
+import { scanLocalPorts } from "./localPorts.js";
 import {
   deletePlugin,
   ensurePluginDirs,
@@ -140,6 +142,16 @@ import { pluginStorageDelete, pluginStorageGet, pluginStorageKeys, pluginStorage
 import { readPluginTabs, writePluginTabs, type PluginTabsLayout } from "./pluginTabs.js";
 import { PLUGIN_API_DOCS } from "./pluginApiDocs.js";
 import { installCrashLogging, logCaughtError, logPath } from "./crashLogging.js";
+import { detectClis, CLI_CATALOG } from "./cliDetect.js";
+import { detectOllama } from "./ollamaDetect.js";
+import {
+  hasExistingConfig,
+  loadOnboardingSettings,
+  saveOnboardingSettings,
+  shouldAutoOpenOnboarding,
+  type OnboardingSettings,
+} from "./onboardingSettings.js";
+import { createSplash, type Splash } from "./splash.js";
 import { resolveShellPath } from "./resolveShellPath.js";
 import { installAboutMenu } from "./aboutPanel.js";
 import { installAutoUpdater } from "./autoUpdate.js";
@@ -407,6 +419,19 @@ function statuslineBridgePath(): string {
   return join(__dirname, "statuslineBridge.js");
 }
 
+// Startup splash: created first thing in whenReady, dropped as soon as the
+// first project window shows (or startup fails, so it can't cover the error).
+let splash: Splash | null = null;
+
+function setSplashStatus(text: string): void {
+  splash?.setStatus(text);
+}
+
+function closeSplash(): void {
+  splash?.close();
+  splash = null;
+}
+
 function createProjectBrowserWindow(project: ProjectRecord, gatewayUrl: string, gatewayLanUrl: string): BrowserWindow {
   const additionalArguments = [
     `--ygg-project-id=${project.id}`,
@@ -415,6 +440,7 @@ function createProjectBrowserWindow(project: ProjectRecord, gatewayUrl: string, 
     `--ygg-gateway-url=${gatewayUrl}`,
     `--ygg-gateway-lan-url=${gatewayLanUrl}`,
     `--ygg-theme=${JSON.stringify(currentTheme)}`,
+    `--ygg-default-project-id=${defaultProjectId ?? ""}`,
   ];
   if (project.id === defaultProjectId) additionalArguments.push("--ygg-is-default=1");
 
@@ -438,7 +464,10 @@ function createProjectBrowserWindow(project: ProjectRecord, gatewayUrl: string, 
       plugins: true,
     },
   });
-  win.once("ready-to-show", () => win.show());
+  win.once("ready-to-show", () => {
+    win.show();
+    closeSplash();
+  });
   // The renderer's static <title> would otherwise clobber our project-scoped
   // title as soon as the page loads. (Frameless, so nothing shows this
   // title visually — it still matters for the OS taskbar/Alt-Tab/Dock.)
@@ -498,12 +527,28 @@ function createProjectBrowserWindow(project: ProjectRecord, gatewayUrl: string, 
   return win;
 }
 
+/** Closes a project's window (if open) and waits for its "closed" cleanup, so watchers/terminals/sqlite handles are released before the folder is touched. */
+async function closeProjectWindow(projectId: string): Promise<void> {
+  const entry = projectWindows.get(projectId);
+  if (!entry || entry.window.isDestroyed()) return;
+  const closed = new Promise<void>((res) => entry.window.once("closed", () => res()));
+  entry.window.close();
+  await closed;
+}
+
 /** Lazily creates this project's Browser-tab WebContentsView on first use (navigate, or switching to the tab) — undefined only if the project's window is already gone. */
 function resolveBrowserTab(projectId: string): BrowserTabHandle | undefined {
   const entry = projectWindows.get(projectId);
   if (!entry || entry.window.isDestroyed()) return undefined;
   if (!entry.browserTab) entry.browserTab = createBrowserTabView(entry.window);
   return entry.browserTab;
+}
+
+/** Like resolveBrowserTab, for operations that can't proceed without a window. */
+function requireBrowserTab(projectId: string): BrowserTabHandle {
+  const tab = resolveBrowserTab(projectId);
+  if (!tab) throw new Error("project window is not open");
+  return tab;
 }
 
 const execFileAsync = promisify(execFile);
@@ -552,6 +597,7 @@ async function openProject(project: ProjectRecord): Promise<void> {
   try {
     await openProjectUnsafe(project);
   } catch (err) {
+    closeSplash();
     console.error(`[openProject] failed for ${project.path}:`, err);
     dialog.showErrorBox("Could not open project", err instanceof Error ? (err.stack ?? err.message) : String(err));
     throw err;
@@ -580,6 +626,10 @@ async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
     {
       navigate: (url) => resolveBrowserTab(project.id)?.navigate(url) ?? Promise.resolve(),
       startPick: (timeoutMs) => resolveBrowserTab(project.id)?.startPick(timeoutMs) ?? Promise.resolve(null),
+      readPage: (maxChars) => requireBrowserTab(project.id).readPage(maxChars),
+      screenshot: () => requireBrowserTab(project.id).screenshot(),
+      click: (selector) => requireBrowserTab(project.id).click(selector),
+      type: (selector, text, submit) => requireBrowserTab(project.id).type(selector, text, submit),
     },
     {
       list: () => scanPlugins(project.id, project.path),
@@ -629,6 +679,7 @@ async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
         requireWorkspaceBroker().writePane(project.id, target, pane, text, fromPaneTitle),
     },
   );
+  setSplashStatus("Starting gateway…");
   const gateway = await ensureGateway(
     project.path,
     pluginSearchDir(),
@@ -702,6 +753,46 @@ function registerIpc(): void {
   ipcMain.handle("browserTab:navigate", async (_event, projectId: string, url: string) => {
     await resolveBrowserTab(projectId)?.navigate(url);
   });
+  // Address-bar navigation: URL-or-search, errors land in browserTab:state
+  // rather than rejecting here (agent-driven browser_open keeps the strict
+  // `navigate` above).
+  ipcMain.handle("browserTab:go", async (_event, projectId: string, input: string) => {
+    await resolveBrowserTab(projectId)?.go(input);
+  });
+  ipcMain.handle("browserTab:newTab", async (_event, projectId: string, input?: string) => {
+    return (await resolveBrowserTab(projectId)?.newTab(input)) ?? null;
+  });
+  ipcMain.handle("browserTab:closeTab", (_event, projectId: string, id: string) => {
+    projectWindows.get(projectId)?.browserTab?.closeTab(id);
+  });
+  ipcMain.handle("browserTab:activateTab", (_event, projectId: string, id: string) => {
+    projectWindows.get(projectId)?.browserTab?.activateTab(id);
+  });
+  ipcMain.handle("browserTab:toggleDevTools", (_event, projectId: string) => {
+    projectWindows.get(projectId)?.browserTab?.toggleDevTools();
+  });
+  ipcMain.handle("browserTab:zoom", (_event, projectId: string, direction: "in" | "out" | "reset") => {
+    projectWindows.get(projectId)?.browserTab?.zoom(direction);
+  });
+  ipcMain.handle("browserTab:showDownload", (_event, projectId: string, path: string) => {
+    projectWindows.get(projectId)?.browserTab?.showDownload(path);
+  });
+  // Which common dev-server ports are listening on this machine (the empty
+  // Browser tab offers them as one-click links). Not per project.
+  ipcMain.handle("browserTab:scanPorts", () => scanLocalPorts());
+  ipcMain.handle("browserTab:back", (_event, projectId: string) => {
+    projectWindows.get(projectId)?.browserTab?.back();
+  });
+  ipcMain.handle("browserTab:forward", (_event, projectId: string) => {
+    projectWindows.get(projectId)?.browserTab?.forward();
+  });
+  ipcMain.handle("browserTab:reload", (_event, projectId: string) => {
+    projectWindows.get(projectId)?.browserTab?.reload();
+  });
+  ipcMain.handle("browserTab:stop", (_event, projectId: string) => {
+    projectWindows.get(projectId)?.browserTab?.stop();
+  });
+  ipcMain.handle("browserTab:getState", (_event, projectId: string) => projectWindows.get(projectId)?.browserTab?.getState() ?? null);
   ipcMain.handle("browserTab:setBounds", (_event, projectId: string, bounds: BrowserTabBounds) => {
     resolveBrowserTab(projectId)?.setBounds(bounds);
   });
@@ -768,6 +859,65 @@ function registerIpc(): void {
     const entry = projectWindows.get(id);
     if (project && entry) entry.window.setTitle(`Yggdrasil - ${project.name} - ${entry.gateway.lanUrl}`);
     return project;
+  });
+
+  ipcMain.handle("projects:reveal", async (_event, id: string) => {
+    const project = await getProject(id);
+    if (!project) return { opened: false, error: "Project not found." };
+    const err = await shell.openPath(project.path);
+    return err ? { opened: false, error: err } : { opened: true };
+  });
+
+  ipcMain.handle("projects:openInIde", async (_event, id: string) => {
+    const project = await getProject(id);
+    if (!project) return { opened: false, error: "Project not found." };
+    const settings = await loadIdeSettings(app.getPath("userData"));
+    return openProjectInIde(project.path, settings);
+  });
+
+  // "Clone" = duplicate the project folder somewhere else and register the
+  // copy as its own project (not `git clone`).
+  ipcMain.handle("projects:clone", async (_event, id: string) => {
+    const project = await getProject(id);
+    if (!project) throw new Error("Project not found.");
+    const result = await dialog.showSaveDialog({
+      title: `Clone "${project.name}" to…`,
+      buttonLabel: "Clone Project",
+      defaultPath: join(dirname(project.path), `${basename(project.path)}-copy`),
+    });
+    if (result.canceled || !result.filePath) return null;
+    const dest = resolve(result.filePath);
+    const src = resolve(project.path);
+    if (dest === src || !relative(src, dest).startsWith("..")) {
+      throw new Error("Destination can't be the project folder or inside it.");
+    }
+    if (await stat(dest).then(() => true, () => false)) throw new Error("Destination already exists.");
+    await cp(src, dest, { recursive: true });
+    const copy = await upsertProject({ path: dest, name: basename(dest) });
+    await openProject(copy);
+    return copy;
+  });
+
+  // Removes from the list only — the folder stays on disk.
+  ipcMain.handle("projects:remove", async (_event, id: string) => {
+    if (id === defaultProjectId) throw new Error("The default workspace can't be removed.");
+    await closeProjectWindow(id);
+    return removeProject(id);
+  });
+
+  // Removes from the list AND deletes the project folder from disk.
+  ipcMain.handle("projects:purge", async (_event, id: string) => {
+    if (id === defaultProjectId) throw new Error("The default workspace can't be purged.");
+    const project = await getProject(id);
+    if (!project) return false;
+    const target = resolve(project.path);
+    // A registry entry pointing at a drive root / the home dir / app data must never reach rm().
+    if (parse(target).root === target || target === resolve(homedir()) || target === resolve(app.getPath("userData"))) {
+      throw new Error(`Refusing to delete "${target}".`);
+    }
+    await closeProjectWindow(id);
+    await rm(target, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    return removeProject(id);
   });
 
   ipcMain.handle("projects:setColor", async (_event, id: string, color: string | null) => {
@@ -1231,6 +1381,22 @@ function registerIpc(): void {
     finish({ allow, trust: allow && answer?.trust === true });
   });
 
+  ipcMain.handle("onboarding:getState", async () => {
+    const userData = app.getPath("userData");
+    const settings = await loadOnboardingSettings(userData);
+    return { settings, autoOpen: shouldAutoOpenOnboarding(settings, await hasExistingConfig(userData)) };
+  });
+  ipcMain.handle("onboarding:save", async (_event, settings: OnboardingSettings) =>
+    saveOnboardingSettings(app.getPath("userData"), settings),
+  );
+  ipcMain.handle("onboarding:detectClis", () => detectClis());
+  ipcMain.handle("onboarding:detectOllama", () => detectOllama());
+  // Only the install links the wizard itself shows — not an open-any-URL channel.
+  ipcMain.handle("onboarding:openExternal", async (_event, url: string) => {
+    const allowed = new Set<string | undefined>([...CLI_CATALOG.map((c) => c.installUrl), "https://ollama.com/download"]);
+    if (allowed.has(url)) await shell.openExternal(url);
+  });
+
   ipcMain.handle("ide:getSettings", async (): Promise<IdeSettings> => loadIdeSettings(app.getPath("userData")));
 
   ipcMain.handle("ide:saveSettings", async (_event, settings: IdeSettings) => {
@@ -1392,6 +1558,7 @@ function registerIpc(): void {
   });
 
 app.whenReady().then(async () => {
+  splash = createSplash();
   // Must land before any project opens — Agent Flow/terminal spawns
   // (terminals.ts) exec CLIs directly with no shell in between, so they only
   // see whatever PATH this process has at spawn time.
@@ -1405,6 +1572,7 @@ app.whenReady().then(async () => {
   );
   registerPluginProtocol((id) => getProject(id));
   registerFileProtocol((id) => getProject(id));
+  setSplashStatus("Loading plugins…");
   await ensurePluginDirs();
   // Never closed — lives for the app's whole lifetime, same as the process
   // itself; nothing meaningful to clean up on quit.
@@ -1438,6 +1606,7 @@ app.whenReady().then(async () => {
   startPhoneLink();
   const defaultProject = await upsertProject({ path: defaultWorkspaceRoot(), name: "Default Workspace" });
   defaultProjectId = defaultProject.id;
+  setSplashStatus("Opening project…");
   try {
     await openProject(defaultProject);
   } catch (error) {
@@ -1446,6 +1615,7 @@ app.whenReady().then(async () => {
     // taskbar/dock presence — indistinguishable from a silent crash, with
     // the actual reason visible only in main-crashes.log (see
     // crashLogging.ts) or a terminal the user may not have open.
+    closeSplash();
     console.error("[main] failed to open default project", error);
     logCaughtError("openProject(default)", error);
     dialog.showErrorBox(

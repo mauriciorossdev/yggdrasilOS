@@ -155,8 +155,8 @@ export type ConfigProvider = { baseUrl?: string; apiKey?: string; defaultModel?:
 // so this shape only ever carries the non-secret fields. Secrets are edited
 // write-only via McpSection's mcpSecretEdits, mirroring apiKeyEdits.
 export type ConfigMcpServer =
-  | { transport: "stdio"; command?: string; args?: string[] }
-  | { transport: "http"; url?: string };
+  | { transport: "stdio"; command?: string; args?: string[]; autoStart?: boolean }
+  | { transport: "http"; url?: string; autoStart?: boolean };
 
 export type ConfigShape = {
   agents?: ConfigAgent[];
@@ -170,6 +170,8 @@ export type ConfigShape = {
 
 export type McpServerStatus = {
   id: string;
+  state?: "connecting" | "connected" | "error" | "stopped";
+  autoStart?: boolean;
   connected: boolean;
   toolCount: number;
   tools: string[];
@@ -295,6 +297,34 @@ export type SkillInfo = {
   /** Absolute path to the SKILL.md file. */
   path: string;
 };
+
+export type CliId = "claude" | "antigravity" | "omp" | "copilot";
+
+export type DetectedCli = {
+  id: CliId;
+  label: string;
+  command: string;
+  installUrl?: string;
+  installed: boolean;
+  version?: string;
+  path?: string;
+};
+
+export type OllamaStatus = { installed: boolean; running: boolean; models: string[] };
+
+export type OnboardingUsage = "cli" | "api" | "local";
+
+export type OnboardingSettings = {
+  completedAt: string | null;
+  version: number;
+  language: string | null;
+  /** null = the user never chose, so no CLI is filtered out. */
+  enabledHarnesses: CliId[] | null;
+  usage: OnboardingUsage[];
+  showAllClis: boolean;
+};
+
+export type OnboardingState = { settings: OnboardingSettings; autoOpen: boolean };
 
 export type DetectedIde = {
   id: string;
@@ -603,6 +633,24 @@ export type AgentFlowCommunicationPayload = { from: string; to: string };
 // real screen rect here instead of any CSS being able to size the actual
 // content.
 export type BrowserTabBounds = { x: number; y: number; width: number; height: number };
+
+// Mirrors main/browserTabView.ts's BrowserTabState — pushed on browserTab:state:
+// the active page's navigation state plus the tab strip.
+export type BrowserTabSummary = { id: string; title: string; url: string; loading: boolean };
+// Mirrors main/browserTabView.ts's BrowserDownload — pushed on browserTab:download.
+export type BrowserDownload = { name: string; path: string; state: "completed" | "cancelled" | "interrupted" };
+export type BrowserTabState = {
+  url: string;
+  title: string;
+  loading: boolean;
+  canGoBack: boolean;
+  canGoForward: boolean;
+  /** Page zoom in percent (100 = default). */
+  zoom: number;
+  error: string | null;
+  tabs: BrowserTabSummary[];
+  activeId: string | null;
+};
 
 // Mirrors main/browserTabView.ts's own PickedElement — the shape a
 // browserTab:startPick call resolves with (browserTabPickerPreload.ts is the

@@ -12,8 +12,9 @@
     "prepublishOnly": "pnpm run build"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.32.1",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "@yggdrasil/config": "workspace:*",
+    "@yggdrasil/kernel": "workspace:*",
     "@yggdrasil/sdk": "workspace:*",
     "@yggdrasil/tools-sdk": "workspace:*"
   },

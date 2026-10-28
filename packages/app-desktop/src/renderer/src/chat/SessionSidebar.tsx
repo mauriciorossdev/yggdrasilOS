@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Cog6ToothIcon, FolderOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { ArrowsPointingOutIcon, Cog6ToothIcon, FolderOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import type { IndexProgress } from "../types.js";
 import type { AgentInfo, PluginRecord, ProjectRecord, SessionInfo } from "../types.js";
@@ -10,6 +10,7 @@ import { RemoteFilesPanel } from "../files/RemoteFilesPanel.js";
 import { ScriptsSection } from "../files/ScriptsSection.js";
 import { PluginsSection } from "../plugins/PluginsSection.js";
 import { MainNav } from "./MainNav.js";
+import { setActiveTab } from "../ui/mainTabsStore.js";
 
 import { useProjects } from "../projects/useProjects.js";
 import { CollapsibleSection } from "../components/CollapsibleSection.js";
@@ -62,7 +63,8 @@ export function SessionSidebar({
   const [isIndexing, setIsIndexing] = useState(false);
   const [indexError, setIndexError] = useState<string | null>(null);
   const [indexProgress, setIndexProgress] = useState<IndexProgress | null>(null);
-  const { projects, openExisting, createNew, open, rename } = useProjects();
+  const { projects, error: projectsError, openExisting, createNew, open, rename, reveal, openInIde, clone, remove, purge } =
+    useProjects();
   const { call, onEvent } = useGateway();
   const projectPath = projects.find(
     (p) => p.id === window.yggdrasil.projectId,
@@ -149,6 +151,7 @@ export function SessionSidebar({
               {projects.length === 0 && (
                 <li className="muted">No projects yet</li>
               )}
+              {projectsError && <li className="error">{projectsError}</li>}
             </ul>
           </CollapsibleSection>
         )}
@@ -207,7 +210,20 @@ export function SessionSidebar({
           </ul>
         </CollapsibleSection>
 
-        <CollapsibleSection title="Files" className="files-section">
+        <CollapsibleSection
+          title="Files"
+          className="files-section"
+          actions={
+            <button
+              type="button"
+              className="icon-btn"
+              title="Open file explorer"
+              onClick={() => setActiveTab("files")}
+            >
+              <ArrowsPointingOutIcon className="hero-icon" />
+            </button>
+          }
+        >
           <div className="files-tab-bar">
             <button
               type="button"
@@ -316,10 +332,21 @@ export function SessionSidebar({
       {projectMenu && (
         <ProjectContextMenu
           project={projectMenu.project}
+          locked={projectMenu.project.id === window.yggdrasil.projectId}
           x={projectMenu.x}
           y={projectMenu.y}
           onClose={() => setProjectMenu(null)}
+          onOpen={(id) => void open(id)}
+          onReveal={(id) => void reveal(id)}
+          onOpenInIde={(id) =>
+            void openInIde(id).then((opened) => {
+              if (!opened) onOpenSettings();
+            })
+          }
+          onClone={(id) => void clone(id)}
           onRename={(id, name) => void rename(id, name)}
+          onRemove={(id) => void remove(id)}
+          onPurge={(id) => void purge(id)}
         />
       )}
     </aside>

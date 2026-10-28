@@ -14,7 +14,8 @@ export type BuiltinMainTab =
   | "documents"
   | "browser"
   | "studio"
-  | "repository";
+  | "repository"
+  | "files";
 /** `plugin:<scope>:<id>` (PluginRecord.key) for a complemento opened as a tab, see ChatView.tsx's openPluginTabs. */
 export type MainTab = BuiltinMainTab | `plugin:${string}`;
 
@@ -31,6 +32,7 @@ export const MAIN_TAB_LABELS: Record<BuiltinMainTab, string> = {
   browser: "Browser",
   studio: "Estudio",
   repository: "Repositorio",
+  files: "Files",
 };
 
 /**

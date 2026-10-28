@@ -7,13 +7,19 @@ import type {
   AgentTeam,
   AutomationSettings,
   BrowserTabBounds,
+  BrowserDownload,
+  BrowserTabState,
   CustomFlowTemplate,
   CustomRole,
   DesktopPermissions,
+  DetectedCli,
   DetectedIde,
   DocumentTabsLayout,
   IdeCatalogEntry,
   IdeSettings,
+  OllamaStatus,
+  OnboardingSettings,
+  OnboardingState,
   MyShareSummary,
   PickedElement,
   PullResult,
@@ -95,6 +101,8 @@ const api = {
   projectColor: readArg("--ygg-project-color") || null,
   /** True only for the "Default Workspace" window — the hub with a Projects section. Other project windows are scoped to just that project. */
   isDefaultProject: readArg("--ygg-is-default") === "1",
+  /** The "Default Workspace" project's id (empty string = unknown) — lets any window's project list know which entry can't be removed/purged. */
+  defaultProjectId: readArg("--ygg-default-project-id") || null,
   theme: {
     /** The user's theme as of this window's creation (main passes it as an argument so the first paint is already themed). */
     initial: readThemeArg(),
@@ -144,6 +152,16 @@ const api = {
       ipcRenderer.invoke("projects:rename", id, name),
     setColor: (id: string, color: string | null): Promise<ProjectRecord | undefined> =>
       ipcRenderer.invoke("projects:setColor", id, color),
+    /** Opens the project's folder in the OS file explorer (Explorer/Finder). */
+    reveal: (id: string): Promise<OpenIdeResult> => ipcRenderer.invoke("projects:reveal", id),
+    /** Same `opened: false` fallback semantics as ide.openProject, but for any listed project. */
+    openInIde: (id: string): Promise<OpenIdeResult> => ipcRenderer.invoke("projects:openInIde", id),
+    /** Duplicates the project folder to a user-picked location and opens the copy. null = dialog cancelled. */
+    clone: (id: string): Promise<ProjectRecord | null> => ipcRenderer.invoke("projects:clone", id),
+    /** Removes from the list only; the folder stays on disk. */
+    remove: (id: string): Promise<boolean> => ipcRenderer.invoke("projects:remove", id),
+    /** Removes from the list AND deletes the folder from disk. */
+    purge: (id: string): Promise<boolean> => ipcRenderer.invoke("projects:purge", id),
     /** Fires for every project in every window (main/index.ts broadcasts to all
      * BrowserWindows) — the Default Workspace sidebar list and each project's
      * own TitleBar both need this live, not just the window that made the change. */
@@ -284,6 +302,43 @@ const api = {
   },
   browserTab: {
     navigate: (url: string): Promise<void> => ipcRenderer.invoke("browserTab:navigate", readArg("--ygg-project-id"), url),
+    /** Address-bar navigation: a URL/host navigates, anything else becomes a web search. */
+    go: (input: string): Promise<void> => ipcRenderer.invoke("browserTab:go", readArg("--ygg-project-id"), input),
+    /** Opens a new browser tab (and navigates it when `input` is given). Resolves with its id. */
+    newTab: (input?: string): Promise<string | null> =>
+      ipcRenderer.invoke("browserTab:newTab", readArg("--ygg-project-id"), input),
+    closeTab: (id: string): Promise<void> => ipcRenderer.invoke("browserTab:closeTab", readArg("--ygg-project-id"), id),
+    activateTab: (id: string): Promise<void> =>
+      ipcRenderer.invoke("browserTab:activateTab", readArg("--ygg-project-id"), id),
+    toggleDevTools: (): Promise<void> => ipcRenderer.invoke("browserTab:toggleDevTools", readArg("--ygg-project-id")),
+    zoom: (direction: "in" | "out" | "reset"): Promise<void> =>
+      ipcRenderer.invoke("browserTab:zoom", readArg("--ygg-project-id"), direction),
+    showDownload: (path: string): Promise<void> =>
+      ipcRenderer.invoke("browserTab:showDownload", readArg("--ygg-project-id"), path),
+    /** Common dev-server ports currently listening on this machine. */
+    scanPorts: (): Promise<number[]> => ipcRenderer.invoke("browserTab:scanPorts"),
+    /** Ctrl+L / Ctrl+T: main wants the address bar focused. */
+    onFocusAddress: (handler: () => void): (() => void) => {
+      const listener = () => handler();
+      ipcRenderer.on("browserTab:focusAddress", listener);
+      return () => ipcRenderer.removeListener("browserTab:focusAddress", listener);
+    },
+    onDownload: (handler: (download: BrowserDownload) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, download: BrowserDownload) => handler(download);
+      ipcRenderer.on("browserTab:download", listener);
+      return () => ipcRenderer.removeListener("browserTab:download", listener);
+    },
+    back: (): Promise<void> => ipcRenderer.invoke("browserTab:back", readArg("--ygg-project-id")),
+    forward: (): Promise<void> => ipcRenderer.invoke("browserTab:forward", readArg("--ygg-project-id")),
+    reload: (): Promise<void> => ipcRenderer.invoke("browserTab:reload", readArg("--ygg-project-id")),
+    stop: (): Promise<void> => ipcRenderer.invoke("browserTab:stop", readArg("--ygg-project-id")),
+    getState: (): Promise<BrowserTabState | null> =>
+      ipcRenderer.invoke("browserTab:getState", readArg("--ygg-project-id")),
+    onState: (handler: (state: BrowserTabState) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, state: BrowserTabState) => handler(state);
+      ipcRenderer.on("browserTab:state", listener);
+      return () => ipcRenderer.removeListener("browserTab:state", listener);
+    },
     setBounds: (bounds: BrowserTabBounds): Promise<void> =>
       ipcRenderer.invoke("browserTab:setBounds", readArg("--ygg-project-id"), bounds),
     show: (): Promise<void> => ipcRenderer.invoke("browserTab:show", readArg("--ygg-project-id")),
@@ -455,6 +510,13 @@ const api = {
     saveCustom: (template: { label: string; summary?: string; prompt: string }): Promise<CustomFlowTemplate[]> =>
       ipcRenderer.invoke("flowTemplates:saveCustom", template),
     deleteCustom: (id: string): Promise<CustomFlowTemplate[]> => ipcRenderer.invoke("flowTemplates:deleteCustom", id),
+  },
+  onboarding: {
+    getState: (): Promise<OnboardingState> => ipcRenderer.invoke("onboarding:getState"),
+    save: (settings: OnboardingSettings): Promise<OnboardingSettings> => ipcRenderer.invoke("onboarding:save", settings),
+    detectClis: (): Promise<DetectedCli[]> => ipcRenderer.invoke("onboarding:detectClis"),
+    detectOllama: (): Promise<OllamaStatus> => ipcRenderer.invoke("onboarding:detectOllama"),
+    openExternal: (url: string): Promise<void> => ipcRenderer.invoke("onboarding:openExternal", url),
   },
   ide: {
     listCatalog: (): Promise<IdeCatalogEntry[]> => ipcRenderer.invoke("ide:listCatalog"),

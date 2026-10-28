@@ -69,5 +69,53 @@ export function useProjects() {
     [refresh],
   );
 
-  return { projects, error, refresh, openExisting, createNew, open, rename };
+  const reveal = useCallback(async (id: string) => {
+    const result = await window.yggdrasil.projects.reveal(id);
+    if (!result.opened && result.error) setError(result.error);
+  }, []);
+
+  /** Returns false when the caller should fall back to Settings → IDE (nothing configured, or the configured IDE vanished). */
+  const openInIde = useCallback(async (id: string) => {
+    const result = await window.yggdrasil.projects.openInIde(id);
+    if (!result.opened && result.error) window.alert(result.error);
+    return result.opened;
+  }, []);
+
+  const clone = useCallback(
+    async (id: string) => {
+      try {
+        await window.yggdrasil.projects.clone(id);
+        await refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [refresh],
+  );
+
+  const remove = useCallback(
+    async (id: string) => {
+      try {
+        await window.yggdrasil.projects.remove(id);
+        await refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [refresh],
+  );
+
+  const purge = useCallback(
+    async (id: string) => {
+      try {
+        await window.yggdrasil.projects.purge(id);
+        await refresh();
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+      }
+    },
+    [refresh],
+  );
+
+  return { projects, error, refresh, openExisting, createNew, open, rename, reveal, openInIde, clone, remove, purge };
 }
