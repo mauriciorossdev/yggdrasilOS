@@ -1,5 +1,5 @@
-import { basename, dirname, isAbsolute, join, relative, resolve } from "node:path";
-import { mkdir, readdir, readFile, unlink, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
+import { cp, mkdir, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { homedir, tmpdir } from "node:os";
@@ -10,6 +10,7 @@ import {
   getProject,
   listProjects,
   registryPath,
+  removeProject,
   renameProject,
   setProjectColor,
   touchProject,
@@ -439,6 +440,7 @@ function createProjectBrowserWindow(project: ProjectRecord, gatewayUrl: string, 
     `--ygg-gateway-url=${gatewayUrl}`,
     `--ygg-gateway-lan-url=${gatewayLanUrl}`,
     `--ygg-theme=${JSON.stringify(currentTheme)}`,
+    `--ygg-default-project-id=${defaultProjectId ?? ""}`,
   ];
   if (project.id === defaultProjectId) additionalArguments.push("--ygg-is-default=1");
 
@@ -523,6 +525,15 @@ function createProjectBrowserWindow(project: ProjectRecord, gatewayUrl: string, 
   });
   loadRenderer(win);
   return win;
+}
+
+/** Closes a project's window (if open) and waits for its "closed" cleanup, so watchers/terminals/sqlite handles are released before the folder is touched. */
+async function closeProjectWindow(projectId: string): Promise<void> {
+  const entry = projectWindows.get(projectId);
+  if (!entry || entry.window.isDestroyed()) return;
+  const closed = new Promise<void>((res) => entry.window.once("closed", () => res()));
+  entry.window.close();
+  await closed;
 }
 
 /** Lazily creates this project's Browser-tab WebContentsView on first use (navigate, or switching to the tab) — undefined only if the project's window is already gone. */
@@ -848,6 +859,65 @@ function registerIpc(): void {
     const entry = projectWindows.get(id);
     if (project && entry) entry.window.setTitle(`Yggdrasil - ${project.name} - ${entry.gateway.lanUrl}`);
     return project;
+  });
+
+  ipcMain.handle("projects:reveal", async (_event, id: string) => {
+    const project = await getProject(id);
+    if (!project) return { opened: false, error: "Project not found." };
+    const err = await shell.openPath(project.path);
+    return err ? { opened: false, error: err } : { opened: true };
+  });
+
+  ipcMain.handle("projects:openInIde", async (_event, id: string) => {
+    const project = await getProject(id);
+    if (!project) return { opened: false, error: "Project not found." };
+    const settings = await loadIdeSettings(app.getPath("userData"));
+    return openProjectInIde(project.path, settings);
+  });
+
+  // "Clone" = duplicate the project folder somewhere else and register the
+  // copy as its own project (not `git clone`).
+  ipcMain.handle("projects:clone", async (_event, id: string) => {
+    const project = await getProject(id);
+    if (!project) throw new Error("Project not found.");
+    const result = await dialog.showSaveDialog({
+      title: `Clone "${project.name}" to…`,
+      buttonLabel: "Clone Project",
+      defaultPath: join(dirname(project.path), `${basename(project.path)}-copy`),
+    });
+    if (result.canceled || !result.filePath) return null;
+    const dest = resolve(result.filePath);
+    const src = resolve(project.path);
+    if (dest === src || !relative(src, dest).startsWith("..")) {
+      throw new Error("Destination can't be the project folder or inside it.");
+    }
+    if (await stat(dest).then(() => true, () => false)) throw new Error("Destination already exists.");
+    await cp(src, dest, { recursive: true });
+    const copy = await upsertProject({ path: dest, name: basename(dest) });
+    await openProject(copy);
+    return copy;
+  });
+
+  // Removes from the list only — the folder stays on disk.
+  ipcMain.handle("projects:remove", async (_event, id: string) => {
+    if (id === defaultProjectId) throw new Error("The default workspace can't be removed.");
+    await closeProjectWindow(id);
+    return removeProject(id);
+  });
+
+  // Removes from the list AND deletes the project folder from disk.
+  ipcMain.handle("projects:purge", async (_event, id: string) => {
+    if (id === defaultProjectId) throw new Error("The default workspace can't be purged.");
+    const project = await getProject(id);
+    if (!project) return false;
+    const target = resolve(project.path);
+    // A registry entry pointing at a drive root / the home dir / app data must never reach rm().
+    if (parse(target).root === target || target === resolve(homedir()) || target === resolve(app.getPath("userData"))) {
+      throw new Error(`Refusing to delete "${target}".`);
+    }
+    await closeProjectWindow(id);
+    await rm(target, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    return removeProject(id);
   });
 
   ipcMain.handle("projects:setColor", async (_event, id: string, color: string | null) => {

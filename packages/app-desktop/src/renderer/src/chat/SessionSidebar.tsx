@@ -63,7 +63,8 @@ export function SessionSidebar({
   const [isIndexing, setIsIndexing] = useState(false);
   const [indexError, setIndexError] = useState<string | null>(null);
   const [indexProgress, setIndexProgress] = useState<IndexProgress | null>(null);
-  const { projects, openExisting, createNew, open, rename } = useProjects();
+  const { projects, error: projectsError, openExisting, createNew, open, rename, reveal, openInIde, clone, remove, purge } =
+    useProjects();
   const { call, onEvent } = useGateway();
   const projectPath = projects.find(
     (p) => p.id === window.yggdrasil.projectId,
@@ -150,6 +151,7 @@ export function SessionSidebar({
               {projects.length === 0 && (
                 <li className="muted">No projects yet</li>
               )}
+              {projectsError && <li className="error">{projectsError}</li>}
             </ul>
           </CollapsibleSection>
         )}
@@ -330,10 +332,21 @@ export function SessionSidebar({
       {projectMenu && (
         <ProjectContextMenu
           project={projectMenu.project}
+          locked={projectMenu.project.id === window.yggdrasil.projectId}
           x={projectMenu.x}
           y={projectMenu.y}
           onClose={() => setProjectMenu(null)}
+          onOpen={(id) => void open(id)}
+          onReveal={(id) => void reveal(id)}
+          onOpenInIde={(id) =>
+            void openInIde(id).then((opened) => {
+              if (!opened) onOpenSettings();
+            })
+          }
+          onClone={(id) => void clone(id)}
           onRename={(id, name) => void rename(id, name)}
+          onRemove={(id) => void remove(id)}
+          onPurge={(id) => void purge(id)}
         />
       )}
     </aside>
