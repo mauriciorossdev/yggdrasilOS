@@ -2,8 +2,8 @@
   "name": "yggdrasil",
   "version": "0.1.0",
   "license": "MIT",
-  "packageManager": "pnpm@9.12.2",
   "private": true,
+  "packageManager": "pnpm@10.33.2",
   "type": "module",
   "description": "Plug-and-play agent platform — the world tree spine for channels, harnesses, and providers",
   "scripts": {
@@ -35,11 +35,11 @@
     ]
   },
   "devDependencies": {
-    "@types/node": "^22.15.0",
+    "@types/node": "^26.6.6",
     "@types/ws": "^8.18.2",
-    "@vitest/coverage-v8": "^4.1.12",
+    "@vitest/coverage-v8": "^5.0.5",
     "typescript": "^7.0.2",
-    "vitest": "^4.1.12",
-    "ws": "^8.22.0"
+    "vitest": "^5.0.5",
+    "ws": "^8.22.1"
   }
 }
