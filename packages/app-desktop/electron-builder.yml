@@ -2,6 +2,13 @@ appId: com.yggdrasil.desktop
 productName: Yggdrasil
 executableName: yggdrasil-desktop
 
+# Native deps are rebuilt for Electron by the package's `postinstall`
+# (`electron-rebuild --only better-sqlite3`). node-pty ships N-API prebuilds
+# (prebuilds/<platform>-<arch>/pty.node) that load in Electron as-is, and
+# rebuilding it from source needs MSVC Spectre-mitigated libs on Windows —
+# so electron-builder's own rebuild pass is turned off.
+npmRebuild: false
+
 directories:
   output: release
   buildResources: resources
