@@ -1,14 +1,39 @@
 name: Publish npm
 
+# Manual only: publishing to npm can't really be undone, so no tag push starts it.
+# It runs as a dry run (pack, no upload) unless "publish" is ticked, and a real
+# publish is only allowed from main. Needs the NPM_TOKEN secret.
 on:
-  push:
-    tags:
-      - "v*"
+  workflow_dispatch:
+    inputs:
+      publish:
+        description: "Upload to npm (unticked: dry run, nothing leaves the runner)"
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+concurrency:
+  group: publish-npm
+  cancel-in-progress: false
 
 jobs:
   publish:
     runs-on: ubuntu-latest
+    timeout-minutes: 30
+    env:
+      GIT_AUTHOR_NAME: ci
+      GIT_AUTHOR_EMAIL: ci@example.com
+      GIT_COMMITTER_NAME: ci
+      GIT_COMMITTER_EMAIL: ci@example.com
     steps:
+      - name: Refuse a real publish outside main
+        if: inputs.publish && github.ref != 'refs/heads/main'
+        run: |
+          echo "A real publish only runs from main (this is $GITHUB_REF)." >&2
+          exit 1
+
       - uses: actions/checkout@v7
 
       - uses: pnpm/action-setup@v6
@@ -22,6 +47,12 @@ jobs:
       - run: pnpm build
       - run: pnpm test
 
-      - run: pnpm publish -r --access public --no-git-checks
+      - name: Dry run
+        if: ${{ !inputs.publish }}
+        run: pnpm publish -r --access public --no-git-checks --dry-run
+
+      - name: Publish
+        if: inputs.publish
+        run: pnpm publish -r --access public --no-git-checks
         env:
           NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}

@@ -4,7 +4,9 @@ Railway es una de las formas de alojar el servidor de enlace. La guía general e
 
 ## 1. Crear el servicio
 
-Con la [CLI de Railway](https://docs.railway.com/guides/cli), desde tu copia del repositorio:
+Lo más rápido es usar la imagen publicada: en el panel, **New Project → Docker Image**, con `ghcr.io/mauriciorossdev/yggdrasil-gateway` y la versión de tu app de escritorio como etiqueta (por ejemplo `ghcr.io/mauriciorossdev/yggdrasil-gateway:0.2.0`). No construye nada.
+
+Para construirla desde el código, usa la [CLI de Railway](https://docs.railway.com/guides/cli) desde tu copia del repositorio:
 
 ```bash
 railway login
@@ -34,6 +36,8 @@ El enlace funciona sin volumen. El asistente lo necesita para conservar su memor
 En **Settings → Networking → Generate Domain**. Te dará una URL `https://…up.railway.app`, con TLS incluido. Úsala para [conectar la app de escritorio](../README.md#4-conectar-la-app-de-escritorio).
 
 ## Actualizar
+
+Con la imagen publicada, cambia la etiqueta en **Settings → Source** a la versión nueva. Si construyes desde el código:
 
 ```bash
 railway up --detach

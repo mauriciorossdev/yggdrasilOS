@@ -1,0 +1,10 @@
+# Builds the gateway image from this checkout instead of pulling it from GHCR.
+# Add it after either compose file:
+#
+#   docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml up -d --build
+
+services:
+  gateway:
+    build:
+      context: ..
+    image: yggdrasil-gateway:local

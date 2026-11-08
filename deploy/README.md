@@ -38,17 +38,21 @@ Da acceso completo al servidor, y el servidor guarda las claves de tus escritori
 
 ## 2. Preparar la configuración
 
-Para todas las opciones salvo la plataforma en la nube, desde la raíz de tu copia del repositorio:
+La imagen ya viene construida en `ghcr.io/mauriciorossdev/yggdrasil-gateway`, para servidores `amd64` y `arm64`. Cada versión de la app de escritorio tiene la suya, con el mismo número: `0.2.0`, por ejemplo. `latest` es la versión estable más reciente. Al servidor le bastan 1 GB de RAM libre y 2 GB de disco.
+
+Las opciones A y C usan los archivos de `deploy/`. En el servidor, descárgalos con la versión de tu app y crea la configuración:
 
 ```bash
+git clone --depth 1 --branch app-desktop-v0.2.0 https://github.com/mauriciorossdev/yggdrasilOS.git yggdrasil
+cd yggdrasil
 cp deploy/.env.example deploy/.env
 ```
 
-Edita `deploy/.env` y pega la clave en `YGGDRASIL_API_KEY`. Cada opción añade lo suyo.
+Edita `deploy/.env`: pega la clave en `YGGDRASIL_API_KEY` y la versión en `YGGDRASIL_VERSION`. Sin versión se usa `latest`. Cada opción añade lo suyo.
+
+La opción D no necesita el repositorio, y la plataforma en la nube recibe las variables en su panel.
 
 ## 3. Desplegar
-
-Construir la imagen compila todo el proyecto y pide bastante memoria. Si tu servidor es pequeño, [constrúyela en tu PC y envíala](#servidores-pequeños). Para correr, al servidor le basta con 1 GB de RAM libre y 2 GB de disco.
 
 ### Opción A: VPS con dominio
 
@@ -62,7 +66,7 @@ Usa Caddy, que obtiene y renueva el certificado TLS solo.
    ```
 4. Arranca:
    ```bash
-   docker compose -f deploy/docker-compose.yml up -d --build
+   docker compose -f deploy/docker-compose.yml up -d
    ```
 5. Comprueba que responde:
    ```bash
@@ -74,7 +78,7 @@ Si el certificado tarda o falla, revisa `docker compose -f deploy/docker-compose
 
 ### Opción B: Plataforma en la nube
 
-Crea un servicio a partir del `Dockerfile` de la raíz, define la variable `YGGDRASIL_API_KEY` y usa la URL pública `https://` que te dé la plataforma. WebSocket debe estar permitido. La imagen usa el `$PORT` que le inyecte el host.
+Crea un servicio a partir de la imagen `ghcr.io/mauriciorossdev/yggdrasil-gateway`, con la versión de tu app como etiqueta. Si la plataforma solo construye desde un repositorio, usa el `Dockerfile` de la raíz. Define la variable `YGGDRASIL_API_KEY` y usa la URL pública `https://` que te dé la plataforma. WebSocket debe estar permitido. La imagen usa el `$PORT` que le inyecte el host.
 
 [Railway tiene su propia guía](railway/README.md). Una versión anterior de la imagen se usó allí, pero esta aún no se ha probado en Railway ni en otras plataformas, aunque deberían funcionar igual.
 
@@ -92,21 +96,21 @@ No necesitas IP pública ni abrir puertos.
    ```
 4. Arranca:
    ```bash
-   docker compose -f deploy/docker-compose.cloudflare.yml up -d --build
+   docker compose -f deploy/docker-compose.cloudflare.yml up -d
    ```
 
 Cloudflare descifra el tráfico en sus servidores antes de reenviarlo, así que también puede verlo. Tenlo en cuenta en la [sección de seguridad](#seguridad).
 
 ### Opción D: Red local o Tailscale
 
-```bash
-docker build -t yggdrasil-gateway .
+Guarda la configuración en un archivo `yggdrasil.env`, con las mismas variables que `deploy/.env.example`; basta con `YGGDRASIL_API_KEY`. En esa misma carpeta:
 
+```bash
 docker run -d --name yggdrasil-gateway --restart unless-stopped \
-  --env-file deploy/.env \
+  --env-file yggdrasil.env \
   -p 8787:8787 \
   -v yggdrasil-data:/data \
-  yggdrasil-gateway
+  ghcr.io/mauriciorossdev/yggdrasil-gateway:latest
 
 curl http://localhost:8787/
 # {"ok":true,"service":"yggdrasil-gateway","ui":"/ui"}
@@ -114,20 +118,26 @@ curl http://localhost:8787/
 
 Tu URL será `http://192.168.x.x:8787` o, con Tailscale, `http://100.x.x.x:8787`. **No abras este puerto a internet:** va sin cifrar.
 
-### Servidores pequeños
+### Compilar desde el código
 
-Sin registro de imágenes, puedes construir en tu PC y enviar el resultado por SSH. Tu PC y el servidor deben tener la misma arquitectura:
+Si cambiaste el código o no quieres usar la imagen publicada, constrúyela desde tu copia del repositorio. Compila todo el proyecto y pide bastante memoria.
 
-```bash
-docker build -t yggdrasil-gateway .
-docker save yggdrasil-gateway | gzip | ssh usuario@tu-servidor 'gunzip | docker load'
-```
-
-Después, en el servidor, usa `up -d` sin `--build`:
+Con las opciones A o C, añade `deploy/docker-compose.build.yml` después del archivo de tu opción:
 
 ```bash
-docker compose -f deploy/docker-compose.yml up -d
+docker compose -f deploy/docker-compose.yml -f deploy/docker-compose.build.yml up -d --build
 ```
+
+Con la opción D, construye con `docker build -t yggdrasil-gateway:local .` y usa `yggdrasil-gateway:local` como imagen en el `docker run`.
+
+Si tu servidor es pequeño, construye en tu PC y envía la imagen por SSH. Ambos deben tener la misma arquitectura:
+
+```bash
+docker build -t yggdrasil-gateway:local .
+docker save yggdrasil-gateway:local | gzip | ssh usuario@tu-servidor 'gunzip | docker load'
+```
+
+En el servidor, arranca con los dos archivos de compose como arriba, pero sin `--build`.
 
 ## 4. Conectar la app de escritorio
 
@@ -151,7 +161,7 @@ La app prueba primero Tailscale y la red local, y usa el túnel del servidor si 
 
 ## Asistente en la nube (opcional)
 
-Sin más configuración, el servidor solo enlaza el teléfono con tu computador, que debe estar encendido. Para tener además un asistente que responda con el computador apagado, añade a `deploy/.env` una clave de IA y conserva el volumen en `/data`:
+Sin más configuración, el servidor solo enlaza el teléfono con tu computador, que debe estar encendido. Para tener además un asistente que responda con el computador apagado, añade a `deploy/.env` (o a `yggdrasil.env` con la opción D) una clave de IA y conserva el volumen en `/data`:
 
 | Variable | Para qué |
 |---|---|
@@ -163,18 +173,20 @@ Tiene costo según el uso de cada proveedor.
 
 ## Mantenimiento
 
-**Actualizar.** Tus datos están en el volumen y se conservan:
+**Actualizar.** Tus datos están en el volumen y se conservan. Cambia `YGGDRASIL_VERSION` en `deploy/.env` a la versión nueva de tu app, o déjala vacía si usas `latest`, y descarga la imagen:
 
 ```bash
-git pull
-docker compose -f deploy/docker-compose.yml up -d --build
+docker compose -f deploy/docker-compose.yml pull
+docker compose -f deploy/docker-compose.yml up -d
 ```
 
-Con la opción D, reconstruye con `docker build`, borra el contenedor con `docker rm -f yggdrasil-gateway` y vuelve a lanzar el `docker run`.
+Si compilas desde el código, actualiza con `git pull` y repite el `up -d --build` con los dos archivos.
+
+Con la opción D, descarga la imagen con `docker pull` y la etiqueta nueva, borra el contenedor con `docker rm -f yggdrasil-gateway` y vuelve a lanzar el `docker run` con esa etiqueta.
 
 La configuración del volumen se reescribe en cada arranque desde la plantilla. Si la editaste a mano, añade `YGGDRASIL_KEEP_CONFIG=1` a `deploy/.env`.
 
-**Cambiar la clave.** Actualiza `deploy/.env`, recrea el contenedor con el comando de arriba, pégala en Ajustes → Teléfono y vuelve a escanear el QR en cada teléfono.
+**Cambiar la clave.** Actualiza `deploy/.env` (o `yggdrasil.env`), recrea el contenedor con el comando de arriba, pégala en Ajustes → Teléfono y vuelve a escanear el QR en cada teléfono.
 
 **Copia de seguridad.** Todo está en el volumen de datos. `docker volume ls` muestra su nombre: `yggdrasil-data` con la opción D, y `deploy_yggdrasil-data` con compose.
 

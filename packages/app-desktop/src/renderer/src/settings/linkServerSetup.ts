@@ -1,21 +1,32 @@
 /**
  * The commands the "Create my link server" wizard hands out. The single source
  * for them: linkServerSetup.test.ts checks them against the real files in deploy/.
- * No provider integrations, by design (notes/servidor-de-enlace.md).
+ * No provider integrations, by design: the user runs these, and the connection test closes the loop.
  */
 
 export type DeployTarget = "vps" | "cloud" | "cloudflare" | "local";
 
 export type SetupBlock = {
   /** i18n key of the line above the block. */
-  labelKey: "set.phone.wiz.blockServer" | "set.phone.wiz.blockEnv" | "set.phone.wiz.blockRun" | "set.phone.wiz.blockVariable";
+  labelKey:
+    | "set.phone.wiz.blockServer"
+    | "set.phone.wiz.blockClone"
+    | "set.phone.wiz.blockEnv"
+    | "set.phone.wiz.blockEnvLocal"
+    | "set.phone.wiz.blockRun"
+    | "set.phone.wiz.blockVariable"
+    | "set.phone.wiz.blockImage";
   code: string;
 };
 
 export const REPO_URL = "https://github.com/mauriciorossdev/yggdrasilOS.git";
+/** Published by .github/workflows/gateway-image.yml, tagged with each desktop release's version. */
+export const GATEWAY_IMAGE = "ghcr.io/mauriciorossdev/yggdrasil-gateway";
 export const KEY_PLACEHOLDER = "••••••••";
 export const TUNNEL_TOKEN_PLACEHOLDER = "paste-your-tunnel-token";
-const IMAGE = "yggdrasil-gateway";
+/** The local option runs without a checkout, so its env file sits wherever the user runs it. */
+export const LOCAL_ENV_FILE = "yggdrasil.env";
+const CONTAINER = "yggdrasil-gateway";
 
 /**
  * Letters, digits and URL-safe punctuation only. A key goes into a .env file that
@@ -31,6 +42,11 @@ export function isValidDomain(domain: string): boolean {
   return domain.length <= 253 && /^([a-z0-9]([a-z0-9-]{0,61}[a-z0-9])?\.)+[a-z]{2,63}$/i.test(domain);
 }
 
+/** A release version (0.2.0, 0.2.0-beta.1). It names an image tag and a git tag. */
+export function isReleaseVersion(version: string): boolean {
+  return /^\d+\.\d+\.\d+(-[0-9A-Za-z.]+)?$/.test(version);
+}
+
 export function needsDomain(target: DeployTarget): boolean {
   return target === "vps" || target === "cloudflare";
 }
@@ -41,13 +57,25 @@ export function suggestedUrl(target: DeployTarget, values: { domain: string; lan
   return target === "local" && values.lan ? `http://${values.lan}:8787` : "";
 }
 
-function cloneLines(): string[] {
-  return [`git clone ${REPO_URL} yggdrasil`, "cd yggdrasil"];
+/** The image matching this app's version, so the server speaks the same protocol. */
+export function imageRef(version: string): string {
+  return `${GATEWAY_IMAGE}:${isReleaseVersion(version) ? version : "latest"}`;
+}
+
+/** The deploy/ files of the same release as the image; a shallow clone is enough. */
+function cloneLines(version: string): string[] {
+  const branch = isReleaseVersion(version) ? ` --branch app-desktop-v${version}` : "";
+  return [`git clone --depth 1${branch} ${REPO_URL} yggdrasil`, "cd yggdrasil"];
+}
+
+/** Compose reads it from deploy/.env to pick the image tag. */
+function versionLines(version: string): string[] {
+  return isReleaseVersion(version) ? [`YGGDRASIL_VERSION=${version}`] : [];
 }
 
 /** Null until the values it needs are valid, so a half-filled block can't be copied. */
-export function buildSetup(target: DeployTarget, values: { key: string; domain: string }): SetupBlock[] | null {
-  const { key, domain } = values;
+export function buildSetup(target: DeployTarget, values: { key: string; domain: string; version: string }): SetupBlock[] | null {
+  const { key, domain, version } = values;
   if (!isValidKey(key) || (needsDomain(target) && !isValidDomain(domain))) return null;
   const keyLine = `YGGDRASIL_API_KEY=${key}`;
   switch (target) {
@@ -56,36 +84,34 @@ export function buildSetup(target: DeployTarget, values: { key: string; domain: 
         {
           labelKey: "set.phone.wiz.blockServer",
           code: [
-            ...cloneLines(),
+            ...cloneLines(version),
             "cat > deploy/.env <<'EOF'",
             keyLine,
             `DOMAIN=${domain}`,
+            ...versionLines(version),
             "EOF",
             "chmod 600 deploy/.env",
-            "docker compose -f deploy/docker-compose.yml up -d --build",
+            "docker compose -f deploy/docker-compose.yml up -d",
           ].join("\n"),
         },
       ];
     case "cloud":
-      return [{ labelKey: "set.phone.wiz.blockVariable", code: keyLine }];
+      return [
+        { labelKey: "set.phone.wiz.blockImage", code: imageRef(version) },
+        { labelKey: "set.phone.wiz.blockVariable", code: keyLine },
+      ];
     case "cloudflare":
       return [
-        { labelKey: "set.phone.wiz.blockEnv", code: [keyLine, `TUNNEL_TOKEN=${TUNNEL_TOKEN_PLACEHOLDER}`].join("\n") },
-        {
-          labelKey: "set.phone.wiz.blockRun",
-          code: [...cloneLines(), "docker compose -f deploy/docker-compose.cloudflare.yml up -d --build"].join("\n"),
-        },
+        { labelKey: "set.phone.wiz.blockClone", code: cloneLines(version).join("\n") },
+        { labelKey: "set.phone.wiz.blockEnv", code: [keyLine, `TUNNEL_TOKEN=${TUNNEL_TOKEN_PLACEHOLDER}`, ...versionLines(version)].join("\n") },
+        { labelKey: "set.phone.wiz.blockRun", code: "docker compose -f deploy/docker-compose.cloudflare.yml up -d" },
       ];
     case "local":
       return [
-        { labelKey: "set.phone.wiz.blockEnv", code: keyLine },
+        { labelKey: "set.phone.wiz.blockEnvLocal", code: keyLine },
         {
           labelKey: "set.phone.wiz.blockRun",
-          code: [
-            ...cloneLines(),
-            `docker build -t ${IMAGE} .`,
-            `docker run -d --name ${IMAGE} --restart unless-stopped --env-file deploy/.env -p 8787:8787 -v yggdrasil-data:/data ${IMAGE}`,
-          ].join("\n"),
+          code: `docker run -d --name ${CONTAINER} --restart unless-stopped --env-file ${LOCAL_ENV_FILE} -p 8787:8787 -v yggdrasil-data:/data ${imageRef(version)}`,
         },
       ];
   }

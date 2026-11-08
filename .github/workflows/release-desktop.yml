@@ -1,7 +1,7 @@
 name: Release desktop app
 
-# Separate from publish.yml (npm packages) on purpose — different tag
-# namespace so the two never collide on the same push.
+# Separate from publish.yml (npm packages, manual only) on purpose. The same
+# app-desktop-v* tag also publishes the gateway image (gateway-image.yml).
 on:
   push:
     tags:

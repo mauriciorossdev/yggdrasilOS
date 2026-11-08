@@ -1,5 +1,6 @@
 # Headless Yggdrasil gateway (`yggdrasil gateway`): the permanent server the
-# desktop and the phone connect through (notes/servidor-de-enlace.md).
+# desktop and the phone connect through (deploy/README.md). Published to
+# ghcr.io/mauriciorossdev/yggdrasil-gateway by .github/workflows/gateway-image.yml.
 #
 # It needs only YGGDRASIL_API_KEY to work as a link server. An AI provider key
 # (e.g. ANTHROPIC_API_KEY) and a volume on /data add the cloud assistant.

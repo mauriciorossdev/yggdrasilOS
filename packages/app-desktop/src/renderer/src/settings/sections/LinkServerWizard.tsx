@@ -64,7 +64,7 @@ export function LinkServerWizard({
   const { key, target, domain } = draft;
   const set = (patch: Partial<WizardDraft>) => onDraft({ ...draft, ...patch });
   const url = draft.url ?? suggestedUrl(target, { domain, lan: info.addresses.lan });
-  const blocks = buildSetup(target, { key, domain });
+  const blocks = buildSetup(target, { key, domain, version: __APP_VERSION__ });
   const keyOk = isValidKey(key);
   const urlBlocked = urlCheck === "invalid" || urlCheck === "insecure-public";
 

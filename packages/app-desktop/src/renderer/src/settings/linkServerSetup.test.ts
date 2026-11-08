@@ -3,9 +3,13 @@ import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 import {
+  GATEWAY_IMAGE,
   KEY_PLACEHOLDER,
+  LOCAL_ENV_FILE,
   TUNNEL_TOKEN_PLACEHOLDER,
   buildSetup,
+  imageRef,
+  isReleaseVersion,
   isValidDomain,
   isValidKey,
   maskKey,
@@ -15,11 +19,13 @@ import {
 } from "./linkServerSetup.js";
 
 const repoRoot = join(dirname(fileURLToPath(import.meta.url)), "../../../../../..");
-const deployFile = (name: string) => readFileSync(join(repoRoot, "deploy", name), "utf8");
+const repoFile = (path: string) => readFileSync(join(repoRoot, path), "utf8");
+const deployFile = (name: string) => repoFile(`deploy/${name}`);
 
 const key = "a".repeat(64);
 const domain = "gateway.example.com";
-const code = (target: DeployTarget) => buildSetup(target, { key, domain })!.map((b) => b.code).join("\n");
+const version = "0.2.0";
+const code = (target: DeployTarget, v = version) => buildSetup(target, { key, domain, version: v })!.map((b) => b.code).join("\n");
 
 describe("isValidKey", () => {
   it("accepts generated keys and common random formats", () => {
@@ -46,26 +52,59 @@ describe("isValidDomain", () => {
   });
 });
 
+describe("image version", () => {
+  it("pins the image and the checkout to the app's release", () => {
+    expect(imageRef("0.2.0")).toBe(`${GATEWAY_IMAGE}:0.2.0`);
+    expect(imageRef("0.2.0-beta.1")).toBe(`${GATEWAY_IMAGE}:0.2.0-beta.1`);
+    expect(code("vps")).toContain("git clone --depth 1 --branch app-desktop-v0.2.0 ");
+    expect(code("vps")).toContain("YGGDRASIL_VERSION=0.2.0\nEOF");
+    expect(code("cloudflare")).toContain("YGGDRASIL_VERSION=0.2.0");
+    expect(code("cloud")).toContain(`${GATEWAY_IMAGE}:0.2.0`);
+    expect(code("local")).toMatch(new RegExp(`${GATEWAY_IMAGE}:0\\.2\\.0$`));
+  });
+
+  it("falls back to latest and the default branch for anything that isn't a release version", () => {
+    for (const bad of ["", "dev", "0.2", "0.2.0; rm -rf /", "0.2.0 --branch x"]) {
+      expect(isReleaseVersion(bad), bad).toBe(false);
+      expect(imageRef(bad)).toBe(`${GATEWAY_IMAGE}:latest`);
+      expect(code("vps", bad)).not.toContain("--branch");
+      expect(code("vps", bad)).not.toContain("YGGDRASIL_VERSION");
+    }
+  });
+});
+
 describe("buildSetup", () => {
   it("waits for valid values", () => {
-    expect(buildSetup("local", { key: "short", domain: "" })).toBeNull();
-    expect(buildSetup("vps", { key, domain: "" })).toBeNull();
-    expect(buildSetup("cloudflare", { key, domain: "not a domain" })).toBeNull();
-    expect(buildSetup("cloud", { key, domain: "" })).not.toBeNull();
-    expect(buildSetup("local", { key, domain: "" })).not.toBeNull();
+    expect(buildSetup("local", { key: "short", domain: "", version })).toBeNull();
+    expect(buildSetup("vps", { key, domain: "", version })).toBeNull();
+    expect(buildSetup("cloudflare", { key, domain: "not a domain", version })).toBeNull();
+    expect(buildSetup("cloud", { key, domain: "", version })).not.toBeNull();
+    expect(buildSetup("local", { key, domain: "", version })).not.toBeNull();
   });
 
   it("gives the VPS one block that writes a private .env and starts compose", () => {
-    const blocks = buildSetup("vps", { key, domain })!;
+    const blocks = buildSetup("vps", { key, domain, version })!;
     expect(blocks).toHaveLength(1);
-    expect(blocks[0]!.code).toContain(`YGGDRASIL_API_KEY=${key}\nDOMAIN=${domain}\nEOF`);
+    expect(blocks[0]!.code).toContain(`YGGDRASIL_API_KEY=${key}\nDOMAIN=${domain}\n`);
     // Quoted delimiter: the shell doesn't expand anything in what's written to the file.
     expect(blocks[0]!.code).toContain("<<'EOF'");
     expect(blocks[0]!.code).toContain("chmod 600 deploy/.env");
   });
 
-  it("hands out only the variable for a cloud platform", () => {
-    expect(code("cloud")).toBe(`YGGDRASIL_API_KEY=${key}`);
+  it("pulls the image instead of building it", () => {
+    for (const target of ["vps", "cloudflare", "local"] as const) {
+      expect(code(target), target).not.toContain("--build");
+      expect(code(target), target).not.toContain("docker build");
+    }
+  });
+
+  it("hands out the image and the variable for a cloud platform", () => {
+    expect(code("cloud")).toBe(`${GATEWAY_IMAGE}:${version}\nYGGDRASIL_API_KEY=${key}`);
+  });
+
+  it("downloads the files before asking for deploy/.env on Cloudflare", () => {
+    const labels = buildSetup("cloudflare", { key, domain, version })!.map((b) => b.labelKey);
+    expect(labels).toEqual(["set.phone.wiz.blockClone", "set.phone.wiz.blockEnv", "set.phone.wiz.blockRun"]);
   });
 
   it("never asks to publish the unencrypted port beyond what the guide says", () => {
@@ -90,16 +129,25 @@ describe("the commands match deploy/", () => {
     expect(cloudflare).toContain("${TUNNEL_TOKEN:?");
   });
 
+  it("runs the image the compose files and the workflow publish", () => {
+    for (const name of ["docker-compose.yml", "docker-compose.cloudflare.yml"]) {
+      expect(deployFile(name), name).toContain(`image: ${GATEWAY_IMAGE}:\${YGGDRASIL_VERSION:-latest}`);
+    }
+    const workflow = repoFile(".github/workflows/gateway-image.yml");
+    expect(workflow).toContain(`IMAGE: ${GATEWAY_IMAGE}`);
+    expect(workflow).toContain("app-desktop-v*");
+  });
+
   it("uses variables the example env file documents", () => {
     const example = deployFile(".env.example");
-    for (const name of ["YGGDRASIL_API_KEY=", "DOMAIN=", "TUNNEL_TOKEN="]) expect(example).toContain(name);
+    for (const name of ["YGGDRASIL_API_KEY=", "DOMAIN=", "TUNNEL_TOKEN=", "YGGDRASIL_VERSION="]) expect(example).toContain(name);
   });
 
   it("runs the local option the same way as the guide", () => {
     const guide = deployFile("README.md").replace(/\s*\\\r?\n\s*/g, " ");
-    const run = code("local").split("\n").find((line) => line.startsWith("docker run"))!;
+    const run = buildSetup("local", { key, domain, version })!.at(-1)!.code.replace(`:${version}`, ":latest");
+    expect(run).toContain(`--env-file ${LOCAL_ENV_FILE}`);
     expect(guide).toContain(run);
-    expect(guide).toContain("docker build -t yggdrasil-gateway .");
   });
 });
 
