@@ -49,7 +49,7 @@
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW"/>
     <uses-permission android:name="android.permission.SCHEDULE_EXACT_ALARM"/>
     <application
-        android:label="Yggdrasil"
+        android:label="${appLabel}"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:networkSecurityConfig="@xml/network_security_config"
@@ -118,7 +118,7 @@
                 <category android:name="android.intent.category.BROWSABLE"/>
                 <data android:scheme="yggdrasil" android:host="assistant"/>
             </intent-filter>
-            <!-- yggdrasil://hub?url=…&key=… — the desktop's QR/link: learn the Railway gateway once. -->
+            <!-- yggdrasil://hub?url=…&key=… — the desktop's QR/link: learn the link server once. -->
             <intent-filter>
                 <action android:name="android.intent.action.VIEW"/>
                 <category android:name="android.intent.category.DEFAULT"/>
@@ -210,6 +210,10 @@
         <!-- Lets the bubble's voice capture see the device speech recognizer (Android 11+ package visibility). -->
         <intent>
             <action android:name="android.speech.RecognitionService"/>
+        </intent>
+        <!-- flutter_tts: lets the app see the device text-to-speech engines (Android 11+ package visibility). -->
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE"/>
         </intent>
         <intent>
             <action android:name="android.intent.action.PROCESS_TEXT"/>

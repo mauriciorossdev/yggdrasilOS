@@ -11,10 +11,7 @@ import 'pi_attachments.dart';
 import 'pi_model_button.dart';
 import 'pi_settings.dart';
 import 'pi_usage_sheet.dart';
-import 'tailscale_channel.dart';
 
-// Must match rpi-command-center's TMUX_SESSION (backend/src/config.js).
-const piPaneId = 'claude-chat';
 const _healthTimeout = Duration(seconds: 6);
 
 /// The always-on Claude chat on the Pi. Claude itself lives in a tmux session
@@ -87,10 +84,10 @@ class _PiChatScreenState extends State<PiChatScreen> with WidgetsBindingObserver
     _connecting = true;
     _client?.disconnect();
     if (mounted) setState(() => _client = null);
-    // The Pi is only reachable inside the tailnet. Harmless if the VPN is
-    // already up; if it wasn't, it takes a second or two, which the
-    // backoff retries below absorb.
-    await TailscaleChannel.connect();
+    // A tailnet host is only reachable with the VPN up. Harmless if it already
+    // is; if it wasn't, it takes a second or two, which the backoff retries
+    // below absorb.
+    await widget.settings.connectNetwork();
 
     final client = YggdrasilClient(baseUrl: widget.settings.baseUrl, apiKey: widget.settings.apiKey);
     client.connectToMirror((_) {}, onDisconnected: () {
@@ -151,8 +148,8 @@ class _PiChatScreenState extends State<PiChatScreen> with WidgetsBindingObserver
       return TerminalViewScreen(
         key: ValueKey(_generation),
         client: client,
-        paneId: widget.projectId ?? piPaneId,
-        title: widget.projectName ?? AppStrings.t('pi.chatTitle'),
+        paneId: widget.projectId ?? widget.settings.paneId,
+        title: widget.projectName ?? widget.settings.displayName,
         harnessCommand: 'claude',
         appBarActions: [
           PiModelButton(key: ValueKey('model-$_generation'), client: client, paneId: widget.projectId),
@@ -166,19 +163,19 @@ class _PiChatScreenState extends State<PiChatScreen> with WidgetsBindingObserver
       );
     }
     return Scaffold(
-      appBar: AppBar(title: Text(AppStrings.t('pi.chatTitle'))),
+      appBar: AppBar(title: Text(widget.settings.displayName)),
       body: Center(
         child: Padding(
           padding: const EdgeInsets.all(24),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              const CircularProgressIndicator(color: YggColors.accent),
+              CircularProgressIndicator(color: YggColors.accent),
               const SizedBox(height: 16),
-              Text(AppStrings.t('pi.reconnecting'), style: const TextStyle(color: YggColors.text)),
+              Text(AppStrings.t('pi.reconnecting'), style: TextStyle(color: YggColors.text)),
               if (_lastError != null) ...[
                 const SizedBox(height: 8),
-                Text(_lastError!, textAlign: TextAlign.center, style: const TextStyle(fontSize: 12, color: YggColors.textMuted)),
+                Text(_lastError!, textAlign: TextAlign.center, style: TextStyle(fontSize: 12, color: YggColors.textMuted)),
               ],
               const SizedBox(height: 16),
               TextButton(onPressed: _reconnectNow, child: Text(AppStrings.t('pi.retryNow'))),

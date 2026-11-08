@@ -23,7 +23,7 @@ export type IgnoreMatcher = ReturnType<typeof ignore>;
 // tens of thousands of directories (build caches, dependency dirs) and are
 // never worth recursively watching or listing, regardless of where the
 // project's real .gitignore happens to live. Reproduced against a real
-// project (b-health) whose workspaceRoot has no .gitignore of its own — its
+// project whose workspaceRoot has no .gitignore of its own — its
 // nested monorepo's .gitignore (one level down) lists .next/.expo/etc, but
 // this matcher never reads it, and an untracked apps/ tree with Next.js +
 // Expo build caches (6.7GB, tens of thousands of dirs) exhausted the OS's

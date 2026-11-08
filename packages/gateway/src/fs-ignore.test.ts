@@ -33,7 +33,7 @@ describe("loadIgnoreMatcher", () => {
   });
 
   it("always excludes common build-cache dirs even nested inside an untracked subproject with no .gitignore of its own reachable from workspaceRoot", async () => {
-    // Reproduces the b-health case: workspaceRoot itself has no
+    // Reproduces the real case: workspaceRoot itself has no
     // .gitignore, and the real one (listing .next/.expo/etc) lives one
     // level down inside a nested monorepo dir this matcher never reads —
     // an untracked apps/ tree full of Next.js/Expo build caches (6.7GB,

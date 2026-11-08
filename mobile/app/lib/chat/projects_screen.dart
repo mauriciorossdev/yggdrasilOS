@@ -5,11 +5,11 @@ import '../hub/hub_link.dart';
 import '../l10n/app_strings.dart';
 import '../pi/pi_chat_screen.dart';
 import '../pi/pi_settings.dart';
-import '../pi/tailscale_channel.dart';
 import '../projects/new_project_sheet.dart';
 import '../projects/project_detail_screen.dart';
 import '../services/yggdrasil_client.dart';
 import '../theme/ygg_theme.dart';
+import '../ui/ui.dart';
 
 /// Mirrors app-desktop's ProjectRecord (packages/app-desktop/src/main/
 /// projects.ts) — id/name/path/createdAt/lastOpenedAt, as returned by the
@@ -64,12 +64,13 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   bool _loading = true;
   String? _error;
 
-  /// Projects open on desktops published to the Railway hub — when the
-  /// configured gateway is Railway itself, projects.list above is empty and
+  /// Projects open on desktops published to the link server — when the
+  /// configured gateway is that server itself, projects.list above is empty and
   /// these are the only ones there are.
   HubLink? _hub;
   List<HubDesktop> _desktops = [];
   String? _connecting; // "desktopId/projectId"
+  String _query = '';
 
   @override
   void initState() {
@@ -134,7 +135,7 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     try {
       final pi = await PiSettingsStore.load();
       if (!pi.isReady) return;
-      await TailscaleChannel.connect();
+      await pi.connectNetwork();
       client = YggdrasilClient(baseUrl: pi.baseUrl, apiKey: pi.apiKey);
       client.connectToMirror((_) {});
       final res = await client.call('projects.list', {}, timeout: const Duration(seconds: 6));
@@ -153,51 +154,28 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   List<Widget> _piSection() {
     if (_pi == null || _piProjects.isEmpty) return const [];
     return [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
-        child: Text(
-          AppStrings.t('newProject.onPi'),
-          style: const TextStyle(fontSize: 12.5, color: YggColors.textMuted),
-        ),
-      ),
-      for (final p in _piProjects)
-        GestureDetector(
-          behavior: HitTestBehavior.opaque,
-          onTap: () => Navigator.push(
-            context,
-            MaterialPageRoute(
-              builder: (_) => PiChatScreen(
-                settings: _pi!,
-                projectId: p['id']?.toString(),
-                projectName: p['name']?.toString(),
-              ),
-            ),
-          ),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
-            child: Row(
-              children: [
-                const Icon(Icons.memory, size: 18, color: YggColors.textFaint),
-                const SizedBox(width: 10),
-                Expanded(
-                  child: Text(
-                    p['name']?.toString() ?? '',
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 14.5, color: YggColors.text),
+      YggSectionLabel(AppStrings.tp('newProject.onHost', {'host': _pi!.displayName})),
+      YggListGroup(
+        children: [
+          for (final p in _piProjects)
+            YggListRow(
+              leading: const Icon(Icons.memory),
+              title: p['name']?.toString() ?? '',
+              trailing: p['alive'] == true ? YggChip(AppStrings.t('projects.chipOpen'), tone: YggChipTone.ready, dot: true) : null,
+              onTap: () => Navigator.push(
+                context,
+                MaterialPageRoute(
+                  builder: (_) => PiChatScreen(
+                    settings: _pi!,
+                    projectId: p['id']?.toString(),
+                    projectName: p['name']?.toString(),
                   ),
                 ),
-                if (p['alive'] == true)
-                  Container(
-                    width: 8,
-                    height: 8,
-                    margin: const EdgeInsets.only(left: 8),
-                    decoration: const BoxDecoration(color: YggColors.accent, shape: BoxShape.circle),
-                  ),
-              ],
+              ),
             ),
-          ),
-        ),
+        ],
+      ),
+      const SizedBox(height: 22),
     ];
   }
 
@@ -205,8 +183,8 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
       _desktops.fold(0, (n, d) => n + d.projects.length);
 
   /// Opens a desktop project through its own gateway (Tailscale, LAN, then
-  /// the Railway tunnel) without touching the active profile, so the
-  /// assistant keeps talking to Railway.
+  /// the link server's tunnel) without touching the active profile, so the
+  /// assistant keeps talking to that server.
   Future<void> _openDesktopProject(
     HubDesktop desktop,
     HubProject project,
@@ -262,79 +240,23 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
   List<Widget> _desktopSection() {
     if (_desktops.isEmpty) return const [];
     return [
-      Padding(
-        padding: const EdgeInsets.fromLTRB(12, 14, 12, 4),
-        child: Text(
-          AppStrings.t('hub.onComputers'),
-          style: const TextStyle(fontSize: 12.5, color: YggColors.textMuted),
-        ),
-      ),
-      for (final d in _desktops)
-        for (final p in d.projects)
-          GestureDetector(
-            behavior: HitTestBehavior.opaque,
-            onTap: _connecting == null ? () => _openDesktopProject(d, p) : null,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.computer,
-                    size: 18,
-                    color: YggColors.textFaint,
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          p.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14.5,
-                            color: YggColors.text,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          _connecting == '${d.desktopId}/${p.id}'
-                              ? AppStrings.t('hub.connectingProject')
-                              : d.name,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            color: YggColors.textFaint,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  if (_connecting == '${d.desktopId}/${p.id}')
-                    const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(
-                        strokeWidth: 2,
-                        color: YggColors.accent,
-                      ),
-                    )
-                  else
-                    Container(
-                      width: 8,
-                      height: 8,
-                      margin: const EdgeInsets.only(left: 8),
-                      decoration: const BoxDecoration(
-                        color: YggColors.accent,
-                        shape: BoxShape.circle,
-                      ),
-                    ),
-                ],
+      YggSectionLabel(AppStrings.t('hub.onComputers')),
+      YggListGroup(
+        children: [
+          for (final d in _desktops)
+            for (final p in d.projects)
+              YggListRow(
+                leading: const Icon(Icons.computer),
+                title: p.name,
+                subtitle: _connecting == '${d.desktopId}/${p.id}' ? AppStrings.t('hub.connectingProject') : d.name,
+                trailing: _connecting == '${d.desktopId}/${p.id}'
+                    ? SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: YggColors.accent))
+                    : YggChip(AppStrings.t('projects.chipOpen'), tone: YggChipTone.ready, dot: true),
+                onTap: _connecting == null ? () => _openDesktopProject(d, p) : null,
               ),
-            ),
-          ),
+        ],
+      ),
+      const SizedBox(height: 22),
     ];
   }
 
@@ -348,6 +270,8 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
         desktopTarget(
           label: AppStrings.t('newProject.thisComputer'),
           connect: () async => widget.client,
+          // This screen's own connection: it keeps listing and opening projects afterwards.
+          ownsClient: false,
         ),
       );
     }
@@ -399,99 +323,113 @@ class _ProjectsScreenState extends State<ProjectsScreen> {
     );
   }
 
+  bool _matches(ProjectRecord p) {
+    if (_query.isEmpty) return true;
+    final q = _query.toLowerCase();
+    return p.name.toLowerCase().contains(q) || p.path.toLowerCase().contains(q);
+  }
+
+  /// The open project, highlighted: its own card instead of a row in the list.
+  Widget _openProjectCard(ProjectRecord project) {
+    return YggCard(
+      radius: YggRadius.lg,
+      color: YggColors.surface,
+      onTap: () => _openDetail(project),
+      child: Row(
+        children: [
+          Container(
+            width: 40,
+            height: 40,
+            decoration: BoxDecoration(color: YggColors.accentSoft, borderRadius: BorderRadius.circular(YggRadius.md)),
+            child: Icon(Icons.folder_outlined, size: 20, color: YggColors.accent),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text(project.name, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: YggColors.text)),
+                const SizedBox(height: 3),
+                Text(compactPath(project.path), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: YggFonts.mono, fontSize: 11, color: YggColors.textMuted)),
+              ],
+            ),
+          ),
+          const SizedBox(width: 8),
+          YggChip(AppStrings.t('projects.chipOpen'), tone: YggChipTone.ready, dot: true),
+        ],
+      ),
+    );
+  }
+
+  Widget _content() {
+    if (_loading) return Center(child: CircularProgressIndicator(color: YggColors.accent));
+    if (_error != null) {
+      return YggEmptyState(
+        icon: Icons.error_outline,
+        message: '${AppStrings.t('common.errorPrefix')}: $_error',
+        action: OutlinedButton(onPressed: _load, child: Text(AppStrings.t('common.retry'))),
+      );
+    }
+    if (_projects.isEmpty && _desktops.isEmpty && _piProjects.isEmpty) {
+      return YggEmptyState(icon: Icons.folder_open_outlined, message: AppStrings.t('projects.empty'));
+    }
+
+    final visible = _projects.where(_matches).toList();
+    final open = visible.where((p) => p.isOpen).toList();
+    final rest = visible.where((p) => !p.isOpen).toList();
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: YggColors.accent,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 96),
+        children: [
+          if (_projects.isNotEmpty) ...[
+            YggSearchField(hint: AppStrings.t('projects.searchHint'), onChanged: (v) => setState(() => _query = v.trim())),
+            const SizedBox(height: 18),
+          ],
+          ..._desktopSection(),
+          ..._piSection(),
+          if (open.isNotEmpty) ...[
+            YggSectionLabel(AppStrings.t('projects.openOnDesktop')),
+            for (final project in open) ...[_openProjectCard(project), const SizedBox(height: 10)],
+            const SizedBox(height: 12),
+          ],
+          if (rest.isNotEmpty) ...[
+            YggSectionLabel(AppStrings.tp('projects.allProjects', {'n': '${rest.length}'})),
+            YggListGroup(
+              children: [
+                for (final project in rest)
+                  YggListRow(
+                    title: project.name,
+                    subtitle: compactPath(project.path),
+                    subtitleMono: true,
+                    subtitleLines: 1,
+                    value: project.lastOpenedAt > 0 ? yggTimeAgo(project.lastOpenedAt) : null,
+                    onTap: () => _openDetail(project),
+                  ),
+              ],
+            ),
+          ],
+          if (visible.isEmpty && _projects.isNotEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 40),
+              child: YggEmptyState(icon: Icons.search_off, message: AppStrings.t('projects.noMatches')),
+            ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(title: Text(AppStrings.t('common.projects'))),
+    return YggScreen(
+      title: AppStrings.t('common.projects'),
       floatingActionButton: FloatingActionButton.extended(
         onPressed: _newProject,
         icon: const Icon(Icons.add),
         label: Text(AppStrings.t('newProject.fab')),
       ),
-      body: _loading
-          ? const Center(
-              child: CircularProgressIndicator(color: YggColors.accent),
-            )
-          : _error != null
-          ? Padding(
-              padding: const EdgeInsets.all(24),
-              child: Text(
-                '${AppStrings.t('common.errorPrefix')}: $_error',
-                style: const TextStyle(color: YggColors.textMuted),
-              ),
-            )
-          : _projects.isEmpty && _desktops.isEmpty && _piProjects.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Text(
-                  AppStrings.t('projects.empty'),
-                  style: const TextStyle(color: YggColors.textFaint),
-                ),
-              ),
-            )
-          : RefreshIndicator(
-              onRefresh: _load,
-              color: YggColors.accent,
-              child: ListView(
-                padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
-                children: [
-                  ..._desktopSection(),
-                  ..._piSection(),
-                  for (final project in _projects)
-                    GestureDetector(
-                      behavior: HitTestBehavior.opaque,
-                      onTap: () => _openDetail(project),
-                      child: Padding(
-                        padding: const EdgeInsets.symmetric(
-                          vertical: 11,
-                          horizontal: 12,
-                        ),
-                        child: Row(
-                          children: [
-                            Expanded(
-                              child: Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    project.name,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 14.5,
-                                      color: YggColors.text,
-                                    ),
-                                  ),
-                                  const SizedBox(height: 3),
-                                  Text(
-                                    project.path,
-                                    maxLines: 1,
-                                    overflow: TextOverflow.ellipsis,
-                                    style: const TextStyle(
-                                      fontSize: 12.5,
-                                      color: YggColors.textFaint,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ),
-                            if (project.isOpen)
-                              Container(
-                                width: 8,
-                                height: 8,
-                                margin: const EdgeInsets.only(left: 8),
-                                decoration: const BoxDecoration(
-                                  color: YggColors.accent,
-                                  shape: BoxShape.circle,
-                                ),
-                              ),
-                          ],
-                        ),
-                      ),
-                    ),
-                ],
-              ),
-            ),
+      body: _content(),
     );
   }
 }

@@ -1,3 +1,5 @@
+import { useI18n } from "../i18n/index.js";
+
 export type TabItem = { id: string; label: string; closable?: boolean };
 
 type Props = {
@@ -11,6 +13,7 @@ type Props = {
 
 /** Underlined tab strip, for documents and other open-item lists. */
 export function Tabs({ tabs, active, onSelect, onClose, onContextMenu }: Props) {
+  const { t } = useI18n();
   return (
     <div className="ygg-tabs" role="tablist">
       {tabs.map((tab) => (
@@ -27,7 +30,7 @@ export function Tabs({ tabs, active, onSelect, onClose, onContextMenu }: Props) 
           {tab.closable && onClose && (
             <span
               className="ygg-tab__close"
-              aria-label={`Cerrar ${tab.label}`}
+              aria-label={t("ui.tabs.closeNamed", { name: tab.label })}
               onClick={(e) => {
                 e.stopPropagation();
                 onClose(tab.id);

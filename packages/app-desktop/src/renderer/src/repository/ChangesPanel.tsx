@@ -1,19 +1,25 @@
 import { useState } from "react";
+import { ArrowUturnLeftIcon, MinusIcon, PlusIcon } from "@heroicons/react/20/solid";
+import { splitPath } from "./format.js";
 import type { DiffSelection, GitChange, RepoStatus } from "./types.js";
+import { useI18n, type MessageKey } from "../i18n/index.js";
 
-const LETTER_TITLE: Record<string, string> = {
-  M: "Modificado",
-  A: "Añadido",
-  D: "Borrado",
-  R: "Renombrado",
-  C: "Copiado",
-  T: "Tipo cambiado",
-  U: "Conflicto",
-  "?": "Sin rastrear",
+const LETTER_TITLE: Record<string, MessageKey> = {
+  M: "repo.changes.letter.M",
+  A: "repo.changes.letter.A",
+  D: "repo.changes.letter.D",
+  R: "repo.changes.letter.R",
+  C: "repo.changes.letter.C",
+  T: "repo.changes.letter.T",
+  U: "repo.changes.letter.U",
+  "?": "repo.changes.letter.untracked",
 };
+
+const SUMMARY_SOFT_LIMIT = 72;
 
 type Props = {
   status: RepoStatus;
+  branch?: string;
   selected: DiffSelection | null;
   disabled: boolean;
   onSelect: (sel: DiffSelection) => void;
@@ -41,14 +47,13 @@ function Row({
   onClick: () => void;
   actions: React.ReactNode;
 }) {
-  const slash = change.path.lastIndexOf("/");
-  const dir = slash >= 0 ? change.path.slice(0, slash + 1) : "";
-  const file = slash >= 0 ? change.path.slice(slash + 1) : change.path;
+  const { t } = useI18n();
+  const { dir, file } = splitPath(change.path);
   return (
     <li className={`repo-change${active ? " active" : ""}`}>
       <button type="button" className="repo-change-main" onClick={onClick} title={change.origPath ? `${change.origPath} → ${change.path}` : change.path}>
-        <span className={`repo-letter l-${letter === "?" ? "u" : letter}`} title={LETTER_TITLE[letter] ?? letter}>
-          {letter}
+        <span className={`repo-letter l-${letter === "?" ? "u" : letter}`} title={LETTER_TITLE[letter] ? t(LETTER_TITLE[letter]) : letter}>
+          {letter === "?" ? "U" : letter}
         </span>
         <span className="repo-change-name">
           <span className="repo-change-file">{file}</span>
@@ -61,7 +66,9 @@ function Row({
 }
 
 export function ChangesPanel(p: Props) {
+  const { t } = useI18n();
   const [message, setMessage] = useState("");
+  const [description, setDescription] = useState("");
   const [amend, setAmend] = useState(false);
 
   const conflicts = p.status.changes.filter((c) => c.kind === "unmerged");
@@ -69,6 +76,7 @@ export function ChangesPanel(p: Props) {
   const unstaged = p.status.changes.filter(
     (c) => c.kind === "untracked" || (c.kind !== "unmerged" && c.worktree !== "."),
   );
+  const fullMessage = description.trim() ? `${message.trim()}\n\n${description.trim()}` : message.trim();
   const canCommit = (staged.length > 0 || amend) && (message.trim().length > 0 || amend) && conflicts.length === 0;
 
   const isActive = (path: string, mode: "staged" | "unstaged") =>
@@ -76,19 +84,23 @@ export function ChangesPanel(p: Props) {
 
   return (
     <div className="repo-changes">
+      <div className="repo-changes-scroll">
       {p.status.merging && (
         <div className="repo-banner warn">
-          Merge en curso{conflicts.length > 0 ? ` — ${conflicts.length} archivo(s) con conflicto` : ""}.
-          Resolvé los conflictos en el editor, hacé stage y commit.
+          {t("repo.changes.mergeInProgress")}
+          {conflicts.length > 0 ? t("repo.changes.conflictFiles", { count: conflicts.length }) : ""}. {t("repo.changes.mergeHelp")}
           <button type="button" className="repo-btn small" disabled={p.disabled} onClick={p.onAbortMerge}>
-            Abortar merge
+            {t("repo.changes.abortMerge")}
           </button>
         </div>
       )}
 
       {conflicts.length > 0 && (
         <section>
-          <div className="repo-section-title">Conflictos ({conflicts.length})</div>
+          <div className="repo-section-title">
+            <span>{t("repo.changes.conflicts")}</span>
+            <span className="repo-count danger">{conflicts.length}</span>
+          </div>
           <ul className="repo-list">
             {conflicts.map((c) => (
               <Row
@@ -99,8 +111,8 @@ export function ChangesPanel(p: Props) {
                 disabled={p.disabled}
                 onClick={() => p.onSelect({ kind: "change", path: c.path, mode: "unstaged" })}
                 actions={
-                  <button type="button" className="repo-icon-btn" title="Marcar como resuelto (stage)" disabled={p.disabled} onClick={() => p.onStage([c.path])}>
-                    ＋
+                  <button type="button" className="repo-icon-btn" title={t("repo.changes.markResolved")} disabled={p.disabled} onClick={() => p.onStage([c.path])}>
+                    <PlusIcon className="hero-icon" />
                   </button>
                 }
               />
@@ -111,10 +123,11 @@ export function ChangesPanel(p: Props) {
 
       <section>
         <div className="repo-section-title">
-          Staged ({staged.length})
+          <span>{t("repo.changes.staged")}</span>
+          <span className="repo-count">{staged.length}</span>
           {staged.length > 0 && (
-            <button type="button" className="repo-btn small" disabled={p.disabled} onClick={p.onUnstageAll}>
-              Quitar todo
+            <button type="button" className="repo-btn small push-right" disabled={p.disabled} onClick={p.onUnstageAll}>
+              {t("repo.changes.unstageAll")}
             </button>
           )}
         </div>
@@ -128,22 +141,23 @@ export function ChangesPanel(p: Props) {
               disabled={p.disabled}
               onClick={() => p.onSelect({ kind: "change", path: c.path, mode: "staged" })}
               actions={
-                <button type="button" className="repo-icon-btn" title="Quitar de staged" disabled={p.disabled} onClick={() => p.onUnstage([c.path])}>
-                  −
+                <button type="button" className="repo-icon-btn" title={t("repo.changes.unstage")} disabled={p.disabled} onClick={() => p.onUnstage([c.path])}>
+                  <MinusIcon className="hero-icon" />
                 </button>
               }
             />
           ))}
-          {staged.length === 0 && <li className="repo-muted">Nada en staged</li>}
+          {staged.length === 0 && <li className="repo-muted">{t("repo.changes.nothingStaged")}</li>}
         </ul>
       </section>
 
       <section>
         <div className="repo-section-title">
-          Cambios ({unstaged.length})
+          <span>{t("repo.changes.changes")}</span>
+          <span className="repo-count">{unstaged.length}</span>
           {unstaged.length > 0 && (
-            <button type="button" className="repo-btn small" disabled={p.disabled} onClick={p.onStageAll}>
-              Stage todo
+            <button type="button" className="repo-btn small push-right" disabled={p.disabled} onClick={p.onStageAll}>
+              {t("repo.changes.stageAll")}
             </button>
           )}
         </div>
@@ -158,47 +172,63 @@ export function ChangesPanel(p: Props) {
               onClick={() => p.onSelect({ kind: "change", path: c.path, mode: "unstaged" })}
               actions={
                 <>
-                  <button type="button" className="repo-icon-btn danger" title="Descartar cambios" disabled={p.disabled} onClick={() => p.onDiscard(c)}>
-                    ↺
+                  <button type="button" className="repo-icon-btn danger" title={t("repo.changes.discard")} disabled={p.disabled} onClick={() => p.onDiscard(c)}>
+                    <ArrowUturnLeftIcon className="hero-icon" />
                   </button>
                   <button type="button" className="repo-icon-btn" title="Stage" disabled={p.disabled} onClick={() => p.onStage([c.path])}>
-                    ＋
+                    <PlusIcon className="hero-icon" />
                   </button>
                 </>
               }
             />
           ))}
-          {unstaged.length === 0 && <li className="repo-muted">Working tree limpio</li>}
+          {unstaged.length === 0 && <li className="repo-muted">{t("repo.changes.clean")}</li>}
         </ul>
       </section>
+
+      </div>
 
       <form
         className="repo-commit-box"
         onSubmit={async (e) => {
           e.preventDefault();
           if (!canCommit) return;
-          if (await p.onCommit(message, amend)) {
+          if (await p.onCommit(fullMessage, amend)) {
             setMessage("");
+            setDescription("");
             setAmend(false);
           }
         }}
       >
-        <textarea
+        <input
           className="repo-input"
-          rows={3}
-          placeholder={amend ? "Mensaje (vacío = conservar el actual)" : "Mensaje del commit"}
+          placeholder={amend ? t("repo.changes.summaryAmend") : t("repo.changes.messagePlaceholder")}
+          aria-label={t("repo.changes.messagePlaceholder")}
           value={message}
           onChange={(e) => setMessage(e.target.value)}
           disabled={p.disabled}
         />
+        <textarea
+          className="repo-input mono"
+          rows={3}
+          placeholder={t("repo.changes.descPlaceholder")}
+          aria-label={t("repo.changes.descLabel")}
+          value={description}
+          onChange={(e) => setDescription(e.target.value)}
+          disabled={p.disabled}
+        />
         <div className="repo-commit-actions">
           <label className="repo-check">
-            <input type="checkbox" checked={amend} onChange={(e) => setAmend(e.target.checked)} /> Amend
+            <input type="checkbox" checked={amend} onChange={(e) => setAmend(e.target.checked)} /> {t("repo.changes.amendLast")}
           </label>
-          <button type="submit" className="repo-btn primary" disabled={p.disabled || !canCommit}>
-            {amend ? "Amend commit" : "Commit"}
-          </button>
+          <span className={`repo-counter${message.length > SUMMARY_SOFT_LIMIT ? " over" : ""}`}>
+            {message.length}/{SUMMARY_SOFT_LIMIT}
+          </span>
         </div>
+        <button type="submit" className="repo-btn primary wide tall" disabled={p.disabled || !canCommit}>
+          {amend ? t("repo.changes.amendCommit") : t(staged.length === 1 ? "repo.changes.commitOne" : "repo.changes.commitMany", { count: staged.length })}
+          {p.branch && !amend && <span className="repo-commit-branch">{t("repo.changes.onBranch", { branch: p.branch })}</span>}
+        </button>
       </form>
     </div>
   );

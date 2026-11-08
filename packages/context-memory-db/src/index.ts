@@ -208,8 +208,8 @@ export const memoryDbPlugin = definePlugin({
     api.registerTool(pluginDataSearchTool);
 
     // Plugin handlers get no workspaceRoot of their own. Fall back to the
-    // same root the CLI resolves (YGGDRASIL_WORKSPACE, e.g. /data/project on
-    // Railway) so these RPCs hit the same memory.db as the agent's tools.
+    // same root the CLI resolves (YGGDRASIL_WORKSPACE, e.g. /data/project in
+    // the Docker image) so these RPCs hit the same memory.db as the agent's tools.
     const rpcDb = (_ctx: unknown) => {
       const globalCfg = api.globalConfig as { workspaceRoot?: string };
       const cfg = api.config as { dbPath?: string } | undefined;

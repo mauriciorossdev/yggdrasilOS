@@ -6,6 +6,7 @@ import type { PluginRecord } from "../types.js";
 import { getThemeColors, onThemeApplied } from "../ui/theme/themeRuntime.js";
 import { terminalColors } from "../ui/theme/surfaces.js";
 import { buildStudioTerminalLaunch, type StudioTerminalHarness } from "./studioContext.js";
+import { t } from "../i18n/index.js";
 
 type Props = {
   plugin: PluginRecord;
@@ -65,7 +66,7 @@ export function StudioTerminalPane({ plugin, projectPath, harness }: Props) {
       if (tid === id) term.write(chunk);
     });
     const unsubExit = window.yggdrasil.terminals.onExit((tid) => {
-      if (tid === id) term.write("\r\n\x1b[90m[proceso terminado]\x1b[0m\r\n");
+      if (tid === id) term.write(`\r\n\x1b[90m${t("studio.terminal.ended")}\x1b[0m\r\n`);
     });
     const resizeObserver = new ResizeObserver(() => {
       fitAddon.fit();

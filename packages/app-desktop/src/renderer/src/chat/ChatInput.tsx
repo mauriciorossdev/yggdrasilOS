@@ -1,8 +1,9 @@
 import { useEffect, useRef, useState, type DragEvent, type KeyboardEvent } from "react";
-import { DocumentIcon, FolderIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { DocumentIcon, FolderIcon, PaperClipIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import type { Attachment, FsSearchResult } from "../types.js";
 import { FILE_DRAG_MIME, type FileDragPayload } from "../files/dragMimeType.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = {
   disabled: boolean;
@@ -23,10 +24,12 @@ function basename(relativePath: string): string {
 
 export function ChatInput({ disabled, isStreaming, onSend, onStop, attachments, onAttach, onRemoveAttachment, onCycleMode }: Props) {
   const { call } = useGateway();
+  const { t } = useI18n();
   const [value, setValue] = useState("");
   const [mentionOpen, setMentionOpen] = useState(false);
   const [mentionResults, setMentionResults] = useState<FsSearchResult["entries"]>([]);
   const [mentionIndex, setMentionIndex] = useState(0);
+  const [attachNote, setAttachNote] = useState<string | null>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -107,6 +110,23 @@ export function ChatInput({ disabled, isStreaming, onSend, onStop, attachments, 
     }
   };
 
+  // The paperclip: a native picker that opens on the project. Anything outside it can't be
+  // attached (the gateway reads attachments from the project), so say so instead of skipping it quietly.
+  const pickFiles = async () => {
+    setAttachNote(null);
+    try {
+      const { attachments: picked, rejected } = await window.yggdrasil.files.pickToAttach();
+      picked.forEach(onAttach);
+      if (rejected.length > 0) {
+        setAttachNote(
+          rejected.length === 1 ? t("chat.input.outsideOne") : t("chat.input.outsideMany", { count: rejected.length }),
+        );
+      }
+    } catch (err) {
+      setAttachNote(err instanceof Error ? err.message : String(err));
+    }
+  };
+
   const onDragOver = (e: DragEvent<HTMLFormElement>) => {
     if (e.dataTransfer.types.includes(FILE_DRAG_MIME)) {
       e.preventDefault();
@@ -141,6 +161,11 @@ export function ChatInput({ disabled, isStreaming, onSend, onStop, attachments, 
       onDrop={onDrop}
     >
       <div className="chat-input-main">
+        {attachNote && (
+          <div className="attachment-note" role="status">
+            {attachNote}
+          </div>
+        )}
         {attachments.length > 0 && (
           <div className="attachment-row">
             {attachments.map((a) => (
@@ -163,7 +188,7 @@ export function ChatInput({ disabled, isStreaming, onSend, onStop, attachments, 
             }}
             onKeyDown={onKeyDown}
             onBlur={() => setTimeout(() => setMentionOpen(false), 150)}
-            placeholder="Type a message... (@ to mention a file)"
+            placeholder={t("chat.input.placeholder")}
             rows={2}
             disabled={disabled || isStreaming}
           />
@@ -191,8 +216,18 @@ export function ChatInput({ disabled, isStreaming, onSend, onStop, attachments, 
           )}
         </div>
       </div>
+      <button
+        type="button"
+        className="icon-btn chat-attach-btn"
+        title={t("chat.input.attach")}
+        aria-label={t("chat.input.attach")}
+        onClick={() => void pickFiles()}
+        disabled={disabled || isStreaming}
+      >
+        <PaperClipIcon className="hero-icon" />
+      </button>
       <button type="submit" disabled={disabled && !isStreaming}>
-        {isStreaming ? "Stop" : "Send"}
+        {isStreaming ? t("chat.input.stop") : t("chat.input.send")}
       </button>
     </form>
   );

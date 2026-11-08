@@ -1,12 +1,20 @@
 import { useCallback, useEffect, useRef, useState, type DragEvent, type MouseEvent } from "react";
-import { ChevronRightIcon, DocumentIcon, FolderIcon, FolderOpenIcon } from "@heroicons/react/20/solid";
+import { ChevronRightIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import type { FsEntry, FsListResult } from "../types.js";
 import { FILE_DRAG_MIME, type FileDragPayload } from "./dragMimeType.js";
 import { FileTreeContextMenu } from "./FileTreeContextMenu.js";
 import { isSameOrDescendant, moveTargetPath } from "./fileTreeDnd.js";
 import { isBlenderFile } from "./filePreviewKind.js";
+import { EntryIcon } from "./FileIcons.js";
+import { isHiddenName, sortEntries } from "./fileKinds.js";
+import type { GitDecor } from "./gitDecor.js";
+import { quotePathForShell, type SendTarget } from "./sendTargets.js";
+import { requestChatAttach } from "../chat/chatAttachBridge.js";
+import { setActiveTab } from "../ui/mainTabsStore.js";
+import { requestFocusPane } from "../terminal/terminalPanesStore.js";
 import { ShareDialog } from "../sync/ShareDialog.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = {
   entry: FsEntry;
@@ -23,6 +31,8 @@ type Props = {
   version: number;
   /** The Documents panel's currently-active tab (if any) — highlights the matching leaf and auto-expands any ancestor folder so it's visible without manually clicking through the tree. */
   activePath?: string | null;
+  /** git status to show on rows (a letter on files, a dot on folders holding changes); omitted = no decoration. */
+  gitDecor?: GitDecor;
 };
 
 export function FileTreeNode({
@@ -35,7 +45,9 @@ export function FileTreeNode({
   onImportPaths,
   version,
   activePath,
+  gitDecor,
 }: Props) {
+  const { t } = useI18n();
   const { call } = useGateway();
   const [expanded, setExpanded] = useState(false);
   const [children, setChildren] = useState<FsEntry[] | null>(null);
@@ -51,6 +63,14 @@ export function FileTreeNode({
   const isActive = !isDir && relativePath === activePath;
   const containsActive = isDir && !!activePath && activePath !== relativePath && isSameOrDescendant(activePath, relativePath);
   const rowRef = useRef<HTMLButtonElement>(null);
+  const gitLetter = !isDir ? gitDecor?.files.get(relativePath) : undefined;
+  const gitMark = gitLetter ? (
+    <span className={`git-mark git-${gitLetter === "?" ? "U" : gitLetter === "!" ? "C" : gitLetter}`} title={t("doc.git.changes")}>
+      {gitLetter}
+    </span>
+  ) : isDir && gitDecor?.dirs.has(relativePath) ? (
+    <span className="git-dot" title={t("doc.git.dirChanges")} />
+  ) : null;
   // Sharing is scoped to notes/ files specifically — see main/syncEngine.ts's
   // "notes-file" resource type, which only knows how to read/write inside a
   // project's notes/ folder (resolveWithinNotes).
@@ -224,6 +244,64 @@ export function FileTreeNode({
     if (!result.opened) window.alert(result.error ?? "Could not open Blender.");
   };
 
+  const copyToClipboard = async () => {
+    const result = await window.yggdrasil.clipboard.writeFilePaths([relativePath]);
+    if (!result.ok) window.alert(result.error ?? "Could not copy to the clipboard.");
+  };
+
+  const copyPathText = async (text: string) => {
+    try {
+      await navigator.clipboard.writeText(text);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Could not copy the path.");
+    }
+  };
+
+  const copyAbsolutePath = async () => {
+    try {
+      await copyPathText(await window.yggdrasil.files.absolutePath(relativePath));
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Could not resolve the path.");
+    }
+  };
+
+  const pasteHere = async () => {
+    const sourcePaths = await window.yggdrasil.clipboard.readFilePaths();
+    if (sourcePaths.length === 0) {
+      window.alert(t("doc.tree.noClipboardFiles"));
+      return;
+    }
+    setExpanded(true);
+    await onImportPaths(relativePath, sourcePaths);
+  };
+
+  const openWithDefaultApp = async () => {
+    try {
+      await window.yggdrasil.files.openExternal(relativePath);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Could not open it with the default app.");
+    }
+  };
+
+  // The chat takes it as an attachment on its pending message; a terminal gets the absolute
+  // path typed in (no Enter, so the user decides what to do with it). Either way the user is
+  // taken there: the text is waiting in that pane, the chip in that composer.
+  const sendTo = async (target: SendTarget) => {
+    if (target.kind === "chat") {
+      if (requestChatAttach({ relativePath, type: isDir ? "directory" : "file" })) setActiveTab("chat");
+      else window.alert(t("doc.tree.chatUnavailable"));
+      return;
+    }
+    try {
+      const absolute = await window.yggdrasil.files.absolutePath(relativePath);
+      await window.yggdrasil.terminals.write(target.id, `${quotePathForShell(absolute, /Win/i.test(navigator.platform))} `);
+      setActiveTab("terminal");
+      requestFocusPane(target.id);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "Could not send it to the terminal.");
+    }
+  };
+
   const revealInExplorer = async () => {
     const result = await window.yggdrasil.ide.revealPath(relativePath, isDir);
     if (!result.opened) window.alert(result.error ?? "Could not open the file explorer.");
@@ -234,8 +312,9 @@ export function FileTreeNode({
       <button
         ref={rowRef}
         type="button"
-        className={`file-node-row ${!isDir ? "file-node-leaf" : ""}${dragOver ? " drag-over" : ""}${isActive ? " active" : ""}`}
+        className={`file-node-row ${!isDir ? "file-node-leaf" : ""}${dragOver ? " drag-over" : ""}${isActive ? " active" : ""}${isHiddenName(entry.name) ? " hidden-entry" : ""}`}
         style={{ paddingLeft: indent }}
+        title={relativePath}
         onClick={() => void toggle()}
         onContextMenu={onContextMenu}
         draggable
@@ -244,21 +323,17 @@ export function FileTreeNode({
         onDragLeave={onDragLeave}
         onDrop={(e) => void onDrop(e)}
       >
+        {Array.from({ length: depth }, (_, i) => (
+          <span key={i} className="file-node-guide" style={{ left: 13 + i * 14 }} aria-hidden="true" />
+        ))}
         <span className={`chevron ${!isDir ? "chevron-hidden" : expanded ? "open" : ""}`}>
           <ChevronRightIcon className="hero-icon" />
         </span>
         <span className="file-node-icon">
-          {isDir ? (
-            expanded ? (
-              <FolderOpenIcon className="hero-icon" />
-            ) : (
-              <FolderIcon className="hero-icon" />
-            )
-          ) : (
-            <DocumentIcon className="hero-icon" />
-          )}
+          <EntryIcon name={entry.name} isDir={isDir} open={expanded} />
         </span>
         <span className="file-node-name">{entry.name}</span>
+        {gitMark}
       </button>
 
       {menu && (
@@ -273,7 +348,13 @@ export function FileTreeNode({
           onNewFile={isDir ? (name) => void createChild("file", name) : undefined}
           onNewFolder={isDir ? (name) => void createChild("directory", name) : undefined}
           onImportFiles={isDir ? () => void importFiles() : undefined}
-          onOpenInIde={isDir ? () => void openInIde() : undefined}
+          onOpenInIde={() => void openInIde()}
+          onOpenExternal={!isDir ? () => void openWithDefaultApp() : undefined}
+          onCopy={() => void copyToClipboard()}
+          onCopyPath={() => void copyAbsolutePath()}
+          onCopyRelativePath={() => void copyPathText(relativePath)}
+          onPaste={isDir ? () => void pasteHere() : undefined}
+          onSendTo={(target) => void sendTo(target)}
           onReveal={() => void revealInExplorer()}
           onOpenInBlender={!isDir && isBlenderFile(relativePath) ? () => void openInBlender() : undefined}
           onShare={isNotesFile ? () => setShowShare(true) : undefined}
@@ -292,7 +373,7 @@ export function FileTreeNode({
         <div className="file-node-children">
           {loading && (
             <div className="muted" style={{ paddingLeft: indent + 14 }}>
-              Loading…
+              {t("doc.loading")}
             </div>
           )}
           {error && (
@@ -300,7 +381,7 @@ export function FileTreeNode({
               {error}
             </div>
           )}
-          {children?.map((child) => (
+          {children && sortEntries(children).map((child) => (
             <FileTreeNode
               key={child.name}
               entry={child}
@@ -312,6 +393,7 @@ export function FileTreeNode({
               onImportPaths={onImportPaths}
               version={version}
               activePath={activePath}
+              gitDecor={gitDecor}
             />
           ))}
           {truncated && (

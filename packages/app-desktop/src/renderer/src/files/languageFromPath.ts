@@ -29,7 +29,38 @@ const EXTENSION_TO_LANGUAGE: Record<string, string> = {
   ini: "ini",
 };
 
+/** The fields of Monaco's language registry used to resolve a file (monaco.languages.ILanguageExtensionPoint). */
+export type LanguageInfo = { id: string; extensions?: string[]; filenames?: string[] };
+
+let byExtension = new Map<string, string>();
+let byFilename = new Map<string, string>();
+
+/**
+ * Adds Monaco's language registry (java, c/cpp, php, dockerfile...) behind the table above. It's handed
+ * in by monacoSetup.ts rather than imported, so this file doesn't pull the whole editor into its importers.
+ */
+export function setLanguageCatalog(languages: LanguageInfo[]): void {
+  const extensions = new Map<string, string>();
+  const filenames = new Map<string, string>();
+  for (const language of languages) {
+    for (const ext of language.extensions ?? []) {
+      const key = ext.replace(/^\./, "").toLowerCase();
+      if (!extensions.has(key)) extensions.set(key, language.id);
+    }
+    for (const name of language.filenames ?? []) {
+      const key = name.toLowerCase();
+      if (!filenames.has(key)) filenames.set(key, language.id);
+    }
+  }
+  byExtension = extensions;
+  byFilename = filenames;
+}
+
 export function languageFromPath(path: string): string {
-  const ext = path.slice(path.lastIndexOf(".") + 1).toLowerCase();
-  return EXTENSION_TO_LANGUAGE[ext] ?? "plaintext";
+  const base = path.slice(Math.max(path.lastIndexOf("/"), path.lastIndexOf("\\")) + 1).toLowerCase();
+  if (/^\.env(\..+)?$/.test(base)) return "ini";
+  if (/^dockerfile(\..+)?$/.test(base)) return "dockerfile";
+  const dot = base.lastIndexOf(".");
+  const ext = dot === -1 ? "" : base.slice(dot + 1);
+  return (ext && EXTENSION_TO_LANGUAGE[ext]) || byFilename.get(base) || (ext && byExtension.get(ext)) || "plaintext";
 }

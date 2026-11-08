@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useI18n } from "../../i18n/index.js";
 import type { DetectedIde, IdeSettings } from "../../types.js";
 
 type Props = {
@@ -14,6 +15,7 @@ type Props = {
  * shows up without restarting the app.
  */
 export function IdeSection({ ideSettings, setIdeSettings }: Props) {
+  const { t } = useI18n();
   const [detected, setDetected] = useState<DetectedIde[] | null>(null);
   const [query, setQuery] = useState("");
   const [detectError, setDetectError] = useState<string | null>(null);
@@ -49,24 +51,23 @@ export function IdeSection({ ideSettings, setIdeSettings }: Props) {
     <section className="settings-section">
       <h3>IDE</h3>
       <p className="muted">
-        Which IDE the title bar's IDE button opens the current project's folder in. Only installed IDEs can be
-        selected — reinstall or use "Custom…" below if yours isn't detected.
+        {t("set.ide.intro")}
       </p>
 
       <label>
-        Search
+        {t("set.ide.search")}
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="Filter IDEs…"
+          placeholder={t("set.ide.filterPh")}
         />
       </label>
 
       {detectError && <p className="error">{detectError}</p>}
 
       <div className="ide-option-list">
-        {detected === null && !detectError && <p className="muted">Detecting installed IDEs…</p>}
+        {detected === null && !detectError && <p className="muted">{t("set.ide.detecting")}</p>}
         {filtered.map((ide) => (
           <label key={ide.id} className={`ide-option-row ${!ide.installed ? "disabled" : ""}`}>
             <input
@@ -78,11 +79,11 @@ export function IdeSection({ ideSettings, setIdeSettings }: Props) {
             />
             {ide.label}
             <span className={`ide-option-status ${ide.installed ? "installed" : ""}`}>
-              {ide.installed ? "Installed" : "Not found"}
+              {ide.installed ? t("set.ide.installed") : t("set.ide.notFound")}
             </span>
           </label>
         ))}
-        {detected !== null && filtered.length === 0 && <p className="muted">No IDE matches "{query}".</p>}
+        {detected !== null && filtered.length === 0 && <p className="muted">{t("set.ide.noMatch", { query })}</p>}
       </div>
 
       <label className="ide-option-row">
@@ -92,31 +93,31 @@ export function IdeSection({ ideSettings, setIdeSettings }: Props) {
           checked={ideSettings.configuredId === "custom"}
           onChange={() => setIdeSettings({ ...ideSettings, configuredId: "custom" })}
         />
-        Custom…
+        {t("set.ide.custom")}
       </label>
 
       {ideSettings.configuredId === "custom" && (
         <>
           <label>
-            Label
+            {t("set.ide.label")}
             <input
               type="text"
               value={ideSettings.customLabel ?? ""}
               onChange={(e) => setIdeSettings({ ...ideSettings, customLabel: e.target.value })}
-              placeholder="e.g. Fleet"
+              placeholder={t("set.ide.labelPh")}
             />
           </label>
           <label>
-            Executable{window.yggdrasil.platform === "darwin" ? " or .app" : ""}
+            {window.yggdrasil.platform === "darwin" ? t("set.ide.exeApp") : t("set.ide.exe")}
             <div className="input-with-button">
               <input
                 type="text"
                 value={ideSettings.customPath ?? ""}
                 onChange={(e) => setIdeSettings({ ...ideSettings, customPath: e.target.value })}
-                placeholder="Not set — browse to it"
+                placeholder={t("set.ide.pathPh")}
               />
               <button type="button" onClick={() => void pickCustomPath()}>
-                Browse…
+                {t("set.ide.browse")}
               </button>
             </div>
           </label>
@@ -125,20 +126,25 @@ export function IdeSection({ ideSettings, setIdeSettings }: Props) {
 
       <h3>Blender</h3>
       <p className="muted">
-        Used by "Open in Blender" on 3D files. Leave empty to autodetect
-        {detectedBlender ? ` (found: ${detectedBlender})` : detectedBlender === null ? " (none found yet)" : ""}.
+        {t("set.ide.blenderHelp")}
+        {detectedBlender
+          ? t("set.ide.blenderFound", { path: detectedBlender })
+          : detectedBlender === null
+            ? t("set.ide.blenderNone")
+            : ""}
+        .
       </p>
       <label>
-        Blender executable{window.yggdrasil.platform === "darwin" ? " or .app" : ""}
+        {window.yggdrasil.platform === "darwin" ? t("set.ide.blenderExeApp") : t("set.ide.blenderExe")}
         <div className="input-with-button">
           <input
             type="text"
             value={ideSettings.blenderPath ?? ""}
             onChange={(e) => setIdeSettings({ ...ideSettings, blenderPath: e.target.value || undefined })}
-            placeholder="Autodetect"
+            placeholder={t("set.ide.autodetect")}
           />
           <button type="button" onClick={() => void pickBlenderPath()}>
-            Browse…
+            {t("set.ide.browse")}
           </button>
         </div>
       </label>

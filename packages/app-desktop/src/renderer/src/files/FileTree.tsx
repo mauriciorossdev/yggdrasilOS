@@ -1,24 +1,71 @@
-import { useCallback, useEffect, useState, type DragEvent, type KeyboardEvent } from "react";
-import { ArrowDownTrayIcon, DocumentPlusIcon, FolderPlusIcon } from "@heroicons/react/20/solid";
+import { useCallback, useEffect, useRef, useState, type DragEvent, type KeyboardEvent, type ReactNode } from "react";
+import { ArrowDownTrayIcon, DocumentPlusIcon, FolderPlusIcon, MagnifyingGlassIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import { FileTreeNode } from "./FileTreeNode.js";
 import type { FsEntry, FsListResult } from "../types.js";
 import { FILE_DRAG_MIME, type FileDragPayload } from "./dragMimeType.js";
 import { isSameOrDescendant, moveTargetPath } from "./fileTreeDnd.js";
+import { sortEntries } from "./fileKinds.js";
+import type { GitDecor } from "./gitDecor.js";
+import { FileSearchResults, type OpenTarget } from "./FileSearchResults.js";
+import { pickFilterBox, type FilterBox } from "./filterShortcut.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = {
-  onOpenFile: (relativePath: string) => void;
+  /** `target` is set when the file was opened from a content-search hit: where to take the reader. */
+  onOpenFile: (relativePath: string, target?: OpenTarget) => void;
   /** Scopes the whole tree to a subfolder (e.g. "notes" for the Documents tab) instead of the project root. */
   rootRelativePath?: string;
   /** The currently-active tab in whatever's showing this tree (DocumentsView) — highlights the matching node, see FileTreeNode. */
   activePath?: string | null;
+  /** git status shown on rows (letters on files, dots on folders); omitted = no decoration. */
+  gitDecor?: GitDecor;
+  /** Adds a filter box to the toolbar; while it has text the tree is replaced by a flat list of matching files. */
+  searchable?: boolean;
+  /** With `searchable`: also search what the files say, showing a snippet of each hit (names only otherwise). */
+  searchContent?: boolean;
+  /** Text of the filter box. */
+  searchPlaceholder?: string;
+  /** ⌘P goes to the visible filter box with the highest priority (the Documents tree outranks the sidebar's). */
+  shortcutPriority?: number;
+  /** Extra controls at the end of the toolbar (the sidebar's "index project" button). */
+  toolbarEnd?: ReactNode;
 };
 
 function joinPath(root: string, name: string): string {
   return root ? `${root}/${name}` : name;
 }
 
-export function FileTree({ onOpenFile, rootRelativePath = "", activePath }: Props) {
+const IS_MAC = typeof navigator !== "undefined" && /Mac/i.test(navigator.platform);
+
+// Every tab stays mounted, so the sidebar's tree and the Documents tree can both have a filter box.
+type RegisteredFilter = { id: number; priority: number; input: () => HTMLInputElement | null };
+const registeredFilters = new Set<RegisteredFilter>();
+let nextFilterId = 0;
+
+function focusShortcutTarget(): boolean {
+  const entries = [...registeredFilters];
+  const boxes: FilterBox[] = entries.map((e) => ({ id: e.id, priority: e.priority, visible: !!e.input()?.offsetParent }));
+  const winner = entries.find((e) => e.id === pickFilterBox(boxes));
+  const input = winner?.input();
+  if (!input) return false;
+  input.focus();
+  input.select();
+  return true;
+}
+
+export function FileTree({
+  onOpenFile,
+  rootRelativePath = "",
+  activePath,
+  gitDecor,
+  searchable,
+  searchContent,
+  searchPlaceholder,
+  shortcutPriority = 0,
+  toolbarEnd,
+}: Props) {
+  const { t } = useI18n();
   const { call, onEvent, authenticated } = useGateway();
   const [entries, setEntries] = useState<FsEntry[] | null>(null);
   const [truncated, setTruncated] = useState(false);
@@ -34,6 +81,31 @@ export function FileTree({ onOpenFile, rootRelativePath = "", activePath }: Prop
   const [creating, setCreating] = useState<"file" | "directory" | null>(null);
   const [creatingName, setCreatingName] = useState("");
   const [importing, setImporting] = useState(false);
+  const [filter, setFilter] = useState("");
+  const filterRef = useRef<HTMLInputElement>(null);
+
+  // ⌘P jumps to the filter box. Mac only: Ctrl+P is "previous command" in the shells running in the terminals.
+  // One listener per tree, but only the highest-priority visible box answers (see focusShortcutTarget).
+  useEffect(() => {
+    if (!searchable || !IS_MAC) return;
+    const entry: RegisteredFilter = { id: nextFilterId++, priority: shortcutPriority, input: () => filterRef.current };
+    registeredFilters.add(entry);
+    const onKey = (e: globalThis.KeyboardEvent) => {
+      if (e.metaKey && !e.ctrlKey && !e.altKey && e.key.toLowerCase() === "p") {
+        const winner = pickFilterBox(
+          [...registeredFilters].map((f) => ({ id: f.id, priority: f.priority, visible: !!f.input()?.offsetParent })),
+        );
+        if (winner !== entry.id) return;
+        e.preventDefault();
+        focusShortcutTarget();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => {
+      window.removeEventListener("keydown", onKey);
+      registeredFilters.delete(entry);
+    };
+  }, [searchable, shortcutPriority]);
 
   const reload = useCallback(async () => {
     try {
@@ -207,16 +279,54 @@ export function FileTree({ onOpenFile, rootRelativePath = "", activePath }: Prop
       onDrop={(e) => void onRootDrop(e)}
       onKeyDown={(e) => void onTreeKeyDown(e)}
     >
+      {searchable && (
+        <label className="file-tree-filter">
+          <MagnifyingGlassIcon className="hero-icon" />
+          <input
+            ref={filterRef}
+            type="text"
+            value={filter}
+            onChange={(e) => setFilter(e.target.value)}
+            onKeyDown={(e) => {
+              if (e.key === "Escape") {
+                setFilter("");
+                e.currentTarget.blur();
+              }
+            }}
+            placeholder={searchPlaceholder ?? t("doc.tree.filter")}
+            aria-label={searchPlaceholder ?? t("doc.tree.filter")}
+            autoComplete="off"
+            spellCheck={false}
+          />
+          {filter ? (
+            <button
+              type="button"
+              className="file-tree-filter-clear"
+              title={t("doc.tree.clearFilter")}
+              aria-label={t("doc.tree.clearFilter")}
+              onClick={() => {
+                setFilter("");
+                filterRef.current?.focus();
+              }}
+            >
+              <XMarkIcon className="hero-icon" />
+            </button>
+          ) : (
+            IS_MAC && <kbd>⌘P</kbd>
+          )}
+        </label>
+      )}
       <div className="file-tree-toolbar">
-        <button type="button" className="icon-btn" title="New file" onClick={() => startCreating("file")}>
+        <button type="button" className="icon-btn tip" data-tip={t("doc.tree.newFile")} aria-label={t("doc.tree.newFile")} onClick={() => startCreating("file")}>
           <DocumentPlusIcon className="hero-icon" />
         </button>
-        <button type="button" className="icon-btn" title="New folder" onClick={() => startCreating("directory")}>
+        <button type="button" className="icon-btn tip" data-tip={t("doc.tree.newFolder")} aria-label={t("doc.tree.newFolder")} onClick={() => startCreating("directory")}>
           <FolderPlusIcon className="hero-icon" />
         </button>
-        <button type="button" className="icon-btn" title="Import files/folders…" onClick={() => void importAtRoot()}>
+        <button type="button" className="icon-btn tip" data-tip={t("doc.tree.import")} aria-label={t("doc.tree.import")} onClick={() => void importAtRoot()}>
           <ArrowDownTrayIcon className="hero-icon" />
         </button>
+        {toolbarEnd}
       </div>
       {creating && (
         <input
@@ -225,29 +335,37 @@ export function FileTree({ onOpenFile, rootRelativePath = "", activePath }: Prop
           onChange={(e) => setCreatingName(e.target.value)}
           onKeyDown={onCreatingKeyDown}
           onBlur={() => void submitCreating()}
-          placeholder={creating === "file" ? "file name" : "folder name"}
+          placeholder={creating === "file" ? t("doc.tree.fileName") : t("doc.tree.folderName")}
           autoFocus
         />
       )}
-      {importing && <p className="muted">Importing…</p>}
+      {importing && <p className="muted">{t("doc.tree.importing")}</p>}
       {error && <p className="error">{error}</p>}
-      {!error && !entries && <p className="muted">Loading…</p>}
-      {!error && entries?.length === 0 && <p className="muted">Empty folder</p>}
-      {entries?.map((entry) => (
-        <FileTreeNode
-          key={entry.name}
-          entry={entry}
-          relativePath={joinPath(rootRelativePath, entry.name)}
-          depth={0}
-          onOpenFile={onOpenFile}
-          onRequestReload={reload}
-          onTreeChanged={onTreeChanged}
-          onImportPaths={importPaths}
-          version={version}
-          activePath={activePath}
-        />
-      ))}
-      {truncated && <p className="muted">…and more items not shown</p>}
+      {searchable && filter.trim() ? (
+        <FileSearchResults query={filter.trim()} onOpenFile={onOpenFile} content={searchContent} root={rootRelativePath} />
+      ) : (
+        <>
+          {!error && !entries && <p className="muted">{t("doc.loading")}</p>}
+          {!error && entries?.length === 0 && <p className="muted">{t("doc.tree.empty")}</p>}
+          {entries &&
+            sortEntries(entries).map((entry) => (
+              <FileTreeNode
+                key={entry.name}
+                entry={entry}
+                relativePath={joinPath(rootRelativePath, entry.name)}
+                depth={0}
+                onOpenFile={onOpenFile}
+                onRequestReload={reload}
+                onTreeChanged={onTreeChanged}
+                onImportPaths={importPaths}
+                version={version}
+                activePath={activePath}
+                gitDecor={gitDecor}
+              />
+            ))}
+        </>
+      )}
+      {truncated && !(searchable && filter.trim()) && <p className="muted">{t("doc.tree.more")}</p>}
     </div>
   );
 }

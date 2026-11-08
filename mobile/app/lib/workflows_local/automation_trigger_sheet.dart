@@ -21,7 +21,7 @@ Future<AutoTrigger?> pickTrigger(BuildContext context) async {
             ListTile(
               leading: Icon(_iconFor(t)),
               title: Text(_titleFor(t)),
-              subtitle: Text(_hintFor(t), style: const TextStyle(fontSize: 12, color: YggColors.textFainter)),
+              subtitle: Text(_hintFor(t), style: TextStyle(fontSize: 12, color: YggColors.textFainter)),
               onTap: () => Navigator.pop(context, t),
             ),
         ],
@@ -236,7 +236,7 @@ class _GeofenceDialogState extends State<_GeofenceDialog> {
               onChanged: (v) => setState(() => _on = v ?? 'enter'),
             ),
             TextButton.icon(onPressed: _useCurrent, icon: const Icon(Icons.my_location), label: Text(AppStrings.t('trig.useCurrent'))),
-            if (_error != null) Text(_error!, style: const TextStyle(color: YggColors.errorRed, fontSize: 12)),
+            if (_error != null) Text(_error!, style: TextStyle(color: YggColors.errorRed, fontSize: 12)),
           ],
         ),
       ),

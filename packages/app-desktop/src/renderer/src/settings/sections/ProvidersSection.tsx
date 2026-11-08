@@ -1,5 +1,6 @@
 import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import type { ConfigShape, ProviderInfo } from "../../types.js";
+import { useI18n } from "../../i18n/index.js";
 
 type Props = {
   config: ConfigShape;
@@ -19,6 +20,7 @@ const DEFAULT_BASE_URLS: Record<string, string> = {
 const PROVIDERS_WITH_API_KEY = new Set(["openai-compat"]);
 
 export function ProvidersSection({ config, setConfig, providers, apiKeyEdits, setApiKeyEdits }: Props) {
+  const { t } = useI18n();
   const updateBaseUrl = (id: string, baseUrl: string) => {
     setConfig({
       ...config,
@@ -28,16 +30,15 @@ export function ProvidersSection({ config, setConfig, providers, apiKeyEdits, se
 
   return (
     <section className="settings-section">
-      <h3>Providers</h3>
+      <h3>{t("set.providers.title")}</h3>
       <p className="muted">
-        Point a provider at a remote host instead of the default — e.g. an Ollama instance running on another
-        machine on your network (same idea as Ollama's own network mode): enter its address as{" "}
+        {t("set.providers.introBefore")}{" "}
         <code>http://&lt;ip&gt;:&lt;port&gt;</code>.
       </p>
       {providers.map((p) => (
         <div key={p.id} className="settings-provider">
           <label>
-            {p.label} base URL
+            {t("set.providers.baseUrl", { label: p.label })}
             <input
               type="text"
               value={config.providers?.[p.id]?.baseUrl ?? ""}
@@ -47,18 +48,17 @@ export function ProvidersSection({ config, setConfig, providers, apiKeyEdits, se
           </label>
           {p.error && (
             <p className="provider-warning">
-              <ExclamationTriangleIcon className="hero-icon" /> Unreachable — {p.error}. Model list unavailable;
-              double-check the URL and that the host is reachable.
+              <ExclamationTriangleIcon className="hero-icon" /> {t("set.providers.unreachable", { error: p.error })}
             </p>
           )}
           {PROVIDERS_WITH_API_KEY.has(p.id) && (
             <label>
-              {p.label} API key
+              {t("set.providers.apiKey", { label: p.label })}
               <input
                 type="password"
                 value={apiKeyEdits[p.id] ?? ""}
                 onChange={(e) => setApiKeyEdits({ ...apiKeyEdits, [p.id]: e.target.value })}
-                placeholder="Leave blank to keep the current key"
+                placeholder={t("set.providers.apiKeyPlaceholder")}
                 autoComplete="off"
               />
             </label>

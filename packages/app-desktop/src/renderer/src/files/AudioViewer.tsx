@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useI18n } from "../i18n/index.js";
 
 const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 
@@ -6,6 +7,7 @@ const SPEEDS = [0.5, 0.75, 1, 1.25, 1.5, 2];
 // (loop, speed) are the controls it doesn't have. The ygg-file:// URL streams
 // with Range support, so big files seek instantly and aren't capped at 20 MB.
 export function AudioViewer({ relativePath }: { relativePath: string }) {
+  const { t } = useI18n();
   const ref = useRef<HTMLAudioElement>(null);
   const [loop, setLoop] = useState(false);
   const [speed, setSpeed] = useState(1);
@@ -36,7 +38,7 @@ export function AudioViewer({ relativePath }: { relativePath: string }) {
         onLoadedMetadata={() => {
           if (ref.current) ref.current.playbackRate = speed;
         }}
-        onError={() => setError("Could not play this audio file (unsupported codec?).")}
+        onError={() => setError(t("doc.audio.error"))}
       />
       <div className="file-viewer-audio-options">
         <label>

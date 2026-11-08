@@ -22,6 +22,18 @@ describe("agents gateway methods", () => {
     workspaceRoot = await mkdtemp(join(tmpdir(), "ygg-ws-gw-"));
   });
 
+  it("keeps tools.allow across an update that does not send it, and validates it", async () => {
+    const config = mergeConfig({}, { agents: [{ id: "default" }] });
+    const call = (method: string, params: Record<string, unknown>) =>
+      invokeGatewayMethod(method, params, config, null, workspaceRoot) as Promise<{ agent: Record<string, unknown> }>;
+
+    await call("agents.create", { id: "ro", scope: "local", tools: { allow: ["fs_read_*"] } });
+    const updated = await call("agents.update", { id: "ro", scope: "local", label: "Read only" });
+    expect(updated.agent).toMatchObject({ label: "Read only", tools: { allow: ["fs_read_*"] } });
+    expect((await call("agents.update", { id: "ro", scope: "local", tools: {} })).agent.tools).toEqual({});
+    await expect(call("agents.update", { id: "ro", scope: "local", tools: { allow: "fs_*" } })).rejects.toThrow(/tools\.allow/);
+  });
+
   it("creates a local agent and it's immediately listed", async () => {
     const config = mergeConfig({}, { agents: [{ id: "default" }] });
 

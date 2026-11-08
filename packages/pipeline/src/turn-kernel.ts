@@ -33,6 +33,7 @@ export type ReplyDispatcherOptions = {
   approveTool?: ToolApprovalHandler;
   events?: EventBus;
   approvalMode?: ApprovalMode;
+  signal?: AbortSignal;
 };
 
 export type DispatchResult = {
@@ -209,6 +210,7 @@ export class ReplyDispatcher {
       workspaceRoot: this.options.workspaceRoot,
       events: this.options.events,
       approvalMode: this.options.approvalMode,
+      signal: this.options.signal,
     });
 
     let harnessId = selection.harnessId;
@@ -338,6 +340,8 @@ export type RunChannelTurnParams = {
   approveTool?: ToolApprovalHandler;
   events?: EventBus;
   approvalMode?: ApprovalMode;
+  /** Abort to cancel the turn in flight (see HarnessAttemptParams.signal). */
+  signal?: AbortSignal;
 };
 
 export type RunChannelTurnResult = {
@@ -376,6 +380,7 @@ export async function runChannelTurn(params: RunChannelTurnParams): Promise<RunC
     approveTool: params.approveTool,
     events: params.events,
     approvalMode: params.approvalMode,
+    signal: params.signal,
   });
 
   const dispatch = await dispatcher.dispatchToHarness(params.message);

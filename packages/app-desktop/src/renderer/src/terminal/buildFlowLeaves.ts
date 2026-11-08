@@ -8,7 +8,7 @@ import { buildLaunchCommand } from "../agentFlow/buildLaunchCommand.js";
  * appends a roster of those members' names/tasks to its initialPrompt.
  * Without this, a reloaded/re-materialized orchestrator has zero memory of
  * having "created" its team last time (each `claude` pane is a fresh
- * process/conversation — there's no session-resume for this harness) and
+ * process/conversation — there's no session-resume unless the node sets continueSession/resumeSession) and
  * would try to create_pane duplicates of workers that are already starting
  * right alongside it. Only claude/antigravity/omp/copilot nodes have initialPrompt;
  * yggdrasil nodes are excluded (no such field, and edges are only ever
@@ -24,7 +24,7 @@ function withTeamRosterNote(node: AgentFlowNode, nodes: AgentFlowNode[], edges: 
 
   const roster = children
     .map((c) => {
-      const task = c.harness.type !== "yggdrasil" ? c.harness.initialPrompt : undefined;
+      const task = c.harness.initialPrompt;
       const doc = c.specPath ? ` (feature doc: ${c.specPath})` : "";
       return `- ${c.name}: ${task ?? "(no stated task)"}${doc}`;
     })
@@ -91,13 +91,17 @@ export function buildFlowLeaves(
   projectPath: string | null,
   edges: AgentTeamEdge[] = [],
   allNodes: AgentFlowNode[] = nodes,
+  /** Folder per node id for nodes that run in their own worktree (nodeWorktrees.ts); the rest use the project folder. */
+  cwdByNode: Map<string, string> = new Map(),
 ): { leaves: LeafPane[]; nodeIdToLeafId: Map<string, string> } {
-  const cwd = projectPath ?? ".";
+  const projectCwd = projectPath ?? ".";
   const nodeIdToLeafId = new Map<string, string>(nodes.map((node) => [node.id, crypto.randomUUID()]));
 
   const leaves: LeafPane[] = nodes.map((node) => {
     const id = nodeIdToLeafId.get(node.id)!;
+    const cwd = cwdByNode.get(node.id) ?? projectCwd;
     if (node.harness.type === "yggdrasil") {
+      const { args } = buildLaunchCommand(node);
       // Assigned up front (not left for the TUI to mint internally) so
       // this pane's real conversation is always resolvable via
       // sessions.get — Delegate (TerminalPane.tsx) needs a known
@@ -109,8 +113,14 @@ export function buildFlowLeaves(
         title: node.name,
         cwd,
         yggdrasilAgentId: node.harness.agentId,
+        args,
+        initialPrompt: node.harness.initialPrompt,
         flowNodeId: node.id,
-        sessionKey: `tui:default:desktop-${crypto.randomUUID()}`,
+        // A stable key per node when it should reopen its conversation: the TUI joins it
+        // and hydrates whatever history the gateway still has for it.
+        sessionKey: node.harness.continueSession
+          ? `tui:default:desktop-node-${node.id}`
+          : `tui:default:desktop-${crypto.randomUUID()}`,
       };
     }
     const rostered = withTeamRosterNote(node, allNodes, edges);
@@ -124,7 +134,7 @@ export function buildFlowLeaves(
       args,
       env,
       flowNodeId: node.id,
-      initialPrompt: rostered.harness.type !== "yggdrasil" ? rostered.harness.initialPrompt : undefined,
+      initialPrompt: rostered.harness.initialPrompt,
       initialPromptFlag,
       specPath: node.specPath,
     };

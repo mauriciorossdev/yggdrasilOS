@@ -1,20 +1,33 @@
 import React, { useState } from "react";
 import { Box, Text, useInput } from "ink";
+import TextInput from "ink-text-input";
 import { theme } from "../render/theme.js";
 import type { SessionInfo } from "../client/types.js";
 
 type Props = {
   sessions: SessionInfo[];
   onSelect: (sessionKey: string) => void;
+  onRename?: (sessionKey: string, title: string) => void;
   onClose: () => void;
 };
 
-export function SessionList({ sessions, onSelect, onClose }: Props): React.ReactElement {
+export function SessionList({ sessions, onSelect, onRename, onClose }: Props): React.ReactElement {
   const [selectedIndex, setSelectedIndex] = useState(0);
+  const [renaming, setRenaming] = useState<string | null>(null);
 
-  useInput((_input, key) => {
+  useInput((input, key) => {
+    if (renaming !== null) {
+      // TextInput owns typing and Enter; Esc backs out of the rename only.
+      if (key.escape) setRenaming(null);
+      return;
+    }
     if (key.escape) {
       onClose();
+      return;
+    }
+    if (input === "r" && onRename) {
+      const s = sessions[selectedIndex];
+      if (s) setRenaming(s.title ?? "");
       return;
     }
     if (key.upArrow) {
@@ -39,7 +52,21 @@ export function SessionList({ sessions, onSelect, onClose }: Props): React.React
       {sessions.length === 0 && (
         <Text color={theme.dim}>No sessions found</Text>
       )}
-      {sessions.map((s, i) => (
+      {sessions.map((s, i) =>
+        renaming !== null && i === selectedIndex ? (
+          <Box key={s.sessionKey} gap={1}>
+            <Text color={theme.primary}>✎</Text>
+            <TextInput
+              value={renaming}
+              onChange={setRenaming}
+              onSubmit={(value) => {
+                const title = value.trim();
+                setRenaming(null);
+                if (title && title !== s.title) onRename?.(s.sessionKey, title);
+              }}
+            />
+          </Box>
+        ) : (
         <Box key={s.sessionKey} gap={2}>
           <Text
             color={i === selectedIndex ? theme.primary : theme.text}
@@ -53,9 +80,12 @@ export function SessionList({ sessions, onSelect, onClose }: Props): React.React
           </Text>
           {s.agentId && <Text color={theme.muted}>{s.agentId}</Text>}
         </Box>
-      ))}
+        ),
+      )}
       <Box marginTop={1}>
-        <Text color={theme.dim}>↑↓ navigate · enter load · esc back</Text>
+        <Text color={theme.dim}>
+          {renaming !== null ? "enter save · esc cancel" : `↑↓ navigate · enter load${onRename ? " · r rename" : ""} · esc back`}
+        </Text>
       </Box>
     </Box>
   );

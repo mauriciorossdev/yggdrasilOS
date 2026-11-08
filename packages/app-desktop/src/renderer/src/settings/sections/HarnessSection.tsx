@@ -1,4 +1,5 @@
 import type { ConfigShape, HarnessInfo } from "../../types.js";
+import { useI18n } from "../../i18n/index.js";
 
 type Props = {
   config: ConfigShape;
@@ -7,22 +8,23 @@ type Props = {
 };
 
 export function HarnessSection({ config, setConfig, harnesses }: Props) {
+  const { t } = useI18n();
   return (
     <section className="settings-section">
-      <h3>Harness</h3>
+      <h3>{t("set.harness.title")}</h3>
       <label>
-        Policy
+        {t("set.harness.policy")}
         <select
           value={config.harness?.policy ?? "auto"}
           onChange={(e) => setConfig({ ...config, harness: { ...config.harness, policy: e.target.value } })}
         >
-          <option value="auto">auto</option>
-          <option value="pinned">pinned</option>
+          <option value="auto">{t("set.harness.auto")}</option>
+          <option value="pinned">{t("set.harness.pinned")}</option>
         </select>
       </label>
       {config.harness?.policy === "pinned" && (
         <label>
-          Pinned harness
+          {t("set.harness.pinnedHarness")}
           <select
             value={config.harness?.pinnedId ?? ""}
             onChange={(e) => setConfig({ ...config, harness: { ...config.harness, pinnedId: e.target.value } })}

@@ -77,7 +77,7 @@ class _GatewaySettingsScreenState extends State<GatewaySettingsScreen> {
                     const SizedBox(height: 2),
                     Text(
                       AppStrings.t('gateway.enableSubtitle'),
-                      style: const TextStyle(fontSize: 12, color: YggColors.textFainter),
+                      style: TextStyle(fontSize: 12, color: YggColors.textFainter),
                     ),
                   ],
                 ),

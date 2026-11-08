@@ -7,6 +7,7 @@ import '../chat/voice_mic_button.dart';
 import '../l10n/app_strings.dart';
 import '../services/yggdrasil_client.dart';
 import '../theme/ygg_theme.dart';
+import '../ui/ui.dart';
 import 'claude_transcript_view.dart';
 
 const _pollInterval = Duration(milliseconds: 1500);
@@ -231,6 +232,63 @@ class _TerminalChatViewState extends State<TerminalChatView> {
     }
   }
 
+  // Quick keys: a phone keyboard has no Esc/Ctrl/arrows, so these write the raw
+  // control sequences straight to the pty through terminals.write (which hands the
+  // text to the pane untouched) with no Enter appended — except Enter itself.
+  Future<void> _sendRaw(String text, {bool pressEnter = false}) async {
+    try {
+      await widget.client.call('terminals.write', {'id': widget.paneId, 'text': text, 'pressEnter': pressEnter});
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    } catch (e) {
+      if (mounted) {
+        final msg = e is Map ? (e['message'] ?? e).toString() : '$e';
+        ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(msg)));
+      }
+    }
+    await _poll();
+  }
+
+  Widget _quickKeys() {
+    Widget key(String label, VoidCallback onTap, {String? semantics}) => Semantics(
+          button: true,
+          label: semantics ?? label,
+          excludeSemantics: true,
+          child: Material(
+            color: YggColors.surface,
+            shape: StadiumBorder(side: BorderSide(color: YggColors.border)),
+            child: InkWell(
+              customBorder: const StadiumBorder(),
+              onTap: onTap,
+              child: Container(
+                height: 36,
+                padding: const EdgeInsets.symmetric(horizontal: 14),
+                alignment: Alignment.center,
+                child: Text(label, style: TextStyle(fontFamily: YggFonts.mono, fontSize: 12, color: YggColors.text2)),
+              ),
+            ),
+          ),
+        );
+    return SizedBox(
+      height: 36,
+      child: ListView(
+        scrollDirection: Axis.horizontal,
+        children: [
+          key('Enter', () => _sendRaw('', pressEnter: true)),
+          const SizedBox(width: 8),
+          key('Esc', () => _sendRaw('\x1b')),
+          const SizedBox(width: 8),
+          key('Ctrl+C', () => _sendRaw('\x03')),
+          const SizedBox(width: 8),
+          key('Tab', () => _sendRaw('\t')),
+          const SizedBox(width: 8),
+          key('↑', () => _sendRaw('\x1b[A'), semantics: AppStrings.t('terminal.keyUp')),
+          const SizedBox(width: 8),
+          key('↓', () => _sendRaw('\x1b[B'), semantics: AppStrings.t('terminal.keyDown')),
+        ],
+      ),
+    );
+  }
+
   Future<void> _send() async {
     final text = _inputController.text;
     if (text.trim().isEmpty || _sending) return;
@@ -259,7 +317,7 @@ class _TerminalChatViewState extends State<TerminalChatView> {
             children: [
               Positioned.fill(
                 child: _loading
-              ? const Center(
+              ? Center(
                   child: CircularProgressIndicator(color: YggColors.accent),
                 )
               : _error != null
@@ -267,7 +325,7 @@ class _TerminalChatViewState extends State<TerminalChatView> {
                   padding: const EdgeInsets.all(24),
                   child: Text(
                     '${AppStrings.t('common.errorPrefix')}: $_error',
-                    style: const TextStyle(color: YggColors.textMuted),
+                    style: TextStyle(color: YggColors.textMuted),
                   ),
                 )
               : _showTranscript
@@ -279,8 +337,8 @@ class _TerminalChatViewState extends State<TerminalChatView> {
                     _text.isEmpty
                         ? AppStrings.t('projects.terminalEmpty')
                         : _text,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
+                    style: TextStyle(
+                      fontFamily: YggFonts.mono,
                       fontSize: 12.5,
                       color: YggColors.text,
                       height: 1.4,
@@ -294,65 +352,75 @@ class _TerminalChatViewState extends State<TerminalChatView> {
         ),
         SafeArea(
           top: false,
-          child: Container(
-            padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
-            decoration: const BoxDecoration(
-              border: Border(top: BorderSide(color: YggColors.hairline)),
-            ),
-            child: Row(
-              // Buttons stay on the bottom line while the input grows.
-              crossAxisAlignment: CrossAxisAlignment.end,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 12),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                if (widget.onAttach != null)
-                  IconButton(
-                    tooltip: AppStrings.t('pi.attach'),
-                    icon: _attaching
-                        ? const SizedBox(
-                            width: 18,
-                            height: 18,
-                            child: CircularProgressIndicator(strokeWidth: 2, color: YggColors.accent),
-                          )
-                        : const Icon(Icons.attach_file, color: YggColors.text),
-                    onPressed: _attaching ? null : _attach,
+                // Pi chats (they pass onAttach) drive their own prompt cards.
+                if (widget.onAttach == null) ...[_quickKeys(), const SizedBox(height: 10)],
+                Container(
+                  padding: const EdgeInsets.all(6),
+                  decoration: BoxDecoration(
+                    color: YggColors.surface,
+                    borderRadius: BorderRadius.circular(28),
+                    border: Border.all(color: YggColors.borderStrong),
                   ),
-                Expanded(
-                  child: TextField(
-                    controller: _inputController,
-                    style: const TextStyle(
-                      fontFamily: 'monospace',
-                      fontSize: 13.5,
-                      color: YggColors.text,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: widget.inputHint ?? AppStrings.t('projects.terminalInputHint'),
-                      isDense: true,
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(10),
-                      ),
-                    ),
-                    // Grows with the text up to 4 lines, then scrolls. Enter
-                    // adds a newline (multi-line prompts); send is the button.
-                    minLines: 1,
-                    maxLines: 4,
-                    keyboardType: TextInputType.multiline,
-                    textInputAction: TextInputAction.newline,
-                  ),
-                ),
-                const SizedBox(width: 8),
-                VoiceMicButton(size: 36, onRecognized: _onVoiceRecognized),
-                const SizedBox(width: 4),
-                IconButton(
-                  icon: _sending
-                      ? const SizedBox(
-                          width: 18,
-                          height: 18,
-                          child: CircularProgressIndicator(
-                            strokeWidth: 2,
-                            color: YggColors.accent,
+                  child: Row(
+                    // Buttons stay on the bottom line while the input grows.
+                    crossAxisAlignment: CrossAxisAlignment.end,
+                    children: [
+                      if (widget.onAttach != null) ...[
+                        _attaching
+                            ? SizedBox(width: 40, height: 40, child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: YggColors.accent))))
+                            : YggIconButton(
+                                icon: Icons.attach_file,
+                                size: 40,
+                                iconSize: 18,
+                                circle: true,
+                                style: YggIconButtonStyle.tint,
+                                tooltip: AppStrings.t('pi.attach'),
+                                onTap: _attach,
+                              ),
+                        const SizedBox(width: 6),
+                      ] else
+                        const SizedBox(width: 10),
+                      Expanded(
+                        child: TextField(
+                          controller: _inputController,
+                          cursorColor: YggColors.accent,
+                          style: TextStyle(fontFamily: YggFonts.mono, fontSize: 13.5, color: YggColors.text),
+                          decoration: InputDecoration(
+                            hintText: widget.inputHint ?? AppStrings.t('projects.terminalInputHint'),
+                            hintStyle: TextStyle(fontFamily: YggFonts.mono, fontSize: 13, color: YggColors.textFaint),
+                            border: InputBorder.none,
+                            isDense: true,
+                            contentPadding: const EdgeInsets.symmetric(vertical: 10),
                           ),
-                        )
-                      : const Icon(Icons.send, color: YggColors.accent),
-                  onPressed: _sending ? null : _send,
+                          // Grows with the text up to 4 lines, then scrolls. Enter
+                          // adds a newline (multi-line prompts); send is the button.
+                          minLines: 1,
+                          maxLines: 4,
+                          keyboardType: TextInputType.multiline,
+                          textInputAction: TextInputAction.newline,
+                        ),
+                      ),
+                      const SizedBox(width: 6),
+                      VoiceMicButton(size: 40, onRecognized: _onVoiceRecognized),
+                      const SizedBox(width: 6),
+                      _sending
+                          ? SizedBox(width: 40, height: 40, child: Center(child: SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: YggColors.accent))))
+                          : YggIconButton(
+                              icon: Icons.arrow_upward,
+                              size: 40,
+                              iconSize: 18,
+                              circle: true,
+                              style: YggIconButtonStyle.accent,
+                              tooltip: AppStrings.t('terminal.send'),
+                              onTap: _send,
+                            ),
+                    ],
+                  ),
                 ),
               ],
             ),

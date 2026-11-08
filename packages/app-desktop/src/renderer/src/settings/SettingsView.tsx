@@ -8,6 +8,7 @@ import type {
   HarnessInfo,
   McpServerStatus,
   ProviderInfo,
+  McpTestResult,
 } from "../types.js";
 import { GeneralSection } from "./sections/GeneralSection.js";
 import { AgentSection } from "./sections/AgentSection.js";
@@ -27,13 +28,16 @@ import { AutomationSection } from "./sections/AutomationSection.js";
 import { VoiceSection } from "./sections/VoiceSection.js";
 import { TransferSection } from "./sections/TransferSection.js";
 import { AppearanceSection } from "./sections/AppearanceSection.js";
+import { EditorSection } from "./sections/EditorSection.js";
 import { WorkspaceSection } from "./sections/WorkspaceSection.js";
 import type { IdeSettings, SttSettings, SyncSettings, WhisperSettings } from "../types.js";
+import { useI18n, type MessageKey } from "../i18n/index.js";
 
 type Section =
   | "onboarding"
   | "general"
   | "appearance"
+  | "editor"
   | "workspace"
   | "agent"
   | "providers"
@@ -51,26 +55,27 @@ type Section =
   | "voice"
   | "transfer";
 
-const SECTIONS: Array<{ id: Section; label: string }> = [
-  { id: "general", label: "General" },
-  { id: "appearance", label: "Apariencia" },
-  { id: "workspace", label: "Workspace" },
-  { id: "agent", label: "Agent" },
-  { id: "providers", label: "Providers" },
-  { id: "mcp", label: "MCP" },
-  { id: "harness", label: "Harness" },
-  { id: "channels", label: "Channels" },
-  { id: "stt", label: "STT" },
-  { id: "devices", label: "Paired devices" },
-  { id: "phone", label: "Teléfono" },
-  { id: "connectors", label: "Connectors" },
-  { id: "ide", label: "IDE" },
-  { id: "onboarding", label: "Setup" },
-  { id: "skills", label: "Skills" },
-  { id: "sync", label: "Compartir" },
-  { id: "automation", label: "Automation" },
-  { id: "voice", label: "Voz" },
-  { id: "transfer", label: "Exportar / Importar" },
+const SECTIONS: Array<{ id: Section; label: MessageKey }> = [
+  { id: "general", label: "set.nav.general" },
+  { id: "appearance", label: "set.nav.appearance" },
+  { id: "editor", label: "set.nav.editor" },
+  { id: "workspace", label: "set.nav.workspace" },
+  { id: "agent", label: "set.nav.agent" },
+  { id: "providers", label: "set.nav.providers" },
+  { id: "mcp", label: "set.nav.mcp" },
+  { id: "harness", label: "set.nav.harness" },
+  { id: "channels", label: "set.nav.channels" },
+  { id: "stt", label: "set.nav.stt" },
+  { id: "devices", label: "set.nav.devices" },
+  { id: "phone", label: "set.nav.phone" },
+  { id: "connectors", label: "set.nav.connectors" },
+  { id: "ide", label: "set.nav.ide" },
+  { id: "onboarding", label: "set.nav.onboarding" },
+  { id: "skills", label: "set.nav.skills" },
+  { id: "sync", label: "set.nav.sync" },
+  { id: "automation", label: "set.nav.automation" },
+  { id: "voice", label: "set.nav.voice" },
+  { id: "transfer", label: "set.nav.transfer" },
 ];
 
 type Props = {
@@ -80,6 +85,7 @@ type Props = {
 };
 
 export function SettingsView({ onClose, initialSection }: Props) {
+  const { t } = useI18n();
   const { call } = useGateway();
   const [config, setConfig] = useState<ConfigShape | null>(null);
   const [harnesses, setHarnesses] = useState<HarnessInfo[]>([]);
@@ -161,11 +167,17 @@ export function SettingsView({ onClose, initialSection }: Props) {
     return (
       <div className="modal-overlay" onClick={onClose}>
         <div className="modal" onClick={(e) => e.stopPropagation()}>
-          {error ? <p className="error">{error}</p> : <p className="muted">Loading…</p>}
+          {error ? <p className="error">{error}</p> : <p className="muted">{t("ui.loading")}</p>}
         </div>
       </div>
     );
   }
+
+  // Try the server as it is in the form (unsaved edits included); blank secrets fall back to the saved ones server-side.
+  const mcpTest = (serverId: string): Promise<McpTestResult> => {
+    const server = buildMcpServersPatch(config, mcpSecretEdits)[serverId];
+    return call<McpTestResult>("mcp.test", { serverId, server });
+  };
 
   const save = async () => {
     setSaved(false);
@@ -205,7 +217,7 @@ export function SettingsView({ onClose, initialSection }: Props) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal settings-view" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Settings</h2>
+          <h2>{t("set.title")}</h2>
           <button type="button" className="icon-btn" onClick={onClose}>
             <XMarkIcon className="hero-icon" />
           </button>
@@ -215,8 +227,8 @@ export function SettingsView({ onClose, initialSection }: Props) {
         {saved && (
           <p className="banner">
             {savedRequiresRestart
-              ? "Saved. Channel changes take effect after the channel is stopped and started again (or the gateway restarts)."
-              : "Saved. Applied immediately — no restart needed."}
+              ? t("set.savedRestart")
+              : t("set.saved")}
           </p>
         )}
         {error && <p className="error">{error}</p>}
@@ -230,7 +242,7 @@ export function SettingsView({ onClose, initialSection }: Props) {
                 className={`settings-nav-item ${section === s.id ? "active" : ""}`}
                 onClick={() => setSection(s.id)}
               >
-                {s.label}
+                {t(s.label)}
               </button>
             ))}
           </nav>
@@ -238,6 +250,7 @@ export function SettingsView({ onClose, initialSection }: Props) {
           <div className="settings-panel">
             {section === "general" && <GeneralSection config={config} setConfig={setConfig} />}
             {section === "appearance" && <AppearanceSection />}
+            {section === "editor" && <EditorSection />}
             {section === "workspace" && <WorkspaceSection />}
             {section === "agent" && <AgentSection config={config} setConfig={setConfig} providers={providers} />}
             {section === "providers" && (
@@ -256,6 +269,7 @@ export function SettingsView({ onClose, initialSection }: Props) {
                 setConfig={setConfig}
                 mcpStatus={mcpStatus}
                 onMcpAction={mcpAction}
+                onMcpTest={mcpTest}
                 mcpSecretEdits={mcpSecretEdits}
                 setMcpSecretEdits={setMcpSecretEdits}
               />
@@ -290,10 +304,10 @@ export function SettingsView({ onClose, initialSection }: Props) {
 
         <div className="agent-form-actions">
           <button type="button" onClick={onClose}>
-            Close
+            {t("ui.close")}
           </button>
           <button type="button" onClick={() => void save()}>
-            Save settings
+            {t("set.save")}
           </button>
         </div>
       </div>

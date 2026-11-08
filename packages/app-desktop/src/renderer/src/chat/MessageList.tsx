@@ -2,6 +2,7 @@ import { useEffect, useRef } from "react";
 import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { ChatMessage } from "./chatReducer.js";
 import { Markdown } from "./Markdown.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = {
   messages: ChatMessage[];
@@ -12,6 +13,7 @@ type Props = {
 };
 
 function ToolBubble({ message }: { message: ChatMessage }) {
+  const { t } = useI18n();
   const ok = message.toolStatus === "ok";
   return (
     <div className={`bubble tool ${ok ? "tool-ok" : "tool-error"}`}>
@@ -25,10 +27,10 @@ function ToolBubble({ message }: { message: ChatMessage }) {
       {message.text && <pre className="tool-result">{message.text}</pre>}
       {message.toolImage && (
         <details className="tool-image">
-          <summary>{message.toolImage.path ? message.toolImage.path : "Ver imagen"}</summary>
+          <summary>{message.toolImage.path ? message.toolImage.path : t("chat.messages.viewImage")}</summary>
           <img
             src={`data:${message.toolImage.mimeType};base64,${message.toolImage.base64}`}
-            alt={message.toolName ? `Resultado de ${message.toolName}` : "Captura"}
+            alt={message.toolName ? t("chat.messages.resultOf", { name: message.toolName }) : t("chat.messages.screenshot")}
           />
         </details>
       )}
@@ -39,6 +41,7 @@ function ToolBubble({ message }: { message: ChatMessage }) {
 const BOTTOM_THRESHOLD_PX = 48;
 
 export function MessageList({ messages, streamingText, isStreaming, isTurnActive, runningTools }: Props) {
+  const { t } = useI18n();
   const endRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   // Whether the user is pinned to the bottom — only then do we auto-scroll
@@ -76,8 +79,8 @@ export function MessageList({ messages, streamingText, isStreaming, isTurnActive
       {isEmpty && (
         <div className="message-list-empty">
           <div>
-            <p className="message-list-empty-title">What should we work on?</p>
-            <p>No conversation yet. Type below, or mention a file with @.</p>
+            <p className="message-list-empty-title">{t("chat.messages.emptyTitle")}</p>
+            <p>{t("chat.messages.emptyBody")}</p>
           </div>
         </div>
       )}

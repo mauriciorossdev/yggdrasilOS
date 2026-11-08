@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import type { PendingApproval } from "./chatReducer.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = {
   approval: PendingApproval;
@@ -11,6 +12,7 @@ type Props = {
 // resets `trustDevice` back to unchecked for each new request instead of
 // one approval's checkbox state bleeding into the next.
 export function ApprovalBar({ approval, onRespond }: Props) {
+  const { t } = useI18n();
   const [trustDevice, setTrustDevice] = useState(false);
 
   // deviceId is only ever set for a connection that isn't the desktop's own
@@ -24,14 +26,14 @@ export function ApprovalBar({ approval, onRespond }: Props) {
     <div className={`approval-bar risk-${approval.riskLevel ?? "safe"}`}>
       <div className="approval-info">
         <strong className="approval-warning-label">
-          <ExclamationTriangleIcon className="hero-icon" /> Approval required — {approval.toolName}
+          <ExclamationTriangleIcon className="hero-icon" /> {t("chat.approval.required", { tool: approval.toolName })}
         </strong>
         {approval.riskLevel && <span className="risk-tag">{approval.riskLevel}</span>}
         <pre>{JSON.stringify(approval.args, null, 2)}</pre>
         {canTrustDevice && (
           <label className="approval-trust-device">
             <input type="checkbox" checked={trustDevice} onChange={(e) => setTrustDevice(e.target.checked)} />
-            Confiar en este dispositivo (no volver a preguntar)
+            {t("chat.approval.trustDevice")}
           </label>
         )}
       </div>
@@ -41,10 +43,10 @@ export function ApprovalBar({ approval, onRespond }: Props) {
           className="approve"
           onClick={() => onRespond(approval.requestId, true, trustDevice ? approval.deviceId : undefined)}
         >
-          Approve
+          {t("chat.approval.approve")}
         </button>
         <button type="button" className="deny" onClick={() => onRespond(approval.requestId, false)}>
-          Deny
+          {t("chat.approval.deny")}
         </button>
       </div>
     </div>

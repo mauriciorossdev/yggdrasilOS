@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import * as THREE from "three";
 import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = { relativePath: string };
 
@@ -92,6 +93,7 @@ function disposeObject(root: THREE.Object3D) {
 }
 
 export default function ModelViewer({ relativePath }: Props) {
+  const { t } = useI18n();
   const hostRef = useRef<HTMLDivElement>(null);
   const apiRef = useRef<{
     setTextures: (on: boolean) => void;
@@ -270,9 +272,9 @@ export default function ModelViewer({ relativePath }: Props) {
           className={`icon-btn${textures ? " active" : ""}`}
           onClick={() => toggle(textures, setTextures, "setTextures")}
           disabled={status !== "ready"}
-          title="Toggle textures / materials"
+          title={t("doc.model.toggleTitle")}
         >
-          Textures
+          {t("doc.model.textures")}
         </button>
         <button
           type="button"
@@ -280,7 +282,7 @@ export default function ModelViewer({ relativePath }: Props) {
           onClick={() => toggle(wireframe, setWireframe, "setWireframe")}
           disabled={status !== "ready"}
         >
-          Wireframe
+          {t("doc.model.wireframe")}
         </button>
         <button
           type="button"
@@ -288,19 +290,19 @@ export default function ModelViewer({ relativePath }: Props) {
           onClick={() => toggle(grid, setGrid, "setGrid")}
           disabled={status !== "ready"}
         >
-          Grid
+          {t("doc.model.grid")}
         </button>
         <button type="button" className="icon-btn" onClick={() => apiRef.current?.resetView()} disabled={status !== "ready"}>
-          Reset view
+          {t("doc.model.reset")}
         </button>
         <span className="file-viewer-model-spacer" />
         <button type="button" className="icon-btn" onClick={() => void openInBlender()}>
-          Open in Blender
+          {t("doc.openBlender")}
         </button>
       </div>
       {blenderMsg && <p className="error file-viewer-model-msg">{blenderMsg}</p>}
       <div className="file-viewer-model-canvas" ref={hostRef}>
-        {status === "loading" && <p className="muted file-viewer-model-overlay">Loading…</p>}
+        {status === "loading" && <p className="muted file-viewer-model-overlay">{t("doc.loading")}</p>}
         {status === "error" && <p className="error file-viewer-model-overlay">{error}</p>}
       </div>
     </div>

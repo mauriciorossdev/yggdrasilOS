@@ -1,6 +1,7 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import type { ProjectRecord } from "../types.js";
 import { useDismiss } from "../ui/useDismiss.js";
+import { useI18n } from "../i18n/index.js";
 
 type Mode = "menu" | "rename" | "confirm-remove" | "confirm-purge";
 
@@ -20,7 +21,7 @@ type Props = {
   onPurge: (id: string) => void;
 };
 
-const REVEAL_LABEL = window.yggdrasil.platform === "darwin" ? "Reveal in Finder" : "Open in file explorer";
+const REVEAL_KEY = window.yggdrasil.platform === "darwin" ? "chat.projectMenu.revealFinder" : "chat.projectMenu.revealExplorer";
 
 export function ProjectContextMenu({
   project,
@@ -36,6 +37,7 @@ export function ProjectContextMenu({
   onRemove,
   onPurge,
 }: Props) {
+  const { t } = useI18n();
   const [mode, setMode] = useState<Mode>("menu");
   const [renameValue, setRenameValue] = useState(project.name);
   const ref = useRef<HTMLDivElement>(null);
@@ -68,27 +70,27 @@ export function ProjectContextMenu({
       {mode === "menu" && (
         <>
           <button type="button" className="context-menu-item" onClick={() => run(onOpen)}>
-            Open project
+            {t("chat.projectMenu.open")}
           </button>
           <button type="button" className="context-menu-item" onClick={() => run(onReveal)}>
-            {REVEAL_LABEL}
+            {t(REVEAL_KEY)}
           </button>
           <button type="button" className="context-menu-item" onClick={() => run(onOpenInIde)}>
-            Open in IDE
+            {t("chat.projectMenu.openInIde")}
           </button>
           <button type="button" className="context-menu-item" onClick={() => run(onClone)}>
-            Clone…
+            {t("chat.projectMenu.clone")}
           </button>
           <button type="button" className="context-menu-item" onClick={() => setMode("rename")}>
-            Rename
+            {t("chat.projectMenu.rename")}
           </button>
           {!locked && (
             <>
               <button type="button" className="context-menu-item danger" onClick={() => setMode("confirm-remove")}>
-                Remove from list
+                {t("chat.projectMenu.remove")}
               </button>
               <button type="button" className="context-menu-item danger" onClick={() => setMode("confirm-purge")}>
-                Purge (delete from disk)
+                {t("chat.projectMenu.purge")}
               </button>
             </>
           )}
@@ -108,12 +110,12 @@ export function ProjectContextMenu({
 
       {mode === "confirm-remove" && (
         <>
-          <div className="context-menu-confirm-label">Remove "{project.name}" from the list? Files stay on disk.</div>
+          <div className="context-menu-confirm-label">{t("chat.projectMenu.confirmRemoveLabel", { name: project.name })}</div>
           <button type="button" className="context-menu-item danger" onClick={() => run(onRemove)}>
-            Confirm remove
+            {t("chat.projectMenu.confirmRemove")}
           </button>
           <button type="button" className="context-menu-item" onClick={() => setMode("menu")}>
-            Cancel
+            {t("chat.projectMenu.cancel")}
           </button>
         </>
       )}
@@ -121,13 +123,13 @@ export function ProjectContextMenu({
       {mode === "confirm-purge" && (
         <>
           <div className="context-menu-confirm-label">
-            Permanently delete "{project.name}" and its folder? {project.path} — this can't be undone.
+            {t("chat.projectMenu.confirmPurgeLabel", { name: project.name, path: project.path })}
           </div>
           <button type="button" className="context-menu-item danger" onClick={() => run(onPurge)}>
-            Confirm purge
+            {t("chat.projectMenu.confirmPurge")}
           </button>
           <button type="button" className="context-menu-item" onClick={() => setMode("menu")}>
-            Cancel
+            {t("chat.projectMenu.cancel")}
           </button>
         </>
       )}

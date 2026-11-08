@@ -11,6 +11,18 @@ import type {
 } from "@yggdrasil/sdk";
 import type { HarnessAttemptResult } from "@yggdrasil/sdk";
 import type { AgentToolDefinition, ApprovalMode } from "@yggdrasil/tools-sdk";
+import {
+  callSignature,
+  looksUnfinished,
+  MAX_ACTION_NUDGES,
+  MAX_EMPTY_RETRIES,
+  MAX_REFUSED_REPEATS,
+  NUDGES,
+  repeatRefusal,
+  resolveGuards,
+  trailingRepeats,
+  type LoopGuards,
+} from "./loop-guards.js";
 
 export type ToolExecuteEvent = {
   name: string;
@@ -59,7 +71,46 @@ export type ToolLoopOptions = {
    * itself marks safe; "yolo" never asks, even for destructive calls.
    */
   approvalMode?: ApprovalMode;
+  /** Cancels the turn: no new model call or tool call starts once aborted, and waits on the provider / an approval prompt are abandoned. */
+  signal?: AbortSignal;
+  /** Safety nets for models that stall (see loop-guards.ts). On by default; `false` restores the bare loop. */
+  guards?: boolean | Partial<LoopGuards>;
+  /** Told whenever a guard steps in, so the gateway can surface it (event "loop.guard"). */
+  onGuard?: (event: { kind: GuardKind; detail?: string }) => void;
+  /** The provider is waiting to retry a failed request (rate limit, 5xx, dropped connection). */
+  onProviderRetry?: (info: { attempt: number; delayMs: number; reason: string }) => void;
 };
+
+export type GuardKind = "empty-retry" | "action-nudge" | "repeat-refused" | "limit-summary" | "stuck-summary";
+
+const CANCELLED = Symbol("cancelled");
+
+/** Resolves with `value`, or with CANCELLED as soon as the signal fires (never rejects for the abort itself). */
+function raceAbort<T>(promise: Promise<T>, signal: AbortSignal | undefined): Promise<T | typeof CANCELLED> {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    // The abandoned promise may still reject later; don't leave it unhandled.
+    promise.catch(() => {});
+    return Promise.resolve(CANCELLED);
+  }
+  return new Promise((resolve, reject) => {
+    const onAbort = () => {
+      promise.catch(() => {});
+      resolve(CANCELLED);
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+    promise.then(
+      (value) => {
+        signal.removeEventListener("abort", onAbort);
+        resolve(value);
+      },
+      (err) => {
+        signal.removeEventListener("abort", onAbort);
+        reject(err);
+      },
+    );
+  });
+}
 
 function parseToolArgs(raw: string): Record<string, unknown> {
   try {
@@ -73,27 +124,34 @@ async function completeOnce(
   options: ToolLoopOptions,
   messages: ChatMessage[],
   iteration: number,
-): Promise<ChatCompleteResult> {
+): Promise<ChatCompleteResult | typeof CANCELLED> {
   const params: ChatCompleteParams = {
     model: options.model,
     messages,
     tools: options.tools.length ? options.tools : undefined,
+    signal: options.signal,
+    onRetry: options.onProviderRetry,
   };
 
   const ctx = { config: options.providerCfg };
   const useStream = options.streaming !== false && !!options.provider.chatCompleteStream;
   const started = Date.now();
 
-  let result: ChatCompleteResult;
+  let result: ChatCompleteResult | typeof CANCELLED;
   if (useStream && options.provider.chatCompleteStream) {
-    result = await options.provider.chatCompleteStream(ctx, params, (event: ChatStreamEvent) => {
-      if (event.type === "delta" && options.onDelta) {
-        options.onDelta(event.text);
-      }
-    });
+    result = await raceAbort(
+      options.provider.chatCompleteStream(ctx, params, (event: ChatStreamEvent) => {
+        // Text that arrives after a cancel is dropped, not shown.
+        if (event.type === "delta" && options.onDelta && !options.signal?.aborted) {
+          options.onDelta(event.text);
+        }
+      }),
+      options.signal,
+    );
   } else {
-    result = await options.provider.chatComplete(ctx, params);
+    result = await raceAbort(options.provider.chatComplete(ctx, params), options.signal);
   }
+  if (result === CANCELLED) return CANCELLED;
 
   options.onProviderLatency?.({
     model: result.model,
@@ -184,12 +242,17 @@ async function executeOneToolCall(
     }
 
     if (decision === "ask" && options.approveTool) {
-      const approved = await options.approveTool({
-        sessionKey,
-        toolName: call.name,
-        args,
-        riskLevel: def?.riskLevel,
-      });
+      const answer = await raceAbort(
+        options.approveTool({
+          sessionKey,
+          toolName: call.name,
+          args,
+          riskLevel: def?.riskLevel,
+        }),
+        options.signal,
+      );
+      // Cancelling while an approval prompt is open counts as a denial.
+      const approved = answer !== CANCELLED && answer;
       if (!approved) {
         content = "Error: tool execution denied by user";
         options.onToolExecute?.({ name: call.name, durationMs: Date.now() - started, ok: false, args, error: content });
@@ -248,8 +311,69 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<HarnessAtte
   let lastModel = options.model;
   let totalUsage: HarnessAttemptResult["usage"];
 
+  // Text streamed so far this turn — kept as the reply if the user cancels midway.
+  let streamed = "";
+  const baseOnDelta = options.onDelta;
+  options = {
+    ...options,
+    onDelta: baseOnDelta
+      ? (text) => {
+          streamed += text;
+          baseOnDelta(text);
+        }
+      : undefined,
+  };
+
+  const cancelled = (): HarnessAttemptResult => ({
+    text: streamed.trim() ? `${streamed.trimEnd()}\n\n(cancelled)` : "(cancelled)",
+    usage: totalUsage,
+    classification: "cancelled",
+    metadata: { model: lastModel },
+    sessionAppend: persisted(),
+  });
+
+  const guards = resolveGuards(options.guards);
+  // Nudges steer the model during this turn only; they never reach the saved session.
+  const ephemeral = new Set<ChatMessage>();
+  const nudge = (text: string) => {
+    const message: ChatMessage = { role: "user", content: text };
+    ephemeral.add(message);
+    messages.push(message);
+  };
+  const persisted = () => withoutImageBytes(messages.slice(initialCount).filter((m) => !ephemeral.has(m)));
+  let emptyRetries = 0;
+  let actionNudges = 0;
+  let refusedRepeats = 0;
+  const callHistory: string[] = [];
+
+  /** One last call with no tools, asking the model to say where things stand — instead of a bare error. */
+  const summarize = async (reason: "limit" | "stuck"): Promise<HarnessAttemptResult> => {
+    options.onGuard?.({ kind: reason === "limit" ? "limit-summary" : "stuck-summary" });
+    const base = reason === "limit" ? "Tool loop exceeded maximum iterations" : "Stopped: the model kept repeating the same tool call";
+    if (guards.summarizeOnLimit && !options.signal?.aborted) {
+      nudge(reason === "limit" ? NUDGES.limit : NUDGES.stuck);
+      try {
+        const summary = await completeOnce({ ...options, tools: [] }, messages, options.maxIterations);
+        if (summary !== CANCELLED && summary.text.trim()) {
+          return {
+            text: `${summary.text.trim()}\n\n(${base}.)`,
+            usage: totalUsage,
+            classification: "error",
+            metadata: { model: lastModel, stopped: reason },
+            sessionAppend: persisted(),
+          };
+        }
+      } catch {
+        // fall through to the bare message
+      }
+    }
+    return { text: `${base}.`, classification: "error", usage: totalUsage, metadata: { model: lastModel, stopped: reason }, sessionAppend: persisted() };
+  };
+
   for (let i = 0; i < options.maxIterations; i++) {
+    if (options.signal?.aborted) return cancelled();
     const result = await completeOnce(options, messages, i);
+    if (result === CANCELLED) return cancelled();
     lastModel = result.model;
     if (result.usage) {
       totalUsage = {
@@ -262,23 +386,44 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<HarnessAtte
     }
 
     if (result.finishReason === "tool_calls" && result.toolCalls?.length) {
+      // Checked before the assistant tool_calls message is stored so history never
+      // holds tool calls that have no matching tool results.
+      if (options.signal?.aborted) return cancelled();
       messages.push({
         role: "assistant",
         content: result.text || "",
         tool_calls: result.toolCalls,
       });
 
+      // A call identical to the last few is refused (the model sees why) rather than run again.
+      const runOrRefuse = (call: ChatToolCall): Promise<ToolCallResult> => {
+        const signature = callSignature(call.name, call.arguments);
+        const count = trailingRepeats(callHistory, signature);
+        callHistory.push(signature);
+        if (guards.repeatLimit > 0 && count > guards.repeatLimit) {
+          refusedRepeats++;
+          const content = repeatRefusal(call.name, count - 1);
+          options.onGuard?.({ kind: "repeat-refused", detail: call.name });
+          options.onToolExecute?.({ name: call.name, durationMs: 0, ok: false, args: parseToolArgs(call.arguments), error: content });
+          return Promise.resolve({ call, content });
+        }
+        return executeOneToolCall(call, options, options.sessionKey);
+      };
+
       const parallel = options.parallelToolCalls !== false;
       let results: ToolCallResult[];
 
       if (parallel) {
-        results = await Promise.all(
-          result.toolCalls.map((call) => executeOneToolCall(call, options, options.sessionKey)),
-        );
+        // Signatures are recorded in call order before anything runs, so the check is deterministic.
+        results = await Promise.all(result.toolCalls.map((call) => runOrRefuse(call)));
       } else {
         results = [];
         for (const call of result.toolCalls) {
-          results.push(await executeOneToolCall(call, options, options.sessionKey));
+          if (options.signal?.aborted) {
+            results.push({ call, content: "Error: cancelled by the user" });
+            continue;
+          }
+          results.push(await runOrRefuse(call));
         }
       }
 
@@ -293,6 +438,28 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<HarnessAtte
           messages.push({ role: "user", content: imagePart });
         }
       }
+      if (refusedRepeats > MAX_REFUSED_REPEATS) return summarize("stuck");
+      continue;
+    }
+
+    const text = result.text.trim();
+
+    // Nothing at all: one more try with a nudge (the empty reply itself is not stored).
+    if (!text && guards.retryEmpty && emptyRetries < MAX_EMPTY_RETRIES) {
+      emptyRetries++;
+      options.onGuard?.({ kind: "empty-retry" });
+      nudge(NUDGES.empty);
+      // No tool ran, so a retry must not eat into the turn's tool-call iterations.
+      i--;
+      continue;
+    }
+
+    // "I will run X:" and then the turn ends. Keep what it said (it is real output), then push it to act.
+    if (text && guards.nudgeUnannounced && options.tools.length > 0 && actionNudges < MAX_ACTION_NUDGES && looksUnfinished(text)) {
+      actionNudges++;
+      options.onGuard?.({ kind: "action-nudge" });
+      messages.push({ role: "assistant", content: result.text });
+      nudge(NUDGES.unannounced);
       continue;
     }
 
@@ -301,14 +468,9 @@ export async function runToolLoop(options: ToolLoopOptions): Promise<HarnessAtte
       usage: totalUsage,
       classification: "ok",
       metadata: { model: lastModel, toolIterations: i },
-      sessionAppend: withoutImageBytes(messages.slice(initialCount)),
+      sessionAppend: persisted(),
     };
   }
 
-  return {
-    text: "Tool loop exceeded maximum iterations",
-    classification: "error",
-    metadata: { model: lastModel },
-    sessionAppend: withoutImageBytes(messages.slice(initialCount)),
-  };
+  return summarize("limit");
 }

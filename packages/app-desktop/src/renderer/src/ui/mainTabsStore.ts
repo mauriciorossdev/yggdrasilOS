@@ -1,4 +1,5 @@
 import { useSyncExternalStore, type ReactNode } from "react";
+import { t, type MessageKey } from "../i18n/index.js";
 
 // Which main section (Chat, Terminal, ...) this window is showing, plus the
 // complemento tabs opened next to them. The sidebar's navigation (chat/MainNav)
@@ -10,6 +11,7 @@ export type BuiltinMainTab =
   | "chat"
   | "terminal"
   | "agentFlow"
+  | "worktrees"
   | "workflows"
   | "documents"
   | "browser"
@@ -22,17 +24,19 @@ export type MainTab = BuiltinMainTab | `plugin:${string}`;
 /** The navigation-facing part of an open complemento tab (its content stays with MainTabs). */
 export type ExtraTabMeta = { id: MainTab; label: string; icon?: ReactNode; onClose: () => void };
 
-export const MAIN_TAB_LABELS: Record<BuiltinMainTab, string> = {
-  home: "Home",
-  chat: "Chat",
-  terminal: "Terminal",
-  agentFlow: "Agent Flow",
-  workflows: "Workflows",
-  documents: "Documents",
-  browser: "Browser",
-  studio: "Estudio",
-  repository: "Repositorio",
-  files: "Files",
+/** Message keys; translate where drawn (see viewLabel). */
+export const MAIN_TAB_LABELS: Record<BuiltinMainTab, MessageKey> = {
+  home: "chat.mainNav.tab_home",
+  chat: "chat.mainNav.tab_chat",
+  terminal: "chat.mainNav.tab_terminal",
+  agentFlow: "chat.mainNav.tab_agentFlow",
+  worktrees: "chat.mainNav.tab_worktrees",
+  workflows: "chat.mainNav.tab_workflows",
+  documents: "chat.mainNav.tab_documents",
+  browser: "chat.mainNav.tab_browser",
+  studio: "chat.mainNav.tab_studio",
+  repository: "chat.mainNav.tab_repository",
+  files: "chat.mainNav.tab_files",
 };
 
 /**
@@ -85,6 +89,7 @@ export function useExtraTabs(): ExtraTabMeta[] {
 }
 
 export function viewLabel(tab: MainTab, tabs: ExtraTabMeta[]): string {
-  if (tab.startsWith("plugin:")) return tabs.find((t) => t.id === tab)?.label ?? "Complemento";
-  return MAIN_TAB_LABELS[tab as BuiltinMainTab] ?? "";
+  if (tab.startsWith("plugin:")) return tabs.find((x) => x.id === tab)?.label ?? t("chat.mainNav.plugin");
+  const key = MAIN_TAB_LABELS[tab as BuiltinMainTab];
+  return key ? t(key) : "";
 }

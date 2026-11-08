@@ -105,6 +105,14 @@ export function createLlmHarness(options?: { config?: YggdrasilConfig }): AgentH
           },
           approveTool: params.approveTool,
           approvalMode: params.approvalMode,
+          signal: params.signal,
+          onProviderRetry: (info) => {
+            void params.events?.emit("provider.retry", { sessionKey: params.sessionKey, ...info });
+          },
+          guards: config?.harness?.loopGuards,
+          onGuard: (event) => {
+            void params.events?.emit("loop.guard", { sessionKey: params.sessionKey, ...event });
+          },
           getToolDefinition: (name) => getTool(name),
           // Every tool call goes through here regardless of where it's
           // actually implemented — a server-side tool and a device tool

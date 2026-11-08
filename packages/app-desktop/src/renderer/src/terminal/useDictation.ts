@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
+import { t } from "../i18n/index.js";
 import { useRecorder } from "../mic/useRecorder.js";
 import { transcribeWithConfiguredStt } from "../mic/transcribeWithConfiguredStt.js";
 
@@ -34,7 +35,7 @@ export function useDictation(onTranscript: (text: string) => void) {
       if (!wav) return;
       const text = await transcribeWithConfiguredStt(wav);
       if (text) onTranscriptRef.current(text);
-      else setError("No se detectó voz.");
+      else setError(t("term.dictation.noSpeech"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {

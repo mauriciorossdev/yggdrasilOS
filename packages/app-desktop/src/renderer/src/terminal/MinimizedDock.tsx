@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useI18n } from "../i18n/index.js";
 import type { LeafPane } from "./paneTree.js";
 
 type Props = {
@@ -50,6 +51,7 @@ function useWorkingPanes(): Set<string> {
  * pulses while its pane is producing output.
  */
 export function MinimizedDock({ panes, onRestore }: Props) {
+  const { t } = useI18n();
   const working = useWorkingPanes();
 
   return (
@@ -59,7 +61,7 @@ export function MinimizedDock({ panes, onRestore }: Props) {
           key={pane.id}
           type="button"
           className={`minimized-chip${working.has(pane.id) ? " working" : ""}`}
-          title={`Restore "${pane.title}"${working.has(pane.id) ? " — working" : ""}`}
+          title={t(working.has(pane.id) ? "term.dock.restoreTitleWorking" : "term.dock.restoreTitle", { title: pane.title })}
           onClick={() => onRestore(pane.id)}
         >
           {pane.title}

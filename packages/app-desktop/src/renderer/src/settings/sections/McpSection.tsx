@@ -1,12 +1,16 @@
 import { useState } from "react";
-import { CheckIcon, ExclamationTriangleIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import type { ConfigMcpServer, ConfigShape, McpServerStatus } from "../../types.js";
+import { CheckIcon, ChevronRightIcon, ExclamationTriangleIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { useI18n, type MessageKey } from "../../i18n/index.js";
+import { Chip } from "../../ui/Chip.js";
+import type { ConfigMcpServer, ConfigShape, McpServerStatus, McpTestResult } from "../../types.js";
 
 type Props = {
   config: ConfigShape;
   setConfig: (config: ConfigShape) => void;
   mcpStatus: McpServerStatus[];
   onMcpAction: (method: "mcp.reconnect" | "mcp.disconnect", serverId: string) => void;
+  /** Tries the server as it is in the form, without saving it. */
+  onMcpTest: (serverId: string) => Promise<McpTestResult>;
   mcpSecretEdits: Record<string, string>;
   setMcpSecretEdits: (edits: Record<string, string>) => void;
 };
@@ -38,27 +42,30 @@ type ParsedMcpServer = {
 // works unmodified. There's no "transport" field in that convention; it's
 // inferred the same way those clients infer it: "command" present → stdio,
 // "url" present → http.
-function parseMcpServersJson(raw: string): ParsedMcpServer[] {
+function parseMcpServersJson(
+  raw: string,
+  t: (key: MessageKey, vars?: Record<string, string | number>) => string,
+): ParsedMcpServer[] {
   let data: unknown;
   try {
     data = JSON.parse(raw);
   } catch {
-    throw new Error("Invalid JSON");
+    throw new Error(t("set.mcp.invalidJson"));
   }
   if (typeof data !== "object" || data === null || Array.isArray(data)) {
-    throw new Error("Expected a JSON object");
+    throw new Error(t("set.mcp.expectedObject"));
   }
 
   const wrapped = (data as Record<string, unknown>).mcpServers;
   const map = wrapped !== undefined ? wrapped : data;
   if (typeof map !== "object" || map === null || Array.isArray(map)) {
-    throw new Error('Expected an object of server entries (optionally wrapped in "mcpServers")');
+    throw new Error(t("set.mcp.expectedEntries"));
   }
 
   const results: ParsedMcpServer[] = [];
   for (const [id, value] of Object.entries(map as Record<string, unknown>)) {
     if (!value || typeof value !== "object") {
-      throw new Error(`"${id}": expected an object`);
+      throw new Error(t("set.mcp.entryExpectedObject", { id }));
     }
     const entry = value as Record<string, unknown>;
 
@@ -85,25 +92,55 @@ function parseMcpServersJson(raw: string): ParsedMcpServer[] {
           : undefined;
       results.push({ id, server: { transport: "http", url: entry.url }, secrets });
     } else {
-      throw new Error(`"${id}": must have either "command" (stdio) or "url" (http)`);
+      throw new Error(t("set.mcp.entryNeedsCommandOrUrl", { id }));
     }
   }
 
   if (results.length === 0) {
-    throw new Error("No server entries found");
+    throw new Error(t("set.mcp.noEntries"));
   }
   return results;
 }
 
-export function McpSection({ config, setConfig, mcpStatus, onMcpAction, mcpSecretEdits, setMcpSecretEdits }: Props) {
+export function McpSection({ config, setConfig, mcpStatus, onMcpAction, onMcpTest, mcpSecretEdits, setMcpSecretEdits }: Props) {
+  const { t } = useI18n();
   const servers = config.mcpServers ?? {};
   const entries = Object.entries(servers);
   const [showImport, setShowImport] = useState(false);
   const [importText, setImportText] = useState("");
   const [importError, setImportError] = useState<string | null>(null);
+  // Cards start collapsed; new and imported servers open so they can be filled in.
+  const [open, setOpen] = useState<Record<string, boolean>>({});
+  const [tests, setTests] = useState<Record<string, { testing: true } | { testing: false; result: McpTestResult }>>({});
+
+  const toggle = (id: string) => setOpen((cur) => ({ ...cur, [id]: !cur[id] }));
+  const setAllOpen = (value: boolean) => setOpen(Object.fromEntries(Object.keys(servers).map((id) => [id, value])));
+  const clearTest = (id: string) =>
+    setTests((cur) => {
+      if (!(id in cur)) return cur;
+      const { [id]: _drop, ...rest } = cur;
+      return rest;
+    });
+
+  const runTest = async (id: string) => {
+    setTests((cur) => ({ ...cur, [id]: { testing: true } }));
+    let result: McpTestResult;
+    try {
+      result = await onMcpTest(id);
+    } catch (err) {
+      result = { ok: false, toolCount: 0, tools: [], durationMs: 0, error: err instanceof Error ? err.message : String(err) };
+    }
+    setTests((cur) => ({ ...cur, [id]: { testing: false, result } }));
+  };
 
   const updateServer = (id: string, next: ConfigMcpServer) => {
     setConfig({ ...config, mcpServers: { ...servers, [id]: next } });
+    clearTest(id);
+  };
+
+  const editSecrets = (id: string, value: string) => {
+    setMcpSecretEdits({ ...mcpSecretEdits, [id]: value });
+    clearTest(id);
   };
 
   const renameServer = (oldId: string, newId: string) => {
@@ -112,6 +149,11 @@ export function McpSection({ config, setConfig, mcpStatus, onMcpAction, mcpSecre
     const entry = rest[oldId];
     delete rest[oldId];
     setConfig({ ...config, mcpServers: { ...rest, [newId]: entry } });
+    setOpen((cur) => {
+      const { [oldId]: was, ...others } = cur;
+      return { ...others, [newId]: was ?? false };
+    });
+    clearTest(oldId);
     if (mcpSecretEdits[oldId] !== undefined) {
       const restSecrets = { ...mcpSecretEdits };
       const secret = restSecrets[oldId];
@@ -134,12 +176,13 @@ export function McpSection({ config, setConfig, mcpStatus, onMcpAction, mcpSecre
   const addServer = () => {
     const id = newServerId(servers);
     setConfig({ ...config, mcpServers: { ...servers, [id]: { transport: "stdio", command: "", args: [] } } });
+    setOpen((cur) => ({ ...cur, [id]: true }));
   };
 
   const applyImport = () => {
     let parsed: ParsedMcpServer[];
     try {
-      parsed = parseMcpServersJson(importText);
+      parsed = parseMcpServersJson(importText, t);
     } catch (err) {
       setImportError(err instanceof Error ? err.message : String(err));
       return;
@@ -157,6 +200,7 @@ export function McpSection({ config, setConfig, mcpStatus, onMcpAction, mcpSecre
     }
     setConfig({ ...config, mcpServers: nextServers });
     setMcpSecretEdits(nextSecrets);
+    setOpen((cur) => ({ ...cur, ...Object.fromEntries(parsed.map((p) => [p.id, true])) }));
     setImportText("");
     setImportError(null);
     setShowImport(false);
@@ -164,149 +208,14 @@ export function McpSection({ config, setConfig, mcpStatus, onMcpAction, mcpSecre
 
   return (
     <section className="settings-section">
-      <h3>MCP Servers</h3>
+      <h3>{t("set.mcp.title")}</h3>
       <p className="muted">
-        Connect Model Context Protocol servers to give agents more tools. Servers connect in the
-        background; save to apply changes, or use Reconnect on a single server.
+        {t("set.mcp.intro")}
       </p>
-      {entries.map(([id, server]) => {
-        const status = mcpStatus.find((s) => s.id === id);
-        return (
-          <div key={id} className="settings-provider">
-            <div className="mcp-server-header">
-              <input
-                type="text"
-                value={id}
-                onChange={(e) => renameServer(id, e.target.value.trim())}
-                className="mcp-id-input"
-              />
-              <button type="button" className="icon-btn" onClick={() => removeServer(id)} title="Remove server">
-                <XMarkIcon className="hero-icon" />
-              </button>
-            </div>
-
-            <label>
-              Transport
-              <select
-                value={server.transport}
-                onChange={(e) =>
-                  updateServer(
-                    id,
-                    e.target.value === "stdio"
-                      ? { transport: "stdio", command: "", args: [], autoStart: server.autoStart }
-                      : { transport: "http", url: "", autoStart: server.autoStart },
-                  )
-                }
-              >
-                <option value="stdio">stdio (local command)</option>
-                <option value="http">http (remote URL)</option>
-              </select>
-            </label>
-
-            {server.transport === "stdio" ? (
-              <>
-                <label>
-                  Command
-                  <input
-                    type="text"
-                    value={server.command ?? ""}
-                    onChange={(e) => updateServer(id, { ...server, command: e.target.value })}
-                    placeholder="npx"
-                  />
-                </label>
-                <label>
-                  Args (space-separated)
-                  <input
-                    type="text"
-                    value={(server.args ?? []).join(" ")}
-                    onChange={(e) =>
-                      updateServer(id, { ...server, args: e.target.value.split(/\s+/).filter(Boolean) })
-                    }
-                    placeholder="-y @modelcontextprotocol/server-filesystem C:\path"
-                  />
-                </label>
-                <label>
-                  Environment variables
-                  <textarea
-                    value={mcpSecretEdits[id] ?? ""}
-                    onChange={(e) => setMcpSecretEdits({ ...mcpSecretEdits, [id]: e.target.value })}
-                    placeholder={"Leave blank to keep current values\nKEY=value"}
-                    rows={3}
-                  />
-                </label>
-              </>
-            ) : (
-              <>
-                <label>
-                  URL
-                  <input
-                    type="text"
-                    value={server.url ?? ""}
-                    onChange={(e) => updateServer(id, { ...server, url: e.target.value })}
-                    placeholder="https://mcp.example.com"
-                  />
-                </label>
-                <label>
-                  Headers
-                  <textarea
-                    value={mcpSecretEdits[id] ?? ""}
-                    onChange={(e) => setMcpSecretEdits({ ...mcpSecretEdits, [id]: e.target.value })}
-                    placeholder={"Leave blank to keep current values\nAuthorization=Bearer …"}
-                    rows={3}
-                  />
-                </label>
-              </>
-            )}
-
-            <label className="mcp-autostart">
-              <input
-                type="checkbox"
-                checked={server.autoStart !== false}
-                onChange={(e) => updateServer(id, { ...server, autoStart: e.target.checked })}
-              />
-              Connect automatically when the project opens
-            </label>
-
-            {status &&
-              (status.connected ? (
-                <p className="mcp-status-ok">
-                  <CheckIcon className="hero-icon" /> connected — {status.toolCount} tool
-                  {status.toolCount === 1 ? "" : "s"}
-                </p>
-              ) : status.state === "connecting" ? (
-                <p className="muted">Connecting…</p>
-              ) : status.state === "stopped" ? (
-                <p className="muted">Not connected</p>
-              ) : (
-                <p className="provider-warning">
-                  <ExclamationTriangleIcon className="hero-icon" /> {status.error ?? "not connected"}
-                </p>
-              ))}
-            {status && (
-              <div className="agent-form-actions">
-                <button
-                  type="button"
-                  disabled={status.state === "connecting"}
-                  onClick={() => onMcpAction("mcp.reconnect", id)}
-                >
-                  {status.connected ? "Reconnect" : "Connect"}
-                </button>
-                {status.connected && (
-                  <button type="button" onClick={() => onMcpAction("mcp.disconnect", id)}>
-                    Disconnect
-                  </button>
-                )}
-              </div>
-            )}
-          </div>
-        );
-      })}
-      {entries.length === 0 && <p className="muted">No MCP servers configured</p>}
-
       {showImport ? (
         <div className="mcp-import">
           <label>
-            Paste MCP server JSON
+            {t("set.mcp.pasteJson")}
             <textarea
               value={importText}
               onChange={(e) => {
@@ -328,23 +237,231 @@ export function McpSection({ config, setConfig, mcpStatus, onMcpAction, mcpSecre
                 setImportError(null);
               }}
             >
-              Cancel
+              {t("set.mcp.cancel")}
             </button>
             <button type="button" onClick={applyImport} disabled={!importText.trim()}>
-              Import
+              {t("set.mcp.import")}
             </button>
           </div>
         </div>
       ) : (
         <div className="mcp-add-actions">
           <button type="button" className="new-chat" onClick={addServer}>
-            + Add MCP server
+            {t("set.mcp.addServer")}
           </button>
           <button type="button" className="new-chat" onClick={() => setShowImport(true)}>
-            + Import JSON
+            {t("set.mcp.importJson")}
           </button>
+          {entries.length > 1 && (
+            <>
+              <button type="button" className="mcp-small-btn" onClick={() => setAllOpen(true)}>
+                {t("set.mcp.expandAll")}
+              </button>
+              <button type="button" className="mcp-small-btn" onClick={() => setAllOpen(false)}>
+                {t("set.mcp.collapseAll")}
+              </button>
+            </>
+          )}
         </div>
       )}
+      {entries.map(([id, server]) => {
+        const status = mcpStatus.find((s) => s.id === id);
+        const isOpen = open[id] === true;
+        const test = tests[id];
+        const chip = !status
+          ? null
+          : status.connected
+            ? {
+                tone: "ready" as const,
+                text: status.toolCount === 1 ? t("set.mcp.toolsOne") : t("set.mcp.toolsMany", { count: status.toolCount }),
+              }
+            : status.state === "connecting"
+              ? { tone: "working" as const, text: t("set.mcp.connecting") }
+              : status.state === "stopped"
+                ? { tone: "neutral" as const, text: t("set.mcp.notConnected") }
+                : { tone: "danger" as const, text: t("set.mcp.error") };
+        const target = server.transport === "stdio" ? [server.command, ...(server.args ?? [])].join(" ").trim() : (server.url ?? "").trim();
+        const canTest = target !== "" && (server.transport === "stdio" ? (server.command ?? "").trim() !== "" : true);
+        return (
+          <div key={id} className="mcp-card">
+            <div className="mcp-server-header">
+              <button
+                type="button"
+                className="icon-btn mcp-chevron"
+                aria-expanded={isOpen}
+                aria-label={isOpen ? t("set.mcp.collapse") : t("set.mcp.expand")}
+                title={isOpen ? t("set.mcp.collapse") : t("set.mcp.expand")}
+                onClick={() => toggle(id)}
+              >
+                <ChevronRightIcon className={`hero-icon${isOpen ? " open" : ""}`} />
+              </button>
+              <input
+                type="text"
+                value={id}
+                onChange={(e) => renameServer(id, e.target.value.trim())}
+                className="mcp-id-input"
+                aria-label={t("set.mcp.serverName")}
+              />
+              {chip && (
+                <Chip tone={chip.tone} dot title={status?.error ?? undefined}>
+                  {chip.text}
+                </Chip>
+              )}
+              {status && (
+                <button
+                  type="button"
+                  className="mcp-small-btn"
+                  disabled={status.state === "connecting"}
+                  onClick={() => onMcpAction("mcp.reconnect", id)}
+                >
+                  {status.connected ? t("set.mcp.reconnect") : t("set.mcp.connect")}
+                </button>
+              )}
+              {status?.connected && (
+                <button type="button" className="mcp-small-btn" onClick={() => onMcpAction("mcp.disconnect", id)}>
+                  {t("set.mcp.disconnect")}
+                </button>
+              )}
+              <button type="button" className="icon-btn" onClick={() => removeServer(id)} title={t("set.mcp.removeServer")}>
+                <XMarkIcon className="hero-icon" />
+              </button>
+            </div>
+
+            {!isOpen && (
+              <button type="button" className="mcp-summary" onClick={() => toggle(id)} title={target || undefined}>
+                <span className="mcp-summary-kind">{server.transport}</span>
+                {target || t("set.mcp.noConfig")}
+              </button>
+            )}
+
+            {isOpen && (
+              <>
+                <div className="mcp-grid">
+                  <label>
+                    {t("set.mcp.transport")}
+                    <select
+                      value={server.transport}
+                      onChange={(e) =>
+                        updateServer(
+                          id,
+                          e.target.value === "stdio"
+                            ? { transport: "stdio", command: "", args: [], autoStart: server.autoStart }
+                            : { transport: "http", url: "", autoStart: server.autoStart },
+                        )
+                      }
+                    >
+                      <option value="stdio">{t("set.mcp.stdioOption")}</option>
+                      <option value="http">{t("set.mcp.httpOption")}</option>
+                    </select>
+                  </label>
+
+                  {server.transport === "stdio" ? (
+                    <>
+                      <label>
+                        {t("set.mcp.command")}
+                        <input
+                          type="text"
+                          value={server.command ?? ""}
+                          onChange={(e) => updateServer(id, { ...server, command: e.target.value })}
+                          placeholder="npx"
+                        />
+                      </label>
+                      <label className="mcp-grid-wide">
+                        {t("set.mcp.args")}
+                        <input
+                          type="text"
+                          value={(server.args ?? []).join(" ")}
+                          onChange={(e) =>
+                            updateServer(id, { ...server, args: e.target.value.split(/\s+/).filter(Boolean) })
+                          }
+                          placeholder="-y @modelcontextprotocol/server-filesystem C:\path"
+                        />
+                      </label>
+                      <label className="mcp-grid-wide">
+                        {t("set.mcp.env")}
+                        <textarea
+                          value={mcpSecretEdits[id] ?? ""}
+                          onChange={(e) => editSecrets(id, e.target.value)}
+                          placeholder={t("set.mcp.envPlaceholder")}
+                          rows={2}
+                        />
+                      </label>
+                    </>
+                  ) : (
+                    <>
+                      <label>
+                        URL
+                        <input
+                          type="text"
+                          value={server.url ?? ""}
+                          onChange={(e) => updateServer(id, { ...server, url: e.target.value })}
+                          placeholder="https://mcp.example.com"
+                        />
+                      </label>
+                      <label className="mcp-grid-wide">
+                        {t("set.mcp.headers")}
+                        <textarea
+                          value={mcpSecretEdits[id] ?? ""}
+                          onChange={(e) => editSecrets(id, e.target.value)}
+                          placeholder={t("set.mcp.headersPlaceholder")}
+                          rows={2}
+                        />
+                      </label>
+                    </>
+                  )}
+                </div>
+
+                <label className="settings-check">
+                  <input
+                    type="checkbox"
+                    checked={server.autoStart !== false}
+                    onChange={(e) => updateServer(id, { ...server, autoStart: e.target.checked })}
+                  />
+                  {t("set.mcp.autoStart")}
+                </label>
+
+                <div className="mcp-test-row">
+                  <button
+                    type="button"
+                    className="mcp-small-btn"
+                    disabled={!canTest || test?.testing === true}
+                    title={t("set.mcp.testHint")}
+                    onClick={() => void runTest(id)}
+                  >
+                    {test?.testing ? t("set.mcp.testing") : t("set.mcp.test")}
+                  </button>
+                  {test && !test.testing && test.result.ok && (
+                    <span className="mcp-test-ok">
+                      <CheckIcon className="hero-icon" />{" "}
+                      {t(test.result.toolCount === 1 ? "set.mcp.testOkOne" : "set.mcp.testOk", {
+                        count: test.result.toolCount,
+                        ms: test.result.durationMs,
+                      })}
+                    </span>
+                  )}
+                  {test && !test.testing && !test.result.ok && (
+                    <span className="mcp-test-fail">
+                      <ExclamationTriangleIcon className="hero-icon" /> {t("set.mcp.testFailed", { error: test.result.error ?? "" })}
+                    </span>
+                  )}
+                </div>
+                {test && !test.testing && test.result.ok && test.result.tools.length > 0 && (
+                  <p className="muted mcp-test-tools" title={test.result.tools.join(", ")}>
+                    {test.result.tools.join(", ")}
+                  </p>
+                )}
+
+                {status && !status.connected && status.state !== "connecting" && status.state !== "stopped" && (
+                  <p className="provider-warning">
+                    <ExclamationTriangleIcon className="hero-icon" /> {status.error ?? t("set.mcp.notConnectedLower")}
+                  </p>
+                )}
+              </>
+            )}
+          </div>
+        );
+      })}
+      {entries.length === 0 && <p className="muted">{t("set.mcp.none")}</p>}
     </section>
   );
 }

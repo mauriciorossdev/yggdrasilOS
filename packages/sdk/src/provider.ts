@@ -45,7 +45,13 @@ export type ChatCompleteParams = {
   temperature?: number;
   maxTokens?: number;
   tools?: ChatToolDefinition[];
+  /** Optional: providers that can abort their in-flight request should do so when this fires. The tool loop also stops waiting on its own, so ignoring it is safe. */
+  signal?: AbortSignal;
+  /** Called before a provider waits to retry a failed request (rate limit, 5xx, dropped connection), so the turn can show it. */
+  onRetry?: (info: ProviderRetryInfo) => void;
 };
+
+export type ProviderRetryInfo = { attempt: number; delayMs: number; reason: string };
 
 export type ChatCompleteFinishReason = "stop" | "tool_calls" | "length";
 

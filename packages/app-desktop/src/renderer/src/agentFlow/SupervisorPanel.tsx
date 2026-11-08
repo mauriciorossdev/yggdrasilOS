@@ -1,3 +1,4 @@
+import { useI18n } from "../i18n/index.js";
 import type { AgentFlowSupervisor, AgentInfo } from "../types.js";
 
 type Props = {
@@ -13,15 +14,15 @@ type Props = {
  * supervisor types stay config-only for now (no autonomous run path yet).
  */
 export function SupervisorPanel({ supervisor, agents, onChange }: Props) {
+  const { t } = useI18n();
   return (
     <div className="flow-supervisor">
-      <h3>Supervisor</h3>
+      <h3>{t("flow.supervisor.title")}</h3>
       <p className="muted flow-supervisor-note">
-        Orchestrates the flow — "Run Flow" only works for a yggdrasil supervisor with an agent and initial prompt
-        set.
+        {t("flow.supervisor.note")}
       </p>
       <label>
-        Type
+        {t("flow.supervisor.type")}
         <select
           value={supervisor.type}
           onChange={(e) => onChange({ type: e.target.value as AgentFlowSupervisor["type"] })}
@@ -38,12 +39,12 @@ export function SupervisorPanel({ supervisor, agents, onChange }: Props) {
       {supervisor.type === "yggdrasil" && (
         <>
           <label>
-            Agent
+            {t("flow.supervisor.agent")}
             <select
               value={supervisor.agentId ?? ""}
               onChange={(e) => onChange({ ...supervisor, agentId: e.target.value || undefined })}
             >
-              <option value="">(select an agent)</option>
+              <option value="">{t("flow.supervisor.selectAgent")}</option>
               {agents.map((a) => (
                 <option key={a.id} value={a.id}>
                   {a.label ?? a.id}
@@ -52,7 +53,7 @@ export function SupervisorPanel({ supervisor, agents, onChange }: Props) {
             </select>
           </label>
           <label>
-            Initial prompt (used by "Run Flow")
+            {t("flow.supervisor.initialPromptRun")}
             <textarea
               value={supervisor.initialPrompt ?? ""}
               onChange={(e) => onChange({ ...supervisor, initialPrompt: e.target.value || undefined })}
@@ -64,7 +65,7 @@ export function SupervisorPanel({ supervisor, agents, onChange }: Props) {
 
       {supervisor.type === "claude" && (
         <label>
-          System prompt (appended)
+          {t("flow.supervisor.systemPrompt")}
           <textarea
             value={supervisor.systemPromptAppend ?? ""}
             onChange={(e) => onChange({ ...supervisor, systemPromptAppend: e.target.value || undefined })}
@@ -75,7 +76,7 @@ export function SupervisorPanel({ supervisor, agents, onChange }: Props) {
 
       {(supervisor.type === "antigravity" || supervisor.type === "omp" || supervisor.type === "copilot") && (
         <label>
-          Initial prompt
+          {t("flow.supervisor.initialPrompt")}
           <textarea
             value={supervisor.initialPrompt ?? ""}
             onChange={(e) => onChange({ ...supervisor, initialPrompt: e.target.value || undefined })}
@@ -85,11 +86,11 @@ export function SupervisorPanel({ supervisor, agents, onChange }: Props) {
       )}
 
       <label>
-        Note
+        {t("flow.supervisor.noteLabel")}
         <input
           value={supervisor.note ?? ""}
           onChange={(e) => onChange({ ...supervisor, note: e.target.value || undefined })}
-          placeholder="Free-form notes about orchestration intent"
+          placeholder={t("flow.supervisor.notePlaceholder")}
         />
       </label>
     </div>

@@ -2,6 +2,7 @@ import { useEffect, useRef, type ReactNode } from "react";
 import { createPortal } from "react-dom";
 import { XMarkIcon } from "@heroicons/react/20/solid";
 import { IconButton } from "./IconButton.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = {
   title: string;
@@ -13,6 +14,7 @@ type Props = {
 
 /** A centered dialog. Closes on Escape, the close button, or a click on the dim backdrop. */
 export function Modal({ title, onClose, children, footer }: Props) {
+  const { t } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -37,7 +39,7 @@ export function Modal({ title, onClose, children, footer }: Props) {
       >
         <div className="ygg-modal__header">
           <h2 className="ygg-modal__title">{title}</h2>
-          <IconButton label="Cerrar" onClick={onClose}>
+          <IconButton label={t("ui.close")} onClick={onClose}>
             <XMarkIcon className="hero-icon" />
           </IconButton>
         </div>

@@ -1,3 +1,5 @@
+import { useI18n } from "../i18n/index.js";
+
 type Props = {
   onSave: () => void;
   onDiscard: () => void;
@@ -14,23 +16,24 @@ type Props = {
  * click maps to its own safe default (onClose).
  */
 export function UnsavedChangesModal({ onSave, onDiscard, onCancel, saving, error }: Props) {
+  const { t } = useI18n();
   return (
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Unsaved changes</h2>
+          <h2>{t("flow.unsaved.title")}</h2>
         </div>
-        <p>This Agent Flow has unsaved changes. Save before starting a new one?</p>
+        <p>{t("flow.unsaved.body")}</p>
         {error && <p className="error">{error}</p>}
         <div className="agent-form-actions">
           <button type="button" onClick={onCancel} disabled={saving}>
-            Cancel
+            {t("flow.unsaved.cancel")}
           </button>
           <button type="button" onClick={onDiscard} disabled={saving}>
-            Discard
+            {t("flow.unsaved.discard")}
           </button>
           <button type="button" onClick={onSave} disabled={saving}>
-            {saving ? "Saving…" : "Save & Continue"}
+            {saving ? t("flow.unsaved.saving") : t("flow.unsaved.saveContinue")}
           </button>
         </div>
       </div>

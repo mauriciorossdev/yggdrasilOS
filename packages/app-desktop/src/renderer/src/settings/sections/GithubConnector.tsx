@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
+import { useI18n } from "../../i18n/index.js";
 
 type GithubStatus = { connected: boolean; login?: string; connectedAt?: number };
 type DeviceStart = { deviceCode: string; userCode: string; verificationUri: string; expiresIn: number; interval: number };
@@ -9,6 +10,7 @@ type Repo = { fullName: string; name: string; description: string | null; privat
 // Own connect/poll cycle for the same reason ConnectorsSection's Google block
 // has one — an immediate action, not part of SettingsView's batched Save.
 export function GithubConnector() {
+  const { t } = useI18n();
   const { call } = useGateway();
   const [status, setStatus] = useState<GithubStatus | null>(null);
   const [device, setDevice] = useState<DeviceStart | null>(null);
@@ -81,7 +83,7 @@ export function GithubConnector() {
         if (res.status === "error") throw new Error(res.error);
         if (res.interval) interval = res.interval * 1000;
       }
-      throw new Error("The GitHub code expired — try connecting again.");
+      throw new Error(t("set.connectors.githubExpired"));
     } catch (err) {
       fail(err);
       setDevice(null);
@@ -108,7 +110,7 @@ export function GithubConnector() {
     setCloning(repo.fullName);
     try {
       const res = await call<{ path: string }>("connectors.github.clone", { repo: repo.fullName, parentDir });
-      setNotice(`Cloned ${repo.fullName} to ${res.path}`);
+      setNotice(t("set.connectors.cloned", { repo: repo.fullName, path: res.path }));
     } catch (err) {
       fail(err);
     } finally {
@@ -122,11 +124,11 @@ export function GithubConnector() {
         <strong>GitHub</strong>
         {status?.connected ? (
           <button type="button" className="icon-btn" onClick={() => void disconnect()}>
-            Disconnect
+            {t("set.connectors.disconnect")}
           </button>
         ) : (
           <button type="button" className="icon-btn" onClick={() => void connect()} disabled={device !== null}>
-            {device ? "Waiting…" : "Connect"}
+            {device ? t("set.connectors.waiting") : t("set.connectors.connect")}
           </button>
         )}
       </div>
@@ -136,16 +138,21 @@ export function GithubConnector() {
 
       {device && (
         <p className="muted">
-          Enter code <strong>{device.userCode}</strong> at {device.verificationUri} (opened in your browser) to
-          authorize Yggdrasil.
+          {t("set.connectors.githubEnter")} <strong>{device.userCode}</strong>
+          {t("set.connectors.githubAt", { uri: device.verificationUri })}
         </p>
       )}
 
       <p className="muted">
-        {status === null && "Loading…"}
-        {status && !status.connected && !device && "Not connected."}
+        {status === null && t("set.connectors.loading")}
+        {status && !status.connected && !device && t("set.connectors.notConnected")}
         {status?.connected &&
-          `Connected as ${status.login ?? "?"}${status.connectedAt ? ` since ${new Date(status.connectedAt).toLocaleDateString()}` : ""}`}
+          t("set.connectors.githubConnectedAs", {
+            login: status.login ?? "?",
+            since: status.connectedAt
+              ? t("set.connectors.since", { date: new Date(status.connectedAt).toLocaleDateString() })
+              : "",
+          })}
       </p>
 
       {status?.connected && repos && (
@@ -158,16 +165,16 @@ export function GithubConnector() {
                 {repo.description ? <span className="muted"> — {repo.description}</span> : null}
               </span>
               <button type="button" className="icon-btn" onClick={() => void clone(repo)} disabled={cloning !== null}>
-                {cloning === repo.fullName ? "Cloning…" : "Clone"}
+                {cloning === repo.fullName ? t("set.connectors.cloning") : t("set.connectors.clone")}
               </button>
             </li>
           ))}
-          {repos.length === 0 && <li className="muted">No repositories found.</li>}
+          {repos.length === 0 && <li className="muted">{t("set.connectors.noRepos")}</li>}
         </ul>
       )}
       {status?.connected && hasMore && (
         <button type="button" className="icon-btn" onClick={() => void loadRepos(page + 1)} disabled={loadingRepos}>
-          {loadingRepos ? "Loading…" : "Load more"}
+          {loadingRepos ? t("set.connectors.loadingMore") : t("set.connectors.loadMore")}
         </button>
       )}
     </div>

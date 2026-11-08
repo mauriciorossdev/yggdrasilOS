@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
+import { useI18n } from "../../i18n/index.js";
 
 type ApiKeyEntry = {
   name: string;
@@ -11,6 +12,7 @@ type ApiKeyEntry = {
 // save flow — revoking is immediate and destructive (kills that device's
 // connection right away), not something to queue behind "Save settings".
 export function PairedDevicesSection() {
+  const { t } = useI18n();
   const { call } = useGateway();
   const [apiKeys, setApiKeys] = useState<ApiKeyEntry[] | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -34,7 +36,7 @@ export function PairedDevicesSection() {
   const revoke = async (name: string) => {
     if (
       !window.confirm(
-        `Revoke "${name}"? That device will be disconnected immediately and can't reconnect until a new key is issued for it.`,
+        t("set.paired.confirm", { name }),
       )
     ) {
       return;
@@ -53,16 +55,14 @@ export function PairedDevicesSection() {
 
   return (
     <section className="settings-section">
-      <h3>Paired devices</h3>
+      <h3>{t("set.paired.title")}</h3>
       <p className="muted">
-        Devices (phone, other clients) holding a named API key for this gateway. Revoking one takes effect
-        immediately. There's no "add device" flow here yet — issuing a new key still means adding one to
-        auth.gateway.apiKeys in yggdrasil.config.json by hand.
+        {t("set.paired.intro")}
       </p>
 
       {error && <p className="error">{error}</p>}
-      {apiKeys === null && !error && <p className="muted">Loading…</p>}
-      {apiKeys?.length === 0 && <p className="muted">No paired devices.</p>}
+      {apiKeys === null && !error && <p className="muted">{t("set.paired.loading")}</p>}
+      {apiKeys?.length === 0 && <p className="muted">{t("set.paired.none")}</p>}
 
       {apiKeys?.map((k) => (
         <div key={k.name} className="settings-provider">
@@ -73,15 +73,17 @@ export function PairedDevicesSection() {
               className="icon-btn"
               onClick={() => void revoke(k.name)}
               disabled={revoking === k.name}
-              title={`Revoke ${k.name}`}
+              title={t("set.paired.revokeTitle", { name: k.name })}
             >
-              {revoking === k.name ? "Revoking…" : "Revoke"}
+              {revoking === k.name ? t("set.paired.revoking") : t("set.paired.revoke")}
             </button>
           </div>
           <p className="muted">
-            Key ending in <code>{k.keyPreview ?? "····"}</code>
+            {t("set.paired.keyEnding")} <code>{k.keyPreview ?? "····"}</code>
             {" · "}
-            {k.expiresAt ? `expires ${new Date(k.expiresAt).toLocaleDateString()}` : "never expires"}
+            {k.expiresAt
+              ? t("set.paired.expires", { date: new Date(k.expiresAt).toLocaleDateString() })
+              : t("set.paired.neverExpires")}
           </p>
         </div>
       ))}

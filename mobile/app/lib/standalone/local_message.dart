@@ -7,6 +7,8 @@
 /// to one vendor's shape either).
 library;
 
+import 'token_usage.dart';
+
 class LocalToolCall {
   final String id;
   final String name;
@@ -32,6 +34,7 @@ class LocalMessage {
   String? toolCallId; // role == tool: which call this answers
   String? toolName; // role == tool: for display
   bool? toolOk; // role == tool: whether the call succeeded
+  TokenUsage? usage; // role == assistant: what the provider call that produced it cost, when reported
 
   LocalMessage({
     required this.role,
@@ -40,6 +43,7 @@ class LocalMessage {
     this.toolCallId,
     this.toolName,
     this.toolOk,
+    this.usage,
   });
 
   factory LocalMessage.fromJson(Map<String, dynamic> json) => LocalMessage(
@@ -51,6 +55,7 @@ class LocalMessage {
         toolCallId: json['toolCallId']?.toString(),
         toolName: json['toolName']?.toString(),
         toolOk: json['toolOk'] as bool?,
+        usage: json['usage'] is Map ? TokenUsage.fromJson((json['usage'] as Map).cast<String, dynamic>()) : null,
       );
 
   Map<String, dynamic> toJson() => {
@@ -60,5 +65,6 @@ class LocalMessage {
         if (toolCallId != null) 'toolCallId': toolCallId,
         if (toolName != null) 'toolName': toolName,
         if (toolOk != null) 'toolOk': toolOk,
+        if (usage != null) 'usage': usage!.toJson(),
       };
 }

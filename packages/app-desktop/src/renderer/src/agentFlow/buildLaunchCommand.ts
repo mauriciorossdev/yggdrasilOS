@@ -2,7 +2,7 @@ import type { AgentFlowNode } from "../types.js";
 
 /**
  * Pure per-harness command/args builder for "Load into Terminal". The
- * yggdrasil case is deliberately absent here — it has no PATH-resolved
+ * yggdrasil case returns no `command` — it has no PATH-resolved
  * binary of its own; the leaf instead carries `yggdrasilAgentId` and main
  * resolves the actual CLI invocation itself (see main/terminals.ts's
  * resolveYggdrasilTuiCommand — it needs process.execPath / the CLI's
@@ -58,8 +58,14 @@ export function buildLaunchCommand(
   node: AgentFlowNode,
 ): { command?: string; args?: string[]; initialPromptFlag?: string; env?: Record<string, string> } {
   switch (node.harness.type) {
-    case "yggdrasil":
-      return {};
+    case "yggdrasil": {
+      // Extra `yggdrasil tui` flags: main appends them to the TUI invocation (resolveYggdrasilTuiCommand).
+      const h = node.harness;
+      const args: string[] = [];
+      if (h.approvalMode) args.push("--mode", h.approvalMode);
+      if (h.model) args.push("--model", h.model);
+      return { args };
+    }
 
     case "claude": {
       const h = node.harness;
@@ -70,6 +76,17 @@ export function buildLaunchCommand(
       if (h.systemPromptAppend) args.push("--append-system-prompt", h.systemPromptAppend);
       if (h.model) args.push("--model", h.model);
       if (h.effort) args.push("--effort", h.effort);
+      // `--resume=` in one token: its value is optional, so a space-separated form
+      // would let it swallow (or be swallowed by) the positional prompt.
+      if (h.resumeSession) args.push(`--resume=${h.resumeSession}`);
+      else if (h.continueSession) args.push("--continue");
+      if (h.sessionName) args.push("--name", h.sessionName);
+      if (h.permissionMode) args.push("--permission-mode", h.permissionMode);
+      // `--flag=value` on purpose: claude's tool-list flags are variadic, and the
+      // space-separated form would swallow the bare positional initial prompt
+      // that main appends after these args.
+      if (h.allowedTools?.length) args.push(`--allowedTools=${h.allowedTools.join(",")}`);
+      if (h.disallowedTools?.length) args.push(`--disallowedTools=${h.disallowedTools.join(",")}`);
       for (const dir of h.addDirs ?? []) args.push("--add-dir", dir);
       // Bare positional, last — opens interactively with this message
       // already sent instead of processing and exiting (that's -p/--print,

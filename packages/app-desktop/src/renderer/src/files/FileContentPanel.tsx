@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDownTrayIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import type { FsReadResult } from "../types.js";
@@ -8,15 +8,21 @@ import { previewKind } from "./filePreviewKind.js";
 import { reconcileExternalChange } from "../documents/reconcileExternalChange.js";
 import { DiskConflictBar } from "../documents/DiskConflictBar.js";
 import { FeatureProgress } from "../documents/FeatureProgress.js";
+import { useI18n } from "../i18n/index.js";
+import { contentToSave } from "./contentToSave.js";
+import { setFallbackOpenerDirty } from "./openFileBus.js";
 
 type Props = {
   relativePath: string;
   onClose: () => void;
+  /** Extra controls in the header, before Close. */
+  headerActions?: ReactNode;
   style?: React.CSSProperties;
   /** Extra class alongside "file-content-panel" — e.g. "file-content-panel-drawer" for the Terminal-tab overlay mode. */
   className?: string;
 };
-export function FileContentPanel({ relativePath, onClose, style, className }: Props) {
+export function FileContentPanel({ relativePath, onClose, headerActions, style, className }: Props) {
+  const { t } = useI18n();
   const { call, onEvent } = useGateway();
   const kind = previewKind(relativePath);
   const [result, setResult] = useState<FsReadResult | null>(null);
@@ -28,6 +34,11 @@ export function FileContentPanel({ relativePath, onClose, style, className }: Pr
   const [diskConflict, setDiskConflict] = useState<string | null>(null);
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    setFallbackOpenerDirty(dirty);
+    return () => setFallbackOpenerDirty(false);
+  }, [dirty]);
 
   useEffect(() => {
     if (kind !== "text") return;
@@ -51,8 +62,9 @@ export function FileContentPanel({ relativePath, onClose, style, className }: Pr
     if (!dirty || saving) return;
     setSaving(true);
     try {
-      await call("fs.write", { relativePath, content });
-      setSavedContent(content);
+      const written = await contentToSave(relativePath, content);
+      await call("fs.write", { relativePath, content: written });
+      setSavedContent(written);
       setDiskConflict(null);
       setDirty(false);
     } catch (err) {
@@ -122,11 +134,11 @@ export function FileContentPanel({ relativePath, onClose, style, className }: Pr
   };
 
   const requestClose = () => {
-    if (dirty && !window.confirm("Discard unsaved changes?")) return;
+    if (dirty && !window.confirm(t("doc.discardConfirm"))) return;
     onClose();
   };
 
-  // A truncated read (fs.read's 50k-char cap) must never be edited — saving
+  // A truncated read (fs.read's character cap) must never be edited — saving
   // it back would silently drop the rest of the file on disk.
   const editable = kind === "text" && result !== null && !result.truncated;
 
@@ -144,13 +156,14 @@ export function FileContentPanel({ relativePath, onClose, style, className }: Pr
               className="icon-btn"
               onClick={() => void save()}
               disabled={!dirty || saving}
-              title="Save (Cmd/Ctrl+S)"
+              title={t("doc.saveTitle")}
             >
               {saving ? "…" : <ArrowDownTrayIcon className="hero-icon" />}
             </button>
           )}
         </div>
-        <button type="button" className="icon-btn" onClick={requestClose} title="Close">
+        {headerActions}
+        <button type="button" className="icon-btn" onClick={requestClose} title={t("doc.close")}>
           <XMarkIcon className="hero-icon" />
         </button>
       </div>
@@ -164,11 +177,13 @@ export function FileContentPanel({ relativePath, onClose, style, className }: Pr
         ) : (
           <>
             {error && <p className="error">{error}</p>}
-            {!error && !result && <p className="muted">Loading…</p>}
+            {!error && !result && <p className="muted">{t("doc.loading")}</p>}
             {result?.truncated && (
               <p className="muted">
-                Truncated — showing {result.content.length.toLocaleString()} of{" "}
-                {result.totalLength?.toLocaleString()} characters. Too large to edit here.
+                {t("docs.view.truncated", {
+                  shown: result.content.length.toLocaleString(),
+                  total: result.totalLength?.toLocaleString() ?? "",
+                })}
               </p>
             )}
             {result &&

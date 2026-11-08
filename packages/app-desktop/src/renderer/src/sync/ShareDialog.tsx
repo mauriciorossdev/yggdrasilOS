@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { TrashIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { useI18n } from "../i18n/index.js";
 import type { ResourceRef, ResourceStatus, ShareMember, SharedResourceRole } from "../types.js";
 
 type Props = {
@@ -22,6 +23,7 @@ type Props = {
  * dialog look broken before.
  */
 export function ShareDialog({ resourceRef, title, onClose }: Props) {
+  const { t } = useI18n();
   const [status, setStatus] = useState<ResourceStatus | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
@@ -99,7 +101,7 @@ export function ShareDialog({ resourceRef, title, onClose }: Props) {
     });
 
   const revoke = (member: ShareMember) => {
-    if (!window.confirm(`¿Quitar el acceso de ${member.email ?? member.name}? Su link o copia dejará de funcionar.`)) return;
+    if (!window.confirm(t("share.confirmRevoke", { who: member.email ?? member.name }))) return;
     void run(async () => { await window.yggdrasil.sync.revokeMember(resourceRef, member.keyHash); });
   };
 
@@ -134,19 +136,19 @@ export function ShareDialog({ resourceRef, title, onClose }: Props) {
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{title}</h2>
-          <button type="button" className="icon-btn" onClick={onClose} title="Cerrar">
+          <button type="button" className="icon-btn" onClick={onClose} title={t("share.close")}>
             <XMarkIcon className="hero-icon" />
           </button>
         </div>
 
-        {status === null && !error && <p className="muted">Cargando…</p>}
+        {status === null && !error && <p className="muted">{t("share.loading")}</p>}
         {error && <p className="error">{error}</p>}
 
         {status && !status.shared && (
           <>
-            <p className="muted">Todavía no se comparte. Un servidor de sync propio (Railway u otro) debe estar configurado en Settings → Compartir.</p>
+            <p className="muted">{t("share.notShared")}</p>
             <button type="button" className="share-btn share-btn-primary share-btn-full" disabled={busy} onClick={() => void share()}>
-              {busy ? "Compartiendo…" : "Compartir con el equipo"}
+              {busy ? t("share.sharing") : t("share.shareWithTeam")}
             </button>
           </>
         )}
@@ -155,40 +157,40 @@ export function ShareDialog({ resourceRef, title, onClose }: Props) {
           <>
             <div className="share-status-row">
               <span className="share-status-badge">v{status.localVersion}</span>
-              <span>{status.role === "edit" ? "editor" : "solo lectura"}</span>
-              {status.conflict && <span className="share-status-conflict">⚠️ conflicto sin resolver</span>}
+              <span>{status.role === "edit" ? t("share.roleEditor") : t("share.roleReadOnly")}</span>
+              {status.conflict && <span className="share-status-conflict">{t("share.conflictBadge")}</span>}
             </div>
 
             {status.conflict && (
               <div className="share-conflict-banner">
-                <p>Alguien más subió cambios después de tu última versión local.</p>
+                <p>{t("share.conflictBanner")}</p>
                 <div className="share-conflict-actions">
                   <button type="button" className="share-btn" disabled={busy} onClick={() => void resolve("keep-mine")}>
-                    Mantener el mío
+                    {t("share.keepMine")}
                   </button>
                   <button type="button" className="share-btn" disabled={busy} onClick={() => void resolve("take-theirs")}>
-                    Usar el remoto
+                    {t("share.takeTheirs")}
                   </button>
                 </div>
               </div>
             )}
 
             <button type="button" className="share-btn" disabled={busy} onClick={() => void refresh()}>
-              {busy ? "Actualizando…" : "Refrescar desde el servidor"}
+              {busy ? t("share.updating") : t("share.refresh")}
             </button>
 
             <section className="share-section">
-              <h3 className="share-section-title">Invitar a alguien</h3>
+              <h3 className="share-section-title">{t("share.inviteTitle")}</h3>
               <div className="agent-form">
                 <label>
-                  Rol
+                  {t("share.role")}
                   <select value={inviteRole} onChange={(e) => setInviteRole(e.target.value as SharedResourceRole)}>
-                    <option value="edit">Puede editar</option>
-                    <option value="view">Solo lectura</option>
+                    <option value="edit">{t("share.canEdit")}</option>
+                    <option value="view">{t("share.readOnly")}</option>
                   </select>
                 </label>
                 <button type="button" className="share-btn" disabled={busy} onClick={() => void invite()}>
-                  {busy ? "Generando…" : "Generar código de invitación"}
+                  {busy ? t("share.generating") : t("share.generateInvite")}
                 </button>
               </div>
 
@@ -196,7 +198,7 @@ export function ShareDialog({ resourceRef, title, onClose }: Props) {
                 <div className="input-with-button" style={{ marginTop: 10 }}>
                   <input type="text" readOnly value={inviteCode} onFocus={(e) => e.currentTarget.select()} />
                   <button type="button" className="share-btn" onClick={() => void copyCode()}>
-                    {copied ? "Copiado" : "Copiar"}
+                    {copied ? t("share.copied") : t("share.copy")}
                   </button>
                 </div>
               )}
@@ -205,26 +207,25 @@ export function ShareDialog({ resourceRef, title, onClose }: Props) {
             {status.isOwner && (
               <>
                 <section className="share-section">
-                  <h3 className="share-section-title">Link web (sin Yggdrasil)</h3>
+                  <h3 className="share-section-title">{t("share.webTitle")}</h3>
                   <p className="share-section-hint">
-                    Para alguien que no usa la app: abre el link en su navegador y, para entrar, debe escribir este mismo
-                    correo. Envíale el link tú (WhatsApp, Slack, correo).
+                    {t("share.webHint")}
                   </p>
                   <div className="agent-form">
                     <label>
-                      Correo de la persona
+                      {t("share.personEmail")}
                       <input
                         type="email"
                         value={webEmail}
                         onChange={(e) => setWebEmail(e.target.value)}
-                        placeholder="persona@empresa.com"
+                        placeholder={t("share.emailPlaceholder")}
                       />
                     </label>
                     <label>
-                      Rol
+                      {t("share.role")}
                       <select value={webRole} onChange={(e) => setWebRole(e.target.value as SharedResourceRole)}>
-                        <option value="edit">Puede editar</option>
-                        <option value="view">Solo lectura</option>
+                        <option value="edit">{t("share.canEdit")}</option>
+                        <option value="view">{t("share.readOnly")}</option>
                       </select>
                     </label>
                     <button
@@ -233,19 +234,19 @@ export function ShareDialog({ resourceRef, title, onClose }: Props) {
                       disabled={busy || !/^[^\s@]+@[^\s@]+$/.test(webEmail.trim())}
                       onClick={() => void createWebLink()}
                     >
-                      {busy ? "Creando…" : "Crear link web"}
+                      {busy ? t("share.creating") : t("share.createWebLink")}
                     </button>
                   </div>
 
                   {webLink && (
                     <div className="share-link-reveal">
                       <p>
-                        Link para <strong>{webLink.email}</strong> — cópialo ahora, no se vuelve a mostrar:
+                        {t("share.linkForPre")}<strong>{webLink.email}</strong>{t("share.linkForPost")}
                       </p>
                       <div className="input-with-button">
                         <input type="text" readOnly value={webLink.url} onFocus={(e) => e.currentTarget.select()} />
                         <button type="button" className="share-btn" onClick={() => void copyWebLink()}>
-                          {webCopied ? "Copiado" : "Copiar"}
+                          {webCopied ? t("share.copied") : t("share.copy")}
                         </button>
                       </div>
                     </div>
@@ -253,15 +254,15 @@ export function ShareDialog({ resourceRef, title, onClose }: Props) {
 
                   {resourceRef.resourceType === "plugin-storage-key" && (
                     <button type="button" className="share-btn share-btn-full" disabled={busy} onClick={() => void refreshBundle()}>
-                      {bundleRefreshed ? "App web actualizada" : "Actualizar app web (tras cambiar el complemento)"}
+                      {bundleRefreshed ? t("share.bundleRefreshed") : t("share.refreshBundle")}
                     </button>
                   )}
                 </section>
 
                 <section className="share-section">
-                  <h3 className="share-section-title">Quién tiene acceso</h3>
-                  {members === null && <p className="muted">Cargando…</p>}
-                  {members && members.length === 0 && <p className="muted">Nadie todavía.</p>}
+                  <h3 className="share-section-title">{t("share.whoHasAccess")}</h3>
+                  {members === null && <p className="muted">{t("share.loading")}</p>}
+                  {members && members.length === 0 && <p className="muted">{t("share.nobody")}</p>}
                   {members && members.length > 0 && (
                     <ul className="member-list">
                       {members.map((m) => (
@@ -269,10 +270,10 @@ export function ShareDialog({ resourceRef, title, onClose }: Props) {
                           <div className="member-row-info">
                             <span className="member-row-name">{m.email ?? m.name}</span>
                             <span className="member-row-meta">
-                              {m.kind === "web" ? "link web" : "app"} · {m.role === "edit" ? "puede editar" : "solo lectura"}
+                              {m.kind === "web" ? t("share.kindWeb") : t("share.kindApp")} · {m.role === "edit" ? t("share.memberCanEdit") : t("share.memberReadOnly")}
                             </span>
                           </div>
-                          <button type="button" className="icon-btn" disabled={busy} title="Quitar acceso" onClick={() => revoke(m)}>
+                          <button type="button" className="icon-btn" disabled={busy} title={t("share.removeAccess")} onClick={() => revoke(m)}>
                             <TrashIcon className="hero-icon" />
                           </button>
                         </li>
@@ -287,7 +288,7 @@ export function ShareDialog({ resourceRef, title, onClose }: Props) {
 
         <div className="agent-form-actions">
           <button type="button" onClick={onClose}>
-            Cerrar
+            {t("share.close")}
           </button>
         </div>
       </div>

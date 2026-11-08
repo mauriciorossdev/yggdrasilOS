@@ -59,7 +59,7 @@ function cleanProjects(value: unknown): DesktopProject[] {
 }
 
 /**
- * Directory of desktops that published their gateways to this (Railway) hub, so
+ * Directory of desktops that published their gateways to this link server (hub), so
  * the phone can find them without typing an IP, port or key. Persisted on the
  * volume; "online" is derived from the last heartbeat.
  */

@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
+import { useI18n } from "../../i18n/index.js";
 import { GithubConnector } from "./GithubConnector.js";
 
 type GoogleStatus = { connected: boolean; scopes?: string[]; connectedAt?: number };
@@ -9,6 +10,7 @@ type GoogleStatus = { connected: boolean; scopes?: string[]; connectedAt?: numbe
 // app), not something to queue behind SettingsView's batched "Save
 // settings" button.
 export function ConnectorsSection() {
+  const { t } = useI18n();
   const { call } = useGateway();
   const [status, setStatus] = useState<GoogleStatus | null>(null);
   const [connecting, setConnecting] = useState(false);
@@ -64,10 +66,9 @@ export function ConnectorsSection() {
 
   return (
     <section className="settings-section">
-      <h3>Connectors</h3>
+      <h3>{t("set.connectors.title")}</h3>
       <p className="muted">
-        Connect your Google account to enable Calendar, Gmail, and sharing notes to Drive, and your GitHub account to browse and clone repositories. Consent opens in
-        your system browser — come back to this window once you approve it.
+        {t("set.connectors.intro")}
       </p>
 
       {error && <p className="error">{error}</p>}
@@ -76,14 +77,19 @@ export function ConnectorsSection() {
         <div className="mcp-server-header">
           <strong>Google</strong>
           <button type="button" className="icon-btn" onClick={() => void connect()} disabled={connecting}>
-            {connecting ? "Waiting…" : status?.connected ? "Reconnect" : "Connect"}
+            {connecting ? t("set.connectors.waiting") : status?.connected ? t("set.connectors.reconnect") : t("set.connectors.connect")}
           </button>
         </div>
         <p className="muted">
-          {status === null && "Loading…"}
-          {status && !status.connected && "Not connected."}
+          {status === null && t("set.connectors.loading")}
+          {status && !status.connected && t("set.connectors.notConnected")}
           {status?.connected &&
-            `Connected${status.connectedAt ? ` since ${new Date(status.connectedAt).toLocaleDateString()}` : ""} · scopes: ${(status.scopes ?? []).join(", ") || "—"}`}
+            t("set.connectors.googleStatus", {
+              since: status.connectedAt
+                ? t("set.connectors.since", { date: new Date(status.connectedAt).toLocaleDateString() })
+                : "",
+              scopes: (status.scopes ?? []).join(", ") || "—",
+            })}
         </p>
       </div>
 

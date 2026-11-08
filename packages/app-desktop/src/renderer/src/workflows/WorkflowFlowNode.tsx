@@ -1,5 +1,6 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { XMarkIcon } from "@heroicons/react/20/solid";
+import { useI18n } from "../i18n/index.js";
 import { handlesForNode, type WfNode } from "./types.js";
 
 export type WorkflowFlowNodeData = {
@@ -16,6 +17,7 @@ export type WorkflowFlowNodeData = {
 // exposes (handlesForNode), spread evenly along the bottom so `if`'s
 // true/false (or `switch`'s per-case handles) show as separate drag points.
 export function WorkflowFlowNode({ data, selected }: NodeProps & { data: WorkflowFlowNodeData }) {
+  const { t } = useI18n();
   const { node, running, status, onOpen, onDelete } = data;
   const handles = handlesForNode(node);
 
@@ -25,11 +27,11 @@ export function WorkflowFlowNode({ data, selected }: NodeProps & { data: Workflo
 
       <div className="flow-node-compact-row">
         <span className="flow-node-compact-badge">{node.type}</span>
-        {running && <span className="flow-node-running-dot" title="Running" />}
+        {running && <span className="flow-node-running-dot" title={t("wf.node.running")} />}
         <button
           type="button"
           className="icon-btn nodrag"
-          title="Remove node"
+          title={t("wf.node.remove")}
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
@@ -38,7 +40,7 @@ export function WorkflowFlowNode({ data, selected }: NodeProps & { data: Workflo
           <XMarkIcon className="hero-icon" />
         </button>
       </div>
-      <div className="flow-node-compact-name">{node.name || "Untitled"}</div>
+      <div className="flow-node-compact-name">{node.name || t("wf.node.untitled")}</div>
 
       <div className="workflow-node-handles">
         {handles.map((h, i) => (

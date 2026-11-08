@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { XMarkIcon } from "@heroicons/react/20/solid";
+import { useI18n } from "../i18n/index.js";
 import type { Condition, OnError, WfNode } from "./types.js";
 
 type Props = {
@@ -24,9 +25,10 @@ function switchCases(params: Record<string, unknown>): SwitchCase[] {
 }
 
 function ConditionFields({ condition, onChange }: { condition: Extract<Condition, { op: unknown }>; onChange: (c: Extract<Condition, { op: unknown }>) => void }) {
+  const { t } = useI18n();
   return (
     <div className="workflow-condition-row">
-      <input value={condition.left} placeholder="left path (e.g. vars.flag)" onChange={(e) => onChange({ ...condition, left: e.target.value })} />
+      <input value={condition.left} placeholder={t("wf.drawer.leftPlaceholder")} onChange={(e) => onChange({ ...condition, left: e.target.value })} />
       <select value={condition.op} onChange={(e) => onChange({ ...condition, op: e.target.value as Extract<Condition, { op: unknown }>["op"] })}>
         {CONDITION_OPS.map((op) => (
           <option key={op} value={op}>
@@ -35,7 +37,7 @@ function ConditionFields({ condition, onChange }: { condition: Extract<Condition
         ))}
       </select>
       {condition.op !== "exists" && (
-        <input value={String(condition.right ?? "")} placeholder="right (literal)" onChange={(e) => onChange({ ...condition, right: e.target.value })} />
+        <input value={String(condition.right ?? "")} placeholder={t("wf.drawer.rightPlaceholder")} onChange={(e) => onChange({ ...condition, right: e.target.value })} />
       )}
     </div>
   );
@@ -53,6 +55,7 @@ function ConditionFields({ condition, onChange }: { condition: Extract<Condition
  * wrong pick surfaces as a real error from workflows.save's validateWorkflow.
  */
 export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }: Props) {
+  const { t } = useI18n();
   const setParams = (params: Record<string, unknown>) => onChange({ ...node, params });
   const [newCaseLabel, setNewCaseLabel] = useState("");
 
@@ -60,26 +63,26 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
     <div className="agent-flow-sidebar workflow-drawer">
       <div className="mcp-server-header">
         <h3>{node.type}</h3>
-        <button type="button" className="icon-btn" onClick={onClose} title="Close">
+        <button type="button" className="icon-btn" onClick={onClose} title={t("wf.drawer.close")}>
           ×
         </button>
       </div>
 
       <label>
-        Name
+        {t("wf.drawer.name")}
         <input value={node.name} onChange={(e) => onChange({ ...node, name: e.target.value })} />
       </label>
 
       {node.type === "if" && (
         <>
-          <p className="muted">Routes to "true" or "false" — see the two handles on the node.</p>
+          <p className="muted">{t("wf.drawer.ifHint")}</p>
           <ConditionFields condition={simpleCondition(node.params.condition as Condition | undefined)} onChange={(condition) => setParams({ condition })} />
         </>
       )}
 
       {node.type === "switch" && (
         <>
-          <p className="muted">Evaluates each case in order — routes to the first match's handle, or "default" if none match.</p>
+          <p className="muted">{t("wf.drawer.switchHint")}</p>
           {switchCases(node.params).map((c, i) => (
             <div key={i} className="workflow-drawer">
               <div className="mcp-server-header">
@@ -87,7 +90,7 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
                 <button
                   type="button"
                   className="icon-btn"
-                  title="Remove case"
+                  title={t("wf.drawer.removeCase")}
                   onClick={() => {
                     const cases = switchCases(node.params).filter((_, idx) => idx !== i);
                     setParams({ ...node.params, cases });
@@ -106,7 +109,7 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
             </div>
           ))}
           <div className="workflow-condition-row">
-            <input value={newCaseLabel} placeholder="new case value" onChange={(e) => setNewCaseLabel(e.target.value)} />
+            <input value={newCaseLabel} placeholder={t("wf.drawer.newCasePlaceholder")} onChange={(e) => setNewCaseLabel(e.target.value)} />
             <button
               type="button"
               disabled={!newCaseLabel.trim()}
@@ -116,7 +119,7 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
                 setNewCaseLabel("");
               }}
             >
-              + Add case
+              {t("wf.drawer.addCase")}
             </button>
           </div>
         </>
@@ -125,14 +128,14 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
       {node.type === "set" && (
         <>
           <label>
-            Variable name
+            {t("wf.drawer.varName")}
             <input value={String(node.params.name ?? "")} onChange={(e) => setParams({ ...node.params, name: e.target.value })} />
           </label>
           <label>
-            Value
+            {t("wf.drawer.value")}
             <input value={String(node.params.value ?? "")} onChange={(e) => setParams({ ...node.params, value: e.target.value })} />
           </label>
-          <p className="muted">Readable downstream as {"{{ vars.<name> }}"}.</p>
+          <p className="muted">{t("wf.drawer.setHint", { expr: "{{ vars.<name> }}" })}</p>
         </>
       )}
 
@@ -143,7 +146,7 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
             <input value={String(node.params.url ?? "")} onChange={(e) => setParams({ ...node.params, url: e.target.value })} />
           </label>
           <label>
-            Method
+            {t("wf.drawer.method")}
             <select value={String(node.params.method ?? "GET")} onChange={(e) => setParams({ ...node.params, method: e.target.value })}>
               {["GET", "POST", "PUT", "PATCH", "DELETE"].map((m) => (
                 <option key={m} value={m}>
@@ -152,9 +155,9 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
               ))}
             </select>
           </label>
-          <p className="muted">GET needs no grant; any other method does (it's treated as moderate risk).</p>
+          <p className="muted">{t("wf.drawer.httpHint")}</p>
           <label>
-            Headers (JSON object)
+            {t("wf.drawer.headers")}
             <textarea
               rows={3}
               value={node.params.headers ? JSON.stringify(node.params.headers) : ""}
@@ -169,7 +172,7 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
             />
           </label>
           <label>
-            Body (JSON, ignored for GET)
+            {t("wf.drawer.body")}
             <textarea
               rows={3}
               value={typeof node.params.body === "string" ? node.params.body : node.params.body !== undefined ? JSON.stringify(node.params.body) : ""}
@@ -188,11 +191,11 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
       {node.type === "agent.ask" && (
         <>
           <label>
-            Prompt
+            {t("wf.drawer.prompt")}
             <textarea rows={4} value={String(node.params.prompt ?? "")} onChange={(e) => setParams({ ...node.params, prompt: e.target.value })} />
           </label>
           <label>
-            Provider
+            {t("wf.drawer.provider")}
             <select value={String(node.params.provider ?? "claude")} onChange={(e) => setParams({ ...node.params, provider: e.target.value })}>
               <option value="claude">claude</option>
               <option value="agy">agy</option>
@@ -200,32 +203,29 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
           </label>
           <div className="workflow-condition-row">
             <label>
-              Model (optional)
+              {t("wf.drawer.modelOptional")}
               <input value={String(node.params.model ?? "")} onChange={(e) => setParams({ ...node.params, model: e.target.value || undefined })} />
             </label>
             <label>
-              Effort (optional)
+              {t("wf.drawer.effortOptional")}
               <input value={String(node.params.effort ?? "")} onChange={(e) => setParams({ ...node.params, effort: e.target.value || undefined })} />
             </label>
           </div>
           <label>
-            Output format
+            {t("wf.drawer.outputFormat")}
             <select value={String(node.params.outputFormat ?? "text")} onChange={(e) => setParams({ ...node.params, outputFormat: e.target.value })}>
               <option value="text">text</option>
               <option value="json">json</option>
             </select>
           </label>
-          <p className="muted">
-            One-shot — runs the local CLI headless, no resumed conversation, no tool allowlist (the CLI has full
-            local access; the grant is the real gate) and no image attachments yet.
-          </p>
+          <p className="muted">{t("wf.drawer.askHint")}</p>
         </>
       )}
 
       {node.type === "loop" && (
         <>
           <label>
-            Items (JSON array, or a {"{{ }}"} expression resolving to one)
+            {t("wf.drawer.items", { expr: "{{ }}" })}
             <textarea
               rows={2}
               value={typeof node.params.items === "string" ? node.params.items : node.params.items !== undefined ? JSON.stringify(node.params.items) : ""}
@@ -240,14 +240,11 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
               }}
             />
           </label>
-          <p className="muted">
-            Connect this node's "each" handle to the body's first node, and "done" to whatever runs after every
-            iteration finishes. Capped at 100 items.
-          </p>
+          <p className="muted">{t("wf.drawer.loopHint")}</p>
           <label>
-            Result node (whose output becomes each iteration's result)
+            {t("wf.drawer.resultNode")}
             <select value={String(node.params.resultNodeId ?? "")} onChange={(e) => setParams({ ...node.params, resultNodeId: e.target.value || undefined })}>
-              <option value="">select a body node…</option>
+              <option value="">{t("wf.drawer.selectBody")}</option>
               {allNodes
                 .filter((n) => n.id !== node.id)
                 .map((n) => (
@@ -263,15 +260,15 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
       {node.type === "phone.tool" && (
         <>
           <label>
-            Device id
-            <input value={String(node.params.deviceId ?? "")} onChange={(e) => setParams({ ...node.params, deviceId: e.target.value })} placeholder="the phone's stable deviceId" />
+            {t("wf.drawer.deviceId")}
+            <input value={String(node.params.deviceId ?? "")} onChange={(e) => setParams({ ...node.params, deviceId: e.target.value })} placeholder={t("wf.drawer.deviceIdPlaceholder")} />
           </label>
           <label>
-            Tool name
+            {t("wf.drawer.toolName")}
             <input value={String(node.params.tool ?? "")} onChange={(e) => setParams({ ...node.params, tool: e.target.value })} placeholder="e.g. phone_open_app" />
           </label>
           <label>
-            Args (JSON object)
+            {t("wf.drawer.args")}
             <textarea
               rows={3}
               value={node.params.args ? JSON.stringify(node.params.args) : ""}
@@ -285,13 +282,13 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
               }}
             />
           </label>
-          <p className="muted">Risk depends on the tool name (looked up server-side) — most are safe, a few (set_alarm, set_timer, add_calendar_event) are moderate.</p>
+          <p className="muted">{t("wf.drawer.phoneHint")}</p>
         </>
       )}
 
       {node.type === "delay" && (
         <label>
-          Milliseconds (max 1h)
+          {t("wf.drawer.delayMs")}
           <input
             type="number"
             min={0}
@@ -301,17 +298,17 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
         </label>
       )}
 
-      <h4>On error</h4>
+      <h4>{t("wf.drawer.onError")}</h4>
       <select value={node.onError ?? "fail"} onChange={(e) => onChange({ ...node, onError: e.target.value as OnError })}>
-        <option value="fail">fail — stop the run</option>
-        <option value="continue">continue — mark failed, keep going via "out"</option>
-        <option value="errorBranch">errorBranch — route to the "error" handle</option>
+        <option value="fail">{t("wf.drawer.onErrorFail")}</option>
+        <option value="continue">{t("wf.drawer.onErrorContinue")}</option>
+        <option value="errorBranch">{t("wf.drawer.onErrorBranch")}</option>
       </select>
 
-      <h4>Retry</h4>
+      <h4>{t("wf.drawer.retry")}</h4>
       <div className="workflow-condition-row">
         <label>
-          Max attempts
+          {t("wf.drawer.maxAttempts")}
           <input
             type="number"
             min={0}
@@ -324,7 +321,7 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
         </label>
         {node.retry && (
           <label>
-            Backoff (ms)
+            {t("wf.drawer.backoff")}
             <input
               type="number"
               min={0}
@@ -335,18 +332,18 @@ export function NodeConfigDrawer({ node, allNodes, onChange, onDelete, onClose }
         )}
       </div>
 
-      <h4>Timeout (ms)</h4>
+      <h4>{t("wf.drawer.timeout")}</h4>
       <input
         type="number"
         min={0}
-        placeholder="default 60000"
+        placeholder={t("wf.drawer.timeoutPlaceholder")}
         value={node.timeoutMs ?? ""}
         onChange={(e) => onChange({ ...node, timeoutMs: e.target.value ? Number(e.target.value) : undefined })}
       />
 
       <div className="agent-form-actions">
         <button type="button" className="danger" onClick={onDelete}>
-          Delete node
+          {t("wf.drawer.delete")}
         </button>
       </div>
     </div>

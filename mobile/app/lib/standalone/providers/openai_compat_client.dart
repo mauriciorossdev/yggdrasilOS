@@ -10,9 +10,14 @@ import 'provider_client.dart';
 /// server-side, mirrored here for the standalone/direct path).
 class OpenAiCompatClient implements ProviderClient {
   final String baseUrl;
+  @override
   final String defaultModel;
+  final http.Client _http;
 
-  OpenAiCompatClient({required this.baseUrl, required this.defaultModel});
+  /// [httpClient] is injectable so the request/response can be tested without
+  /// the network.
+  OpenAiCompatClient({required this.baseUrl, required this.defaultModel, http.Client? httpClient})
+      : _http = httpClient ?? http.Client();
 
   factory OpenAiCompatClient.openAi() => OpenAiCompatClient(
         baseUrl: 'https://api.openai.com/v1',
@@ -30,8 +35,12 @@ class OpenAiCompatClient implements ProviderClient {
     required String? model,
     required List<LocalMessage> history,
     required List<Map<String, dynamic>> toolSpecs,
+    String? systemPrompt,
   }) async {
-    final messages = history.map(_toWireMessage).toList();
+    final messages = [
+      if (systemPrompt != null && systemPrompt.isNotEmpty) {'role': 'system', 'content': systemPrompt},
+      ...history.map(_toWireMessage),
+    ];
     final tools = toolSpecs
         .map((spec) => {
               'type': 'function',
@@ -43,7 +52,7 @@ class OpenAiCompatClient implements ProviderClient {
             })
         .toList();
 
-    final response = await http.post(
+    final response = await _http.post(
       Uri.parse('$baseUrl/chat/completions'),
       headers: {
         'Authorization': 'Bearer $apiKey',
@@ -80,6 +89,8 @@ class OpenAiCompatClient implements ProviderClient {
       return LocalToolCall(id: call['id']?.toString() ?? '', name: function['name']?.toString() ?? '', args: args);
     }).toList();
 
+    // No usage mapped yet: `usage.prompt_tokens`/`completion_tokens` would go
+    // into a TokenUsage here, but this provider isn't covered by the usage UI.
     return ProviderChatResult(text: text, toolCalls: toolCalls);
   }
 

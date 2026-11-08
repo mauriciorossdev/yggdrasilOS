@@ -62,6 +62,37 @@ export function projectVisibleTree(root: PaneNode | null, hiddenIds: Set<string>
   return { ...root, children: kept, sizes: keptSizes };
 }
 
+/** Id prefix of the splits projectReflowedTree invents, so a RESIZE aimed at one is never mistaken for a real split in `state.root`. */
+export const REFLOW_ID_PREFIX = "reflow:";
+
+/**
+ * Like projectVisibleTree, but when some leaves are hidden the remaining ones
+ * are laid out again as an even grid, so the space a minimized pane frees is
+ * shared by every visible pane instead of only its row/column siblings.
+ * Still a read-only projection (state.root keeps the user's own layout, which
+ * comes back when the panes are restored). Split ids are derived from the leaf
+ * ids so the same set of panes always yields the same ids — React keeps every
+ * TerminalPane mounted across re-projections. `sizes` overrides a reflowed
+ * split's sizes by id (the user dragging a divider while panes are minimized).
+ */
+export function projectReflowedTree(
+  root: PaneNode | null,
+  hiddenIds: Set<string>,
+  sizes: Record<string, number[]> = {},
+): PaneNode | null {
+  const all = collectLeaves(root);
+  if (!root || !all.some((l) => hiddenIds.has(l.id))) return root;
+  const arranged = buildArrangedRoot("fit", all.filter((l) => !hiddenIds.has(l.id)));
+  const stabilize = (node: PaneNode): PaneNode => {
+    if (node.type === "leaf") return node;
+    const children = node.children.map(stabilize);
+    const id = `${REFLOW_ID_PREFIX}${node.direction}:${collectLeaves(node).map((l) => l.id).join(",")}`;
+    const own = sizes[id];
+    return { ...node, id, children, sizes: own && own.length === children.length ? own : node.sizes };
+  };
+  return arranged && stabilize(arranged);
+}
+
 function findNode(root: PaneNode | null, id: string): PaneNode | null {
   if (!root) return null;
   if (root.id === id) return root;

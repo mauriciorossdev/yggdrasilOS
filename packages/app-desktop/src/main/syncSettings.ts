@@ -2,7 +2,7 @@ import { randomBytes } from "node:crypto";
 import { readSettingsFile, updateSettingsFile } from "./settingsFile.js";
 
 export type SyncSettings = {
-  /** Base URL of the deployed @yggdrasil/sync-server (e.g. a Railway domain), no trailing slash. */
+  /** Base URL of the deployed @yggdrasil/sync-server no trailing slash. */
   serverUrl?: string;
   /** This machine's own account-level credential — created locally the first time it's needed (see ensureOwnerApiKey), never entered by hand. Reused across every share this user creates. */
   ownerApiKey?: string;

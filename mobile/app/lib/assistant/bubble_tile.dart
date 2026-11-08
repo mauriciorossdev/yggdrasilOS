@@ -85,19 +85,19 @@ class _BubbleTileState extends State<BubbleTile> with WidgetsBindingObserver {
           dense: true,
           contentPadding: EdgeInsets.zero,
           activeThumbColor: YggColors.accent,
-          secondary: const Icon(Icons.bubble_chart_outlined, color: YggColors.accent),
+          secondary: Icon(Icons.bubble_chart_outlined, color: YggColors.accent),
           value: _enabled,
           onChanged: _busy ? null : _toggle,
-          title: Text(AppStrings.t('bubble.title'), style: const TextStyle(color: YggColors.text)),
+          title: Text(AppStrings.t('bubble.title'), style: TextStyle(color: YggColors.text)),
           subtitle: Text(
             AppStrings.t('bubble.subtitle'),
-            style: const TextStyle(color: YggColors.textMuted, fontSize: 12),
+            style: TextStyle(color: YggColors.textMuted, fontSize: 12),
           ),
         ),
         if (_enabled)
           Padding(
             padding: const EdgeInsets.only(left: 4, bottom: 6),
-            child: Text(AppStrings.t('bubble.hint'), style: const TextStyle(color: YggColors.textFaint, fontSize: 11.5)),
+            child: Text(AppStrings.t('bubble.hint'), style: TextStyle(color: YggColors.textFaint, fontSize: 11.5)),
           ),
       ],
     );

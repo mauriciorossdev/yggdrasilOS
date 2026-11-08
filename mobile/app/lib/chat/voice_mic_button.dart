@@ -9,6 +9,7 @@ import 'package:speech_to_text/speech_to_text.dart';
 import '../l10n/app_strings.dart';
 import '../services/voice_trigger_bus.dart';
 import '../theme/ygg_theme.dart';
+import '../voice/speech_locale.dart';
 
 enum _TriggerState { idle, errorPermission }
 
@@ -105,18 +106,7 @@ class _VoiceMicButtonState extends State<VoiceMicButton> {
     // locales() actually returns for es-CL before trusting the candidate
     // order below (voice-stt-quality-investigation.md §2, open item).
     debugPrint('speech_to_text locales(): ${available.map((l) => l.localeId).join(', ')}');
-    final ids = available.map((l) => l.localeId).toSet();
-    final candidates = AppStrings.current == 'en'
-        ? const ['en-US', 'en-GB']
-        : const ['es-CL', 'es-ES', 'es-419', 'es-US'];
-    for (final c in candidates) {
-      if (ids.contains(c)) return c;
-    }
-    final prefix = AppStrings.current == 'en' ? 'en' : 'es';
-    for (final id in ids) {
-      if (id.startsWith(prefix)) return id;
-    }
-    return available.isEmpty ? null : available.first.localeId;
+    return pickRecognitionLocale(available.map((l) => l.localeId), AppStrings.current);
   }
 
   void _onBusChanged() {
@@ -175,11 +165,11 @@ class _VoiceMicButtonState extends State<VoiceMicButton> {
           child: Container(
             width: size,
             height: size,
-            decoration: const BoxDecoration(color: YggColors.cardFillHigh, shape: BoxShape.circle),
+            decoration: BoxDecoration(color: isError ? YggColors.dangerSoft : YggColors.accent, shape: BoxShape.circle),
             child: Icon(
               isError ? Icons.mic_off : Icons.mic,
-              color: isError ? YggColors.errorRed : YggColors.text,
-              size: size * 0.35,
+              color: isError ? YggColors.danger : YggColors.onAccent,
+              size: size * 0.5,
             ),
           ),
         ),
@@ -187,6 +177,10 @@ class _VoiceMicButtonState extends State<VoiceMicButton> {
     );
   }
 }
+
+/// m:ss, the recording clock shown in the voice sheet.
+@visibleForTesting
+String voiceClock(int seconds) => '${seconds ~/ 60}:${(seconds % 60).toString().padLeft(2, '0')}';
 
 enum _SheetMode { recording, processing, notUnderstood }
 
@@ -246,8 +240,8 @@ class _VoiceSheetView extends StatefulWidget {
 }
 
 class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderStateMixin {
-  static const _cardBg = Color(0xFF00302B);
-  static const _accent = Color(0xFFC9A54E);
+  Color get _cardBg => YggColors.surface;
+  Color get _accent => YggColors.accent;
 
   // width(ms), delay(ms) per bar — ported from the artboard's 7 `ygg-bar`
   // animations (each an infinite ease-in-out scaleY 0.25→1→0.25).
@@ -259,6 +253,12 @@ class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderSta
   Timer? _maxDurationTimer;
   Timer? _autoCloseTimer;
   String _liveText = '';
+
+  // Seconds since listening started, for the on-screen clock. A ValueNotifier so
+  // only the clock rebuilds each tick, not the whole sheet.
+  static const _maxRecordingSeconds = 30;
+  final ValueNotifier<int> _elapsed = ValueNotifier<int>(0);
+  Timer? _tickTimer;
 
   // §1 — set when errorNotifier fires with a mapped error while recording;
   // null keeps the generic voice.notUnderstood fallback (§4b also lands
@@ -313,6 +313,8 @@ class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderSta
     widget.errorNotifier?.removeListener(_onSpeechError);
     _maxDurationTimer?.cancel();
     _autoCloseTimer?.cancel();
+    _tickTimer?.cancel();
+    _elapsed.dispose();
     _soundLevel.dispose();
     super.dispose();
   }
@@ -324,6 +326,7 @@ class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderSta
     final error = widget.errorNotifier?.value;
     if (!mounted || error == null || _mode != _SheetMode.recording) return;
     _maxDurationTimer?.cancel();
+    _tickTimer?.cancel();
     widget.speech?.stop();
     if (error.errorMsg == 'error_permission') {
       Navigator.of(context).pop();
@@ -373,7 +376,12 @@ class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderSta
 
   void _startListening() {
     final speech = widget.speech!;
-    _maxDurationTimer = Timer(const Duration(seconds: 30), _stopAndTranscribe);
+    _maxDurationTimer = Timer(const Duration(seconds: _maxRecordingSeconds), _stopAndTranscribe);
+    _elapsed.value = 0;
+    _tickTimer?.cancel();
+    _tickTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (_elapsed.value < _maxRecordingSeconds) _elapsed.value++;
+    });
     speech.listen(
       onResult: (result) {
         if (!mounted) return;
@@ -383,7 +391,7 @@ class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderSta
       listenOptions: SpeechListenOptions(
         partialResults: true,
         listenMode: ListenMode.dictation,
-        listenFor: const Duration(seconds: 30),
+        listenFor: const Duration(seconds: _maxRecordingSeconds),
         pauseFor: const Duration(seconds: 5),
         localeId: widget.localeId,
       ),
@@ -393,6 +401,7 @@ class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderSta
   Future<void> _stopAndTranscribe() async {
     if (_mode != _SheetMode.recording) return;
     _maxDurationTimer?.cancel();
+    _tickTimer?.cancel();
     setState(() => _mode = _SheetMode.processing);
     await widget.speech?.stop();
     if (!mounted) return;
@@ -417,7 +426,10 @@ class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderSta
 
   void _scheduleAutoClose() {
     _autoCloseTimer?.cancel();
-    _autoCloseTimer = Timer(const Duration(milliseconds: 2500), () {
+    // With a Retry button on screen (only when there's a recognizer to retry
+    // with) the sheet waits longer, so it doesn't close under the user's thumb.
+    final delay = widget.speech != null ? const Duration(seconds: 8) : const Duration(milliseconds: 2500);
+    _autoCloseTimer = Timer(delay, () {
       if (mounted) Navigator.of(context).pop();
     });
   }
@@ -427,8 +439,33 @@ class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderSta
     Navigator.of(context).pop();
   }
 
+  /// Starts a fresh listening session from the error state, in the same sheet.
+  Future<void> _retry() async {
+    final speech = widget.speech;
+    if (speech == null || _mode != _SheetMode.notUnderstood) return;
+    _autoCloseTimer?.cancel();
+    // Clear the last error so the same one firing again still notifies.
+    widget.errorNotifier?.value = null;
+    if (speech.isListening) await speech.stop();
+    if (!mounted) return;
+    setState(() {
+      _mode = _SheetMode.recording;
+      _liveText = '';
+      _heardAnySound = false;
+      _errorMessageKey = null;
+    });
+    _soundLevel.value = _soundLevelFloorDb;
+    _startListening();
+  }
+
+  // showGeneralDialog doesn't wrap its page in a Material, so every Text here
+  // without an explicit fontFamily fell back to Flutter's missing-Material
+  // style (monospace, yellow double underline). A transparent Material gives
+  // them the theme's default text style without painting anything.
   @override
-  Widget build(BuildContext context) {
+  Widget build(BuildContext context) => Material(type: MaterialType.transparency, child: _buildSheet(context));
+
+  Widget _buildSheet(BuildContext context) {
     return Stack(
       children: [
         Positioned.fill(
@@ -440,7 +477,8 @@ class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderSta
               // stops early — with the trigger button hidden under the
               // sheet, this is the "tap again" path §6 describes.
               onTap: _mode == _SheetMode.recording ? _stopAndTranscribe : null,
-              child: Container(color: const Color.fromRGBO(0, 32, 29, 0.72)),
+              // Follows the active theme instead of the artboard's fixed teal.
+              child: Container(color: YggColors.bg.withValues(alpha: 0.78)),
             ),
           ),
         ),
@@ -462,7 +500,7 @@ class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderSta
                     decoration: BoxDecoration(
                       color: _cardBg,
                       borderRadius: BorderRadius.circular(34),
-                      border: Border.all(color: const Color.fromRGBO(244, 239, 230, 0.12)),
+                      border: Border.all(color: YggColors.text.withValues(alpha: 0.12)),
                     ),
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
@@ -470,7 +508,7 @@ class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderSta
                       children: [
                         ..._content(),
                         const SizedBox(height: 22),
-                        _cancelButton(),
+                        _actions(),
                       ],
                     ),
                   ),
@@ -490,31 +528,42 @@ class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderSta
           _label(AppStrings.t('voice.listening')),
           const SizedBox(height: 22),
           _waveform(),
-          const SizedBox(height: 22),
+          const SizedBox(height: 12),
+          _clock(),
+          const SizedBox(height: 18),
           Text(
             _liveText.isEmpty ? '…' : _liveText,
             textAlign: TextAlign.center,
-            style: const TextStyle(fontWeight: FontWeight.w300, fontSize: 17, height: 1.4, color: Color.fromRGBO(244, 239, 230, 0.82)),
+            style: TextStyle(fontWeight: FontWeight.w300, fontSize: 17, height: 1.4, color: YggColors.text.withValues(alpha: 0.82)),
           ),
         ];
       case _SheetMode.processing:
         return [
           _label(AppStrings.t('voice.transcribing')),
           const SizedBox(height: 22),
-          const Center(
+          Center(
             child: SizedBox(
               width: 34,
               height: 34,
-              child: CircularProgressIndicator(strokeWidth: 2.5, color: _accent, backgroundColor: Color.fromRGBO(244, 239, 230, 0.18)),
+              child: CircularProgressIndicator(strokeWidth: 2.5, color: _accent, backgroundColor: YggColors.text.withValues(alpha: 0.18)),
             ),
           ),
         ];
       case _SheetMode.notUnderstood:
         return [
+          Center(
+            child: Container(
+              width: 56,
+              height: 56,
+              decoration: BoxDecoration(color: YggColors.dangerSoft, shape: BoxShape.circle),
+              child: Icon(_errorIcon(), color: YggColors.danger, size: 26),
+            ),
+          ),
+          const SizedBox(height: 16),
           Text(
             AppStrings.t(_errorMessageKey ?? 'voice.notUnderstood'),
             textAlign: TextAlign.center,
-            style: const TextStyle(fontWeight: FontWeight.w300, fontSize: 17, height: 1.4, color: Color.fromRGBO(244, 239, 230, 0.82)),
+            style: TextStyle(fontWeight: FontWeight.w300, fontSize: 17, height: 1.4, color: YggColors.text.withValues(alpha: 0.82)),
           ),
         ];
     }
@@ -523,7 +572,7 @@ class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderSta
   Widget _label(String text) => Text(
         text.toUpperCase(),
         textAlign: TextAlign.center,
-        style: const TextStyle(fontFamily: 'monospace', fontSize: 10.5, letterSpacing: 1.5, color: _accent),
+        style: TextStyle(fontFamily: YggFonts.mono, fontSize: 10.5, letterSpacing: 1.5, color: _accent),
       );
 
   Widget _waveform() {
@@ -555,17 +604,73 @@ class _VoiceSheetViewState extends State<_VoiceSheetView> with TickerProviderSta
     );
   }
 
-  Widget _cancelButton() {
+  IconData _errorIcon() => switch (_errorMessageKey) {
+        'voice.error.network' => Icons.wifi_off,
+        'voice.error.busy' => Icons.hourglass_empty,
+        'voice.error.languageUnavailable' => Icons.translate,
+        'voice.error.noMatch' => Icons.hearing_disabled_outlined,
+        _ => Icons.mic_off_outlined,
+      };
+
+  // Elapsed / max, turning to the danger color for the last 5 s, since reaching
+  // the limit sends what was heard.
+  Widget _clock() {
+    return ValueListenableBuilder<int>(
+      valueListenable: _elapsed,
+      builder: (context, seconds, _) {
+        final nearLimit = _maxRecordingSeconds - seconds <= 5;
+        return Text(
+          '${voiceClock(seconds)} / ${voiceClock(_maxRecordingSeconds)}',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            fontFamily: YggFonts.mono,
+            fontSize: 12,
+            letterSpacing: 1,
+            color: nearLimit ? YggColors.danger : YggColors.text.withValues(alpha: 0.55),
+          ),
+        );
+      },
+    );
+  }
+
+  // Cancel always; next to it the primary action for the current state:
+  // Send while recording (what tapping the backdrop used to do, now visible),
+  // Retry from the error state when there is a recognizer to retry with.
+  Widget _actions() {
+    final cancel = _actionButton(label: AppStrings.t('common.cancel'), onTap: _cancel);
+    final primary = switch (_mode) {
+      _SheetMode.recording => _actionButton(label: AppStrings.t('voice.send'), onTap: _stopAndTranscribe, primary: true),
+      _SheetMode.notUnderstood when widget.speech != null =>
+        _actionButton(label: AppStrings.t('voice.retry'), onTap: _retry, primary: true),
+      _ => null,
+    };
+    if (primary == null) return cancel;
+    return Row(
+      children: [
+        Expanded(child: cancel),
+        const SizedBox(width: 12),
+        Expanded(flex: 2, child: primary),
+      ],
+    );
+  }
+
+  Widget _actionButton({required String label, required VoidCallback onTap, bool primary = false}) {
     return GestureDetector(
-      onTap: _cancel,
+      onTap: onTap,
       child: Container(
         alignment: Alignment.center,
         height: 48,
         decoration: BoxDecoration(
+          color: primary ? _accent : null,
           borderRadius: BorderRadius.circular(999),
-          border: Border.all(color: const Color.fromRGBO(244, 239, 230, 0.2)),
+          border: primary ? null : Border.all(color: YggColors.text.withValues(alpha: 0.2)),
         ),
-        child: Text(AppStrings.t('common.cancel'), style: const TextStyle(fontSize: 15, color: Color.fromRGBO(244, 239, 230, 0.7))),
+        child: Text(
+          label,
+          style: primary
+              ? TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: YggColors.onAccent)
+              : TextStyle(fontSize: 15, color: YggColors.text.withValues(alpha: 0.7)),
+        ),
       ),
     );
   }

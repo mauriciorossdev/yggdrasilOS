@@ -3,6 +3,7 @@ import { isHexColor } from "../../ui/theme/color.js";
 import { PRESETS, findPreset } from "../../ui/theme/presets.js";
 import { resolveCore, themeWarnings } from "../../ui/theme/resolve.js";
 import { applyTheme } from "../../ui/theme/themeRuntime.js";
+import { useI18n } from "../../i18n/index.js";
 import { Catalog } from "../../ui/Catalog.js";
 import { CORE_KEYS, CORE_LABELS, type CoreKey, type ThemeSettings } from "../../ui/theme/types.js";
 
@@ -16,6 +17,7 @@ const PERSIST_DELAY_MS = 150;
  * write the settings file on every pixel.
  */
 export function AppearanceSection() {
+  const { t } = useI18n();
   const [theme, setTheme] = useState<ThemeSettings>(window.yggdrasil.theme.initial);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
 
@@ -47,10 +49,9 @@ export function AppearanceSection() {
 
   return (
     <section className="settings-section">
-      <h3>Apariencia</h3>
+      <h3>{t("set.appearance.title")}</h3>
       <p className="muted">
-        Elige un tema y ajusta sus cuatro colores base; el resto de la interfaz se calcula a partir de ellos. Los cambios
-        se aplican al instante en todas las ventanas.
+        {t("set.appearance.intro")}
       </p>
 
       <div className="appearance-presets">
@@ -66,7 +67,7 @@ export function AppearanceSection() {
                 <span key={key} style={{ background: preset.core[key] }} />
               ))}
             </span>
-            {preset.name}
+            {t(preset.name)}
           </button>
         ))}
       </div>
@@ -74,23 +75,23 @@ export function AppearanceSection() {
       <div className="appearance-colors">
         {CORE_KEYS.map((key) => (
           <div key={key} className="appearance-color-row">
-            <span className="appearance-color-label">{CORE_LABELS[key]}</span>
+            <span className="appearance-color-label">{t(CORE_LABELS[key])}</span>
             <input
               type="color"
-              aria-label={CORE_LABELS[key]}
+              aria-label={t(CORE_LABELS[key])}
               value={core[key]}
               onChange={(e) => setColor(key, e.target.value)}
             />
             <input
               type="text"
-              aria-label={`${CORE_LABELS[key]} (hex)`}
+              aria-label={t("set.appearance.hex", { label: t(CORE_LABELS[key]) })}
               value={core[key]}
               maxLength={7}
               onChange={(e) => setColor(key, e.target.value)}
             />
             {core[key] !== presetCore[key] && (
               <button type="button" onClick={() => clearColor(key)}>
-                Restaurar
+                {t("set.appearance.restore")}
               </button>
             )}
           </div>
@@ -100,13 +101,13 @@ export function AppearanceSection() {
       {warnings.length > 0 && (
         <ul className="appearance-warnings">
           {warnings.map((w) => (
-            <li key={w}>{w}</li>
+            <li key={w}>{t(w)}</li>
           ))}
         </ul>
       )}
 
       <button type="button" onClick={() => void window.yggdrasil.theme.reset()}>
-        Restablecer tema por defecto
+        {t("set.appearance.reset")}
       </button>
 
       <Catalog />

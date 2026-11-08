@@ -1,15 +1,16 @@
 import { useMemo } from "react";
 import { parseStatus, parseTasks } from "./featureDoc.js";
 import { ProgressBar, StatusChip } from "../ui/index.js";
+import { useI18n, type MessageKey } from "../i18n/index.js";
 
 type Props = { content: string };
 
 const STATUS_LABEL = {
-  working: "Working",
-  checking: "Checking",
-  ready: "Ready",
-  "needs-decision": "Needs your decision",
-} as const;
+  working: "docs.feature.status.working",
+  checking: "docs.feature.status.checking",
+  ready: "docs.feature.status.ready",
+  "needs-decision": "docs.feature.status.needsDecision",
+} as const satisfies Record<string, MessageKey>;
 
 /**
  * Read-only progress strip for a feature doc (see featureDoc.ts): task count,
@@ -19,6 +20,7 @@ const STATUS_LABEL = {
  * no checkbox tasks under `## Tasks`.
  */
 export function FeatureProgress({ content }: Props) {
+  const { t } = useI18n();
   const { tasks, status } = useMemo(() => ({ tasks: parseTasks(content), status: parseStatus(content) }), [content]);
   if (tasks.total === 0) return null;
   const pct = Math.round((tasks.done / tasks.total) * 100);
@@ -29,9 +31,9 @@ export function FeatureProgress({ content }: Props) {
           {tasks.done}/{tasks.total}
         </span>
         <span className="feature-progress-bar">
-          <ProgressBar value={pct / 100} tone={status === "ready" ? "ready" : "accent"} label="Avance de la feature" />
+          <ProgressBar value={pct / 100} tone={status === "ready" ? "ready" : "accent"} label={t("docs.feature.progress")} />
         </span>
-        {status && <StatusChip status={status}>{STATUS_LABEL[status]}</StatusChip>}
+        {status && <StatusChip status={status}>{t(STATUS_LABEL[status])}</StatusChip>}
       </summary>
       <ul className="feature-progress-tasks">
         {tasks.items.map((task, i) => (

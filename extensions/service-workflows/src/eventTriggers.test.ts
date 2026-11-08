@@ -74,10 +74,9 @@ describe("registerEventTriggers", () => {
     registerEventTriggers({ events: events as never, store, logger: fakeLogger() });
 
     events.fire("fs.changed", { path: "a.txt" });
-    await new Promise((r) => setTimeout(r, 20));
+    await vi.waitFor(async () => expect(await store.listRuns("wf1")).toHaveLength(1));
 
     const runs = await store.listRuns("wf1");
-    expect(runs).toHaveLength(1);
     expect(runs[0]!.trigger).toEqual({ id: "onchange", type: "event", payload: { path: "a.txt" } });
   });
 
@@ -117,8 +116,7 @@ describe("registerEventTriggers", () => {
     expect(await store.listRuns("wf1")).toEqual([]);
 
     events.fire("fs.changed", { kind: "created" });
-    await new Promise((r) => setTimeout(r, 20));
-    expect(await store.listRuns("wf1")).toHaveLength(1);
+    await vi.waitFor(async () => expect(await store.listRuns("wf1")).toHaveLength(1));
   });
 
   it("guards against a workflow re-triggering on its own workflow.run.finished event", async () => {
@@ -142,9 +140,7 @@ describe("registerEventTriggers", () => {
     registerEventTriggers({ events: events as never, store, logger: fakeLogger() });
 
     events.fire("workflow.run.finished", { workflowId: "wf-other", status: "succeeded" });
-    await new Promise((r) => setTimeout(r, 20));
-
-    expect(await store.listRuns("wf-reactor")).toHaveLength(1);
+    await vi.waitFor(async () => expect(await store.listRuns("wf-reactor")).toHaveLength(1));
   });
 
   it("unsubscribe() stops future runs", async () => {

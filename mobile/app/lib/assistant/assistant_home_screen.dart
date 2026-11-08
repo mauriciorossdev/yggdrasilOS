@@ -8,6 +8,8 @@ import '../profiles/profile_store.dart';
 import '../services/yggdrasil_client.dart';
 import '../standalone/direct_chat_screen.dart';
 import '../theme/ygg_theme.dart';
+import '../ui/ui.dart';
+import '../voice/voice_mode_screen.dart';
 
 /// The one persistent assistant conversation — see
 /// notes/asistente-personal/diseno.md. Gateway mode always opens the same
@@ -92,6 +94,18 @@ class AssistantHomeScreen extends StatelessWidget {
         onOpenSession: onOpenSession,
       );
 
+  // The big circle promises "tap to talk": with a direct profile it starts the voice
+  // conversation; a gateway profile keeps opening the assistant chat.
+  Future<void> _onCircleTap(BuildContext context) async {
+    final profile = await ProfileStore.getActive();
+    if (!context.mounted) return;
+    if (profile?.type == ConnectionProfileType.direct) {
+      await Navigator.push(context, MaterialPageRoute(builder: (_) => VoiceModeScreen(profile: profile!)));
+      return;
+    }
+    await _openAssistant(context);
+  }
+
   void _openChatList(BuildContext context) {
     Navigator.push(
       context,
@@ -120,11 +134,11 @@ class AssistantHomeScreen extends StatelessWidget {
             const SizedBox(height: 24),
             Text(
               AppStrings.t('assistant.brand'),
-              style: const TextStyle(
+              style: TextStyle(
                 color: YggColors.accent,
+                fontFamily: YggFonts.mono,
                 fontSize: 12,
                 letterSpacing: 3,
-                fontWeight: FontWeight.w600,
               ),
             ),
             Expanded(
@@ -132,24 +146,25 @@ class AssistantHomeScreen extends StatelessWidget {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    _AssistantButton(onPressed: () => _openAssistant(context)),
+                    _AssistantButton(onPressed: () => _onCircleTap(context)),
                     const SizedBox(height: 28),
                     Text(
                       AppStrings.t('assistant.tapToTalk'),
-                      style: const TextStyle(color: YggColors.textMuted, fontSize: 14),
+                      style: TextStyle(color: YggColors.textMuted, fontSize: 14),
                     ),
                   ],
                 ),
               ),
             ),
-            TextButton(
-              onPressed: () => _openChatList(context),
-              child: Text(
-                AppStrings.t('assistant.allChats'),
-                style: const TextStyle(color: YggColors.textMuted),
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 48),
+              child: YggNavButton(
+                icon: Icons.forum_outlined,
+                label: AppStrings.t('assistant.allChats'),
+                onTap: () => _openChatList(context),
               ),
             ),
-            const SizedBox(height: 16),
+            const SizedBox(height: 24),
           ],
         ),
       ),
@@ -205,11 +220,11 @@ class _AssistantButtonState extends State<_AssistantButton> with SingleTickerPro
         },
         child: Material(
           color: YggColors.surface,
-          shape: const CircleBorder(side: BorderSide(color: YggColors.accent, width: 1.5)),
+          shape: CircleBorder(side: BorderSide(color: YggColors.accent, width: 1.5)),
           child: InkWell(
             customBorder: const CircleBorder(),
             onTap: widget.onPressed,
-            child: const Center(
+            child: Center(
               child: Icon(Icons.mic_none_rounded, size: 64, color: YggColors.accent),
             ),
           ),

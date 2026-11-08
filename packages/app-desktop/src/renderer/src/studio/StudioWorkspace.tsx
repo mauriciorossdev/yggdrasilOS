@@ -6,6 +6,7 @@ import type { StudioTerminalHarness } from "./studioContext.js";
 import type { PluginRecord } from "../types.js";
 import { isCliVisible } from "../onboarding/harnessFilter.js";
 import { useOnboarding } from "../onboarding/store.js";
+import { useI18n } from "../i18n/index.js";
 
 type AuthoringMode = "terminal" | "chat";
 
@@ -24,6 +25,7 @@ type Props = {
  * `StudioTerminalPane`'s live pty (see its own doc comment).
  */
 export function StudioWorkspace({ plugin, projectPath, onDeleted }: Props) {
+  const { t } = useI18n();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [mode, setMode] = useState<AuthoringMode>("terminal");
@@ -45,9 +47,7 @@ export function StudioWorkspace({ plugin, projectPath, onDeleted }: Props) {
 
   const remove = async () => {
     if (
-      !window.confirm(
-        `¿Eliminar el complemento "${plugin.manifest.name}"? Esto borra su carpeta por completo — no se puede deshacer.`,
-      )
+      !window.confirm(t("studio.workspace.confirmDelete", { name: plugin.manifest.name }))
     ) {
       return;
     }
@@ -71,9 +71,9 @@ export function StudioWorkspace({ plugin, projectPath, onDeleted }: Props) {
           </span>
           <span>{plugin.manifest.name}</span>
           <span className={`scope-tag${isDraft ? " plugin-draft-tag" : ""}`}>
-            {isDraft ? "borrador" : "publicado"}
+            {isDraft ? t("studio.tag.draft") : t("studio.tag.published")}
           </span>
-          {plugin.scope === "global" && <span className="scope-tag">global</span>}
+          {plugin.scope === "global" && <span className="scope-tag">{t("studio.tag.global")}</span>}
         </div>
         <div className="studio-mode-toggle">
           <button
@@ -92,7 +92,7 @@ export function StudioWorkspace({ plugin, projectPath, onDeleted }: Props) {
             className="studio-harness-select"
             value={harness}
             onChange={(e) => setHarness(e.target.value as StudioTerminalHarness)}
-            title="Elegí qué CLI corre en esta terminal"
+            title={t("studio.workspace.harnessTitle")}
           >
             {(harness === "claude" || isCliVisible("claude", onboardingSettings)) && <option value="claude">claude</option>}
             {(harness === "agy" || isCliVisible("antigravity", onboardingSettings)) && (
@@ -103,11 +103,11 @@ export function StudioWorkspace({ plugin, projectPath, onDeleted }: Props) {
         <div className="studio-workspace-actions">
           {isDraft && (
             <button type="button" onClick={() => void publish()} disabled={busy}>
-              Publicar
+              {t("studio.workspace.publish")}
             </button>
           )}
           <button type="button" className="studio-danger-btn" onClick={() => void remove()} disabled={busy}>
-            Eliminar
+            {t("studio.workspace.delete")}
           </button>
         </div>
       </div>

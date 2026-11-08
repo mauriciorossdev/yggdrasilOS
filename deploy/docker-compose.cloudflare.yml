@@ -1,0 +1,27 @@
+# Link server behind a Cloudflare Tunnel: no public IP or open ports needed.
+# NOT TESTED against a real Cloudflare account yet. Setup: deploy/README.md
+#
+#   docker compose -f deploy/docker-compose.cloudflare.yml up -d --build
+
+services:
+  gateway:
+    build:
+      context: ..
+    image: yggdrasil-gateway
+    restart: unless-stopped
+    env_file: .env
+    # No published ports: only the tunnel reaches it.
+    volumes:
+      - yggdrasil-data:/data
+
+  cloudflared:
+    image: cloudflare/cloudflared:latest
+    restart: unless-stopped
+    depends_on:
+      - gateway
+    command: tunnel --no-autoupdate run
+    environment:
+      TUNNEL_TOKEN: ${TUNNEL_TOKEN:?Set TUNNEL_TOKEN in deploy/.env}
+
+volumes:
+  yggdrasil-data:

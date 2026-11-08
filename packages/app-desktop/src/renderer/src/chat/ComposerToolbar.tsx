@@ -1,5 +1,6 @@
 import type { AgentInfo, ApprovalMode, ProviderInfo } from "../types.js";
 import type { ModelOverride } from "./chatReducer.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = {
   agents: AgentInfo[];
@@ -32,6 +33,7 @@ export function ComposerToolbar({
   mode,
   onSelectMode,
 }: Props) {
+  const { t } = useI18n();
   return (
     <div className="composer-toolbar">
       <select
@@ -39,9 +41,9 @@ export function ComposerToolbar({
         value={activeAgentId ?? ""}
         onChange={(e) => onSelectAgent(e.target.value)}
         disabled={agents.length === 0}
-        title="Agent"
+        title={t("chat.composer.agent")}
       >
-        {agents.length === 0 && <option value="">No agents</option>}
+        {agents.length === 0 && <option value="">{t("chat.composer.noAgents")}</option>}
         {agents.map((a) => (
           <option key={a.id} value={a.id}>
             {a.label ?? a.id}
@@ -54,9 +56,9 @@ export function ComposerToolbar({
         value={modelOverride ? encode(modelOverride) : ""}
         onChange={(e) => onSelectModel(decode(e.target.value))}
         disabled={providers.length === 0}
-        title="Model"
+        title={t("chat.composer.model")}
       >
-        <option value="">Agent&apos;s default model</option>
+        <option value="">{t("chat.composer.defaultModel")}</option>
         {providers.map((p) => (
           <optgroup key={p.id} label={p.label}>
             {p.models.map((m) => (
@@ -72,12 +74,12 @@ export function ComposerToolbar({
         className="composer-pill"
         value={mode}
         onChange={(e) => onSelectMode(e.target.value as ApprovalMode)}
-        title="Tool-approval mode — or Shift+Tab in the message box to cycle"
+        title={t("chat.composer.modeTitle")}
       >
-        <option value="auto">Auto</option>
-        <option value="plan">Plan</option>
-        <option value="restrict">Restrict</option>
-        <option value="yolo">Yolo</option>
+        <option value="auto">{t("chat.composer.modeAuto")}</option>
+        <option value="plan">{t("chat.composer.modePlan")}</option>
+        <option value="restrict">{t("chat.composer.modeRestrict")}</option>
+        <option value="yolo">{t("chat.composer.modeYolo")}</option>
       </select>
     </div>
   );

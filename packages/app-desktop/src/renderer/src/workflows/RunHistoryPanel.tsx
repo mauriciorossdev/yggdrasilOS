@@ -1,5 +1,6 @@
 import { Fragment, useEffect, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
+import { useI18n, type MessageKey } from "../i18n/index.js";
 import type { Run } from "./types.js";
 
 type Props = {
@@ -9,12 +10,28 @@ type Props = {
   onCancel: (runId: string) => void;
 };
 
-const STATUS_LABEL: Record<Run["status"], string> = {
-  running: "Running",
-  succeeded: "Succeeded",
-  failed: "Failed",
-  cancelled: "Cancelled",
-  skipped: "Skipped",
+const STATUS_LABEL: Record<Run["status"], MessageKey> = {
+  running: "wf.runs.status.running",
+  succeeded: "wf.runs.status.succeeded",
+  failed: "wf.runs.status.failed",
+  cancelled: "wf.runs.status.cancelled",
+  skipped: "wf.runs.status.skipped",
+};
+
+const NODE_STATUS_LABEL: Record<string, MessageKey> = {
+  pending: "wf.runs.nodeStatus.pending",
+  running: "wf.runs.nodeStatus.running",
+  succeeded: "wf.runs.nodeStatus.succeeded",
+  failed: "wf.runs.nodeStatus.failed",
+  skipped: "wf.runs.nodeStatus.skipped",
+};
+
+const TRIGGER_TYPE_LABEL: Record<string, MessageKey> = {
+  manual: "wf.triggers.type.manual",
+  schedule: "wf.triggers.type.schedule",
+  event: "wf.triggers.type.event",
+  webhook: "wf.triggers.type.webhook",
+  mobile: "wf.triggers.type.mobile",
 };
 
 /**
@@ -25,6 +42,7 @@ const STATUS_LABEL: Record<Run["status"], string> = {
  */
 export function RunHistoryPanel({ workflowId, refreshToken, onCancel }: Props) {
   const { call } = useGateway();
+  const { t } = useI18n();
   const [runs, setRuns] = useState<Run[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -47,10 +65,10 @@ export function RunHistoryPanel({ workflowId, refreshToken, onCancel }: Props) {
 
   return (
     <div className="agent-flow-sidebar workflow-drawer">
-      <h3>Run history</h3>
+      <h3>{t("wf.runs.title")}</h3>
       {error && <p className="error">{error}</p>}
-      {runs === null && !error && <p className="muted">Loading…</p>}
-      {runs?.length === 0 && <p className="muted">No runs yet.</p>}
+      {runs === null && !error && <p className="muted">{t("wf.common.loading")}</p>}
+      {runs?.length === 0 && <p className="muted">{t("wf.runs.empty")}</p>}
 
       <ul className="flow-connections-list">
         {runs?.map((run) => (
@@ -61,23 +79,23 @@ export function RunHistoryPanel({ workflowId, refreshToken, onCancel }: Props) {
               style={{ cursor: "pointer" }}
             >
               <span>
-                <span className={`workflow-run-status workflow-run-status-${run.status}`}>{STATUS_LABEL[run.status]}</span>
+                <span className={`workflow-run-status workflow-run-status-${run.status}`}>{t(STATUS_LABEL[run.status])}</span>
                 {" · "}
                 {new Date(run.startedAt).toLocaleString()}
                 {" · "}
-                {run.trigger.type}
+                {TRIGGER_TYPE_LABEL[run.trigger.type] ? t(TRIGGER_TYPE_LABEL[run.trigger.type]) : run.trigger.type}
               </span>
               {run.status === "running" && (
                 <button
                   type="button"
                   className="icon-btn"
-                  title="Cancel"
+                  title={t("wf.runs.cancel")}
                   onClick={(e) => {
                     e.stopPropagation();
                     onCancel(run.id);
                   }}
                 >
-                  Cancel
+                  {t("wf.runs.cancel")}
                 </button>
               )}
             </div>
@@ -96,10 +114,10 @@ export function RunHistoryPanel({ workflowId, refreshToken, onCancel }: Props) {
                             onClick={hasOutput ? () => setExpandedNodeKey(expandedNodeKey === nodeKey ? null : nodeKey) : undefined}
                           >
                             <td>{nodeId}</td>
-                            <td>{state.status}</td>
-                            <td>{state.attempts} attempt(s)</td>
+                            <td>{NODE_STATUS_LABEL[state.status] ? t(NODE_STATUS_LABEL[state.status]) : state.status}</td>
+                            <td>{t(state.attempts === 1 ? "wf.runs.attemptsOne" : "wf.runs.attemptsMany", { count: state.attempts })}</td>
                             <td>{state.error?.message ?? ""}</td>
-                            <td>{hasOutput ? (expandedNodeKey === nodeKey ? "▾ output" : "▸ output") : ""}</td>
+                            <td>{hasOutput ? `${expandedNodeKey === nodeKey ? "▾" : "▸"} ${t("wf.runs.output")}` : ""}</td>
                           </tr>
                           {expandedNodeKey === nodeKey && hasOutput && (
                             <tr>

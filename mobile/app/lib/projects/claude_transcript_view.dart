@@ -20,8 +20,7 @@ class TranscriptMessage {
   final dynamic input; // tool_use
   final String? toolUseId; // tool_result
   final bool isError; // tool_result
-  // turn_stats — end-of-turn caption. Only the Pi's term-bridge
-  // (rpi-command-center backend/src/term/transcript.js) emits it so far.
+  // turn_stats — end-of-turn caption. Only the remote host emits it so far.
   final String? model;
   final int durationMs;
   final int outputTokens;
@@ -75,7 +74,7 @@ class ClaudeTranscriptView extends StatelessWidget {
       return Center(
         child: Text(
           AppStrings.t('projects.transcriptEmpty'),
-          style: const TextStyle(color: YggColors.textMuted),
+          style: TextStyle(color: YggColors.textMuted),
         ),
       );
     }
@@ -193,7 +192,7 @@ class _TurnStatsCaption extends StatelessWidget {
             '${AppStrings.t('pi.statsContext')}: ${m.contextTokens}',
         child: Text(
           bits.join(' · '),
-          style: const TextStyle(fontSize: 11.5, color: YggColors.textFainter, fontFeatures: [FontFeature.tabularFigures()]),
+          style: TextStyle(fontSize: 11.5, color: YggColors.textFainter, fontFeatures: [FontFeature.tabularFigures()]),
         ),
       ),
     );
@@ -250,11 +249,11 @@ class _PromptCardState extends State<_PromptCard> {
         children: [
           Row(
             children: [
-              const Icon(Icons.help_outline, size: 16, color: YggColors.accent),
+              Icon(Icons.help_outline, size: 16, color: YggColors.accent),
               const SizedBox(width: 6),
-              Text(AppStrings.t('pi.promptWaiting'), style: const TextStyle(fontSize: 12, color: YggColors.accent, fontWeight: FontWeight.w600)),
+              Text(AppStrings.t('pi.promptWaiting'), style: TextStyle(fontSize: 12, color: YggColors.accent, fontWeight: FontWeight.w600)),
               const Spacer(),
-              if (_busy) const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5, color: YggColors.accent)),
+              if (_busy) SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 1.5, color: YggColors.accent)),
             ],
           ),
           if (tabs.isNotEmpty) ...[
@@ -274,11 +273,11 @@ class _PromptCardState extends State<_PromptCard> {
           ],
           if (body.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text(body, style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: YggColors.textMuted, height: 1.35)),
+            Text(body, style: TextStyle(fontFamily: YggFonts.mono, fontSize: 12, color: YggColors.textMuted, height: 1.35)),
           ],
           if (question.isNotEmpty) ...[
             const SizedBox(height: 10),
-            Text(question, style: const TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: YggColors.text)),
+            Text(question, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: YggColors.text)),
           ],
           const SizedBox(height: 10),
           for (final o in options)
@@ -303,17 +302,17 @@ class _PromptCardState extends State<_PromptCard> {
                     else
                       Padding(
                         padding: const EdgeInsets.only(right: 8),
-                        child: Text('${o['key']}.', style: const TextStyle(color: YggColors.textMuted)),
+                        child: Text('${o['key']}.', style: TextStyle(color: YggColors.textMuted)),
                       ),
                     Expanded(
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
-                          Text(o['label'].toString(), style: const TextStyle(color: YggColors.text, fontSize: 14)),
+                          Text(o['label'].toString(), style: TextStyle(color: YggColors.text, fontSize: 14)),
                           if ((o['description'] ?? '').toString().isNotEmpty)
                             Padding(
                               padding: const EdgeInsets.only(top: 2),
-                              child: Text(o['description'].toString(), style: const TextStyle(color: YggColors.textFainter, fontSize: 12)),
+                              child: Text(o['description'].toString(), style: TextStyle(color: YggColors.textFainter, fontSize: 12)),
                             ),
                         ],
                       ),
@@ -334,7 +333,7 @@ class _PromptCardState extends State<_PromptCard> {
             ],
           ),
           if (multi)
-            Text(AppStrings.t('pi.promptMultiHint'), style: const TextStyle(fontSize: 11, color: YggColors.textFainter)),
+            Text(AppStrings.t('pi.promptMultiHint'), style: TextStyle(fontSize: 11, color: YggColors.textFainter)),
         ],
       ),
     );
@@ -354,7 +353,7 @@ class _UserBubble extends StatelessWidget {
         margin: const EdgeInsets.symmetric(vertical: 4),
         padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
         constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.8),
-        decoration: const BoxDecoration(
+        decoration: BoxDecoration(
           color: YggColors.text,
           borderRadius: BorderRadius.only(
             topLeft: Radius.circular(20),
@@ -363,7 +362,7 @@ class _UserBubble extends StatelessWidget {
             bottomLeft: Radius.circular(20),
           ),
         ),
-        child: Text(text, style: const TextStyle(color: YggColors.surface, fontSize: 15, height: 1.45)),
+        child: Text(text, style: TextStyle(color: YggColors.surface, fontSize: 15, height: 1.45)),
       ),
     );
   }
@@ -405,7 +404,7 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
                   const SizedBox(width: 6),
                   Text(
                     AppStrings.t('projects.thinkingLabel'),
-                    style: const TextStyle(color: YggColors.textFaint, fontSize: 12, fontWeight: FontWeight.w600),
+                    style: TextStyle(color: YggColors.textFaint, fontSize: 12, fontWeight: FontWeight.w600),
                   ),
                   if (!_expanded) ...[
                     const SizedBox(width: 8),
@@ -413,7 +412,7 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
                       child: Text(
                         firstLine,
                         overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(color: YggColors.textFainter, fontSize: 12, fontStyle: FontStyle.italic),
+                        style: TextStyle(color: YggColors.textFainter, fontSize: 12, fontStyle: FontStyle.italic),
                       ),
                     ),
                   ],
@@ -424,7 +423,7 @@ class _ThinkingBlockState extends State<_ThinkingBlock> {
                   padding: const EdgeInsets.only(top: 6),
                   child: Text(
                     widget.text,
-                    style: const TextStyle(color: YggColors.textMuted, fontSize: 12.5, fontStyle: FontStyle.italic, height: 1.4),
+                    style: TextStyle(color: YggColors.textMuted, fontSize: 12.5, fontStyle: FontStyle.italic, height: 1.4),
                   ),
                 ),
             ],
@@ -478,11 +477,11 @@ class _ClaudeToolCardState extends State<ClaudeToolCard> {
   Widget build(BuildContext context) {
     final Widget icon;
     if (widget.pending) {
-      icon = const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: YggColors.accent));
+      icon = SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2, color: YggColors.accent));
     } else if (widget.isError) {
-      icon = const Icon(Icons.error_outline, size: 16, color: YggColors.errorRed);
+      icon = Icon(Icons.error_outline, size: 16, color: YggColors.errorRed);
     } else {
-      icon = const Icon(Icons.check_circle_outline, size: 16, color: YggColors.accent);
+      icon = Icon(Icons.check_circle_outline, size: 16, color: YggColors.accent);
     }
 
     return Padding(
@@ -506,7 +505,7 @@ class _ClaudeToolCardState extends State<ClaudeToolCard> {
                   Expanded(
                     child: Text(
                       widget.name,
-                      style: const TextStyle(color: YggColors.text, fontSize: 13, fontWeight: FontWeight.w600, fontFamily: 'monospace'),
+                      style: TextStyle(color: YggColors.text, fontSize: 13, fontWeight: FontWeight.w600, fontFamily: YggFonts.mono),
                     ),
                   ),
                   Icon(_expanded ? Icons.expand_less : Icons.expand_more, size: 18, color: YggColors.textFaint),
@@ -540,7 +539,7 @@ class _ClaudeToolCardState extends State<ClaudeToolCard> {
       decoration: BoxDecoration(color: YggColors.bg, borderRadius: BorderRadius.circular(8)),
       child: SelectableText(
         shown,
-        style: const TextStyle(fontFamily: 'monospace', fontSize: 11.5, color: YggColors.textMuted, height: 1.4),
+        style: TextStyle(fontFamily: YggFonts.mono, fontSize: 11.5, color: YggColors.textMuted, height: 1.4),
       ),
     );
   }

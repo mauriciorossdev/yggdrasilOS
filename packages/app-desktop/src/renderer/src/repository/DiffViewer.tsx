@@ -2,14 +2,16 @@ import { DiffEditor } from "@monaco-editor/react";
 import { YGG_MONACO_THEME, ensureYggTheme } from "../files/monacoSetup.js";
 import { languageFromPath } from "../files/languageFromPath.js";
 import type { DiffContent } from "./types.js";
+import { useI18n } from "../i18n/index.js";
 
-type Props = { path: string; modelKey: string; content: DiffContent | null; loading: boolean };
+type Props = { path: string; modelKey: string; content: DiffContent | null; loading: boolean; sideBySide?: boolean };
 
-export function DiffViewer({ path, modelKey, content, loading }: Props) {
-  if (loading && !content) return <div className="repo-empty">Cargando diff…</div>;
-  if (!content) return <div className="repo-empty">Seleccioná un archivo para ver sus cambios</div>;
-  if (content.binary) return <div className="repo-empty">Archivo binario — sin vista de diff</div>;
-  if (content.tooLarge) return <div className="repo-empty">Archivo demasiado grande para mostrar el diff</div>;
+export function DiffViewer({ path, modelKey, content, loading, sideBySide = false }: Props) {
+  const { t } = useI18n();
+  if (loading && !content) return <div className="repo-empty">{t("repo.diff.loading")}</div>;
+  if (!content) return <div className="repo-empty">{t("repo.diff.select")}</div>;
+  if (content.binary) return <div className="repo-empty">{t("repo.diff.binary")}</div>;
+  if (content.tooLarge) return <div className="repo-empty">{t("repo.diff.tooLarge")}</div>;
   return (
     <DiffEditor
       originalModelPath={`original:${modelKey}`}
@@ -21,7 +23,8 @@ export function DiffViewer({ path, modelKey, content, loading }: Props) {
       beforeMount={() => ensureYggTheme()}
       options={{
         readOnly: true,
-        renderSideBySide: true,
+        renderSideBySide: sideBySide,
+        renderSideBySideInlineBreakpoint: 0,
         minimap: { enabled: false },
         automaticLayout: true,
         scrollBeyondLastLine: false,

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_strings.dart';
 import '../services/yggdrasil_client.dart';
 import '../theme/ygg_theme.dart';
+import '../ui/ui.dart';
 
 class FileEntry {
   final String name;
@@ -78,82 +79,106 @@ class _FilesBrowserViewState extends State<FilesBrowserView> {
     _load();
   }
 
+  /// "/ › notes › features": the current path as mono breadcrumbs.
+  Widget _breadcrumb() {
+    final segments = _path.isEmpty ? <String>[] : _path.split('/');
+    final crumb = TextStyle(fontFamily: YggFonts.mono, fontSize: 12.5, color: YggColors.textMuted);
+    return Container(
+      height: 44,
+      padding: const EdgeInsets.symmetric(horizontal: 14),
+      alignment: Alignment.centerLeft,
+      decoration: BoxDecoration(color: YggColors.cardFillHigh, borderRadius: BorderRadius.circular(YggRadius.pill)),
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        reverse: true,
+        child: Row(
+          children: [
+            Text('/', style: crumb),
+            for (var i = 0; i < segments.length; i++) ...[
+              Padding(padding: const EdgeInsets.symmetric(horizontal: 6), child: Text('›', style: crumb.copyWith(color: YggColors.textFainter))),
+              Text(segments[i], style: i == segments.length - 1 ? crumb.copyWith(color: YggColors.text) : crumb),
+            ],
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _entryRow(FileEntry entry) {
+    return YggListRow(
+      leading: Container(
+        width: 32,
+        height: 32,
+        decoration: BoxDecoration(
+          color: entry.isDirectory ? YggColors.accentSoft : YggColors.cardFillHighest,
+          borderRadius: BorderRadius.circular(YggRadius.md - 2),
+        ),
+        child: Icon(entry.isDirectory ? Icons.folder_outlined : Icons.insert_drive_file_outlined, size: 18, color: entry.isDirectory ? YggColors.accent : YggColors.textMuted),
+      ),
+      title: entry.name,
+      chevron: entry.isDirectory,
+      onTap: entry.isDirectory
+          ? () => _descend(entry.name)
+          : () => widget.onOpenFile(_path.isEmpty ? entry.name : '$_path/${entry.name}', entry.name),
+    );
+  }
+
+  Widget _content() {
+    if (_loading) return Center(child: CircularProgressIndicator(color: YggColors.accent));
+    if (_error != null) {
+      return YggEmptyState(
+        icon: Icons.error_outline,
+        message: '${AppStrings.t('common.errorPrefix')}: $_error',
+        action: OutlinedButton(onPressed: _load, child: Text(AppStrings.t('common.retry'))),
+      );
+    }
+    if (_entries.isEmpty) {
+      return YggEmptyState(icon: Icons.folder_open_outlined, message: AppStrings.t('localProjects.emptyFiles'));
+    }
+    // Folders first, each group alphabetical (case-insensitive).
+    int byName(FileEntry a, FileEntry b) => a.name.toLowerCase().compareTo(b.name.toLowerCase());
+    final folders = _entries.where((e) => e.isDirectory).toList()..sort(byName);
+    final files = _entries.where((e) => !e.isDirectory).toList()..sort(byName);
+    return RefreshIndicator(
+      onRefresh: _load,
+      color: YggColors.accent,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
+        children: [
+          if (folders.isNotEmpty) ...[
+            YggSectionLabel(AppStrings.tp('files.folders', {'n': '${folders.length}'})),
+            YggListGroup(children: [for (final e in folders) _entryRow(e)]),
+            const SizedBox(height: 20),
+          ],
+          if (files.isNotEmpty) ...[
+            YggSectionLabel(AppStrings.tp('files.files', {'n': '${files.length}'})),
+            YggListGroup(children: [for (final e in files) _entryRow(e)]),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        if (_path.isNotEmpty)
-          Material(
-            color: Colors.transparent,
-            child: InkWell(
-              onTap: _ascend,
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-                child: Row(
-                  children: [
-                    const Icon(Icons.arrow_upward, size: 16, color: YggColors.textFaint),
-                    const SizedBox(width: 8),
-                    Expanded(
-                      child: Text(
-                        '/$_path',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: YggColors.textFaint),
-                      ),
-                    ),
-                  ],
-                ),
+        Padding(
+          padding: const EdgeInsets.fromLTRB(16, 8, 16, 14),
+          child: Row(
+            children: [
+              YggIconButton(
+                icon: Icons.arrow_upward,
+                tooltip: AppStrings.t('files.up'),
+                onTap: _path.isEmpty ? null : _ascend,
               ),
-            ),
+              const SizedBox(width: 10),
+              Expanded(child: _breadcrumb()),
+            ],
           ),
-        Expanded(
-          child: _loading
-              ? const Center(child: CircularProgressIndicator(color: YggColors.accent))
-              : _error != null
-              ? Padding(
-                  padding: const EdgeInsets.all(24),
-                  child: Text(
-                    '${AppStrings.t('common.errorPrefix')}: $_error',
-                    style: const TextStyle(color: YggColors.textMuted),
-                  ),
-                )
-              : _entries.isEmpty
-              ? Center(
-                  child: Text(
-                    AppStrings.t('localProjects.emptyFiles'),
-                    style: const TextStyle(color: YggColors.textFaint),
-                  ),
-                )
-              : RefreshIndicator(
-                  onRefresh: _load,
-                  child: ListView.builder(
-                    padding: const EdgeInsets.symmetric(vertical: 4),
-                    itemCount: _entries.length,
-                    itemBuilder: (_, i) {
-                      final entry = _entries[i];
-                      return ListTile(
-                        dense: true,
-                        leading: Icon(
-                          entry.isDirectory ? Icons.folder : Icons.insert_drive_file_outlined,
-                          size: 20,
-                          color: entry.isDirectory ? YggColors.accent : YggColors.textFaint,
-                        ),
-                        title: Text(
-                          entry.name,
-                          style: const TextStyle(fontSize: 13.5, color: YggColors.text),
-                        ),
-                        onTap: entry.isDirectory
-                            ? () => _descend(entry.name)
-                            : () => widget.onOpenFile(
-                                _path.isEmpty ? entry.name : '$_path/${entry.name}',
-                                entry.name,
-                              ),
-                      );
-                    },
-                  ),
-                ),
         ),
+        Expanded(child: _content()),
       ],
     );
   }

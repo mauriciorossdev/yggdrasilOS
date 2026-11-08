@@ -1,5 +1,6 @@
 import { Handle, Position, type NodeProps } from "@xyflow/react";
 import { XMarkIcon } from "@heroicons/react/20/solid";
+import { useI18n } from "../i18n/index.js";
 import type { AgentFlowNode } from "../types.js";
 
 export type FlowAgentNodeData = {
@@ -23,6 +24,7 @@ const HARNESS_LABEL: Record<AgentFlowNode["harness"]["type"], string> = {
 // flow with several connected agents stays readable this way instead of
 // each box being a full-height form.
 export function FlowAgentNode({ data, selected }: NodeProps & { data: FlowAgentNodeData }) {
+  const { t } = useI18n();
   const { node, running, onOpen, onDelete } = data;
 
   return (
@@ -46,11 +48,11 @@ export function FlowAgentNode({ data, selected }: NodeProps & { data: FlowAgentN
         <span className={`flow-node-compact-badge harness-${node.harness.type}`}>
           {HARNESS_LABEL[node.harness.type]}
         </span>
-        {running && <span className="flow-node-running-dot" title="Running" />}
+        {running && <span className="flow-node-running-dot" title={t("flow.node.running")} />}
         <button
           type="button"
           className="icon-btn nodrag"
-          title="Remove node"
+          title={t("flow.node.remove")}
           onClick={(e) => {
             e.stopPropagation();
             onDelete();
@@ -59,9 +61,9 @@ export function FlowAgentNode({ data, selected }: NodeProps & { data: FlowAgentN
           <XMarkIcon className="hero-icon" />
         </button>
       </div>
-      <div className="flow-node-compact-name">{node.name || "Untitled"}</div>
+      <div className="flow-node-compact-name">{node.name || t("flow.node.untitled")}</div>
       {node.harness.type === "yggdrasil" && (
-        <div className="flow-node-compact-sub">{node.harness.agentId || "(no agent)"}</div>
+        <div className="flow-node-compact-sub">{node.harness.agentId || t("flow.node.noAgent")}</div>
       )}
       {node.communication && <div className="flow-node-compact-sub">{node.communication}</div>}
     </div>

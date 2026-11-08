@@ -27,6 +27,7 @@ type Props = {
   chatContent: ReactNode;
   terminalContent: ReactNode;
   agentFlowContent: ReactNode;
+  worktreesContent?: ReactNode;
   workflowsContent?: ReactNode;
   documentsContent?: ReactNode;
   browserContent?: ReactNode;
@@ -57,6 +58,7 @@ export function MainTabs({
   chatContent,
   terminalContent,
   agentFlowContent,
+  worktreesContent,
   workflowsContent,
   documentsContent,
   browserContent,
@@ -123,6 +125,9 @@ export function MainTabs({
       </div>
       <div className="main-tab-panel" style={{ display: active === "agentFlow" ? "flex" : "none" }}>
         {agentFlowContent}
+      </div>
+      <div className="main-tab-panel" style={{ display: active === "worktrees" ? "flex" : "none" }}>
+        {worktreesContent}
       </div>
       <div className="main-tab-panel" style={{ display: active === "workflows" ? "flex" : "none" }}>
         {workflowsContent}

@@ -74,7 +74,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
           TextButton(onPressed: () => Navigator.pop(context, false), child: Text(AppStrings.t('common.cancel'))),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(AppStrings.t('common.delete'), style: const TextStyle(color: YggColors.errorRed)),
+            child: Text(AppStrings.t('common.delete'), style: TextStyle(color: YggColors.errorRed)),
           ),
         ],
       ),
@@ -112,13 +112,13 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
         actions: [IconButton(onPressed: _load, icon: const Icon(Icons.refresh))],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: YggColors.accent))
+          ? Center(child: CircularProgressIndicator(color: YggColors.accent))
           : _error != null
               ? Center(
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [
-                      Text(AppStrings.t('documents.loadError'), style: const TextStyle(color: YggColors.textMuted)),
+                      Text(AppStrings.t('documents.loadError'), style: TextStyle(color: YggColors.textMuted)),
                       const SizedBox(height: 12),
                       TextButton(onPressed: _load, child: Text(AppStrings.t('common.retry'))),
                     ],
@@ -131,7 +131,7 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                         child: Text(
                           AppStrings.t('documents.empty'),
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: YggColors.textMuted, height: 1.5),
+                          style: TextStyle(color: YggColors.textMuted, height: 1.5),
                         ),
                       ),
                     )
@@ -159,18 +159,18 @@ class _DocumentsScreenState extends State<DocumentsScreen> {
                                 child: Column(
                                   crossAxisAlignment: CrossAxisAlignment.start,
                                   children: [
-                                    Text(d.name, overflow: TextOverflow.ellipsis, style: const TextStyle(color: YggColors.text, fontSize: 15)),
+                                    Text(d.name, overflow: TextOverflow.ellipsis, style: TextStyle(color: YggColors.text, fontSize: 15)),
                                     const SizedBox(height: 4),
                                     Text(
                                       [_size(d.bytes), _date(d.modifiedAt)].where((s) => s.isNotEmpty).join(' · '),
-                                      style: const TextStyle(color: YggColors.textFaint, fontSize: 12),
+                                      style: TextStyle(color: YggColors.textFaint, fontSize: 12),
                                     ),
                                   ],
                                 ),
                               ),
                               IconButton(
                                 onPressed: () => _delete(d),
-                                icon: const Icon(Icons.delete_outline, color: YggColors.textMuted, size: 20),
+                                icon: Icon(Icons.delete_outline, color: YggColors.textMuted, size: 20),
                               ),
                             ],
                           ),

@@ -5,6 +5,7 @@
 - [Plan Iteración 5](./plans/yggdrasil-iteracion-5.plan.md) — Telegram, auth, SSE HTTP
 - [Plan Iteración 6](./plans/yggdrasil-iteracion-6.plan.md) — npm, plugin install, tool-weather
 - [Plan Iteración 8](./plans/yggdrasil-iteracion-8.plan.md) — Web Console
+- [Servidor de enlace propio](../deploy/README.md) — conecta la app del teléfono desde cualquier red
 - [Web Console](./web-console.md) — dashboard en browser
 - [Protocolo del Gateway](./gateway-protocol.md) — contrato WS RPC para clientes externos (apps móviles, scripts)
 - [Instalación npm](./installation.md) — CLI global, `plugin install`, workspace root

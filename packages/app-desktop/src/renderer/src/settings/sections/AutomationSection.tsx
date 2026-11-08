@@ -1,20 +1,24 @@
 import { useEffect, useState } from "react";
+import { useI18n, type MessageKey } from "../../i18n/index.js";
 import type { AutomationSettings, DesktopPermissions, PermissionKind, PermissionState } from "../../types.js";
 
-const PERMISSION_LABEL: Record<PermissionKind, string> = { screen: "Screen Recording", accessibility: "Accessibility" };
+const PERMISSION_LABEL: Record<PermissionKind, MessageKey> = {
+  screen: "set.automation.permScreen",
+  accessibility: "set.automation.permAccessibility",
+};
 
-function statusLabel(state: PermissionState): string {
+function statusLabel(state: PermissionState): MessageKey {
   switch (state) {
     case "granted":
-      return "Granted";
+      return "set.automation.granted";
     case "denied":
-      return "Denied";
+      return "set.automation.denied";
     case "not-determined":
-      return "Not requested yet";
+      return "set.automation.notDetermined";
     case "restricted":
-      return "Restricted";
+      return "set.automation.restricted";
     case "unsupported":
-      return "Not supported on this OS";
+      return "set.automation.unsupported";
   }
 }
 
@@ -27,6 +31,7 @@ function statusLabel(state: PermissionState): string {
  * See notes/automation/workflows-design.md §6.4/§8.2.
  */
 export function AutomationSection() {
+  const { t } = useI18n();
   const [permissions, setPermissions] = useState<DesktopPermissions | null>(null);
   const [settings, setSettings] = useState<AutomationSettings | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -71,28 +76,26 @@ export function AutomationSection() {
 
   return (
     <section className="settings-section">
-      <h3>Automation</h3>
+      <h3>{t("set.automation.title")}</h3>
       <p className="muted">
-        Permissions and the kill switch for Yggdrasil's own workflow automations (open apps, screenshots, scheduled
-        runs) — see the Workflows tab. This build isn't code-signed, so macOS forgets Screen Recording after every
-        update; you'll need to re-grant it then.
+        {t("set.automation.intro")}
       </p>
 
       {error && <p className="error">{error}</p>}
-      {!permissions && !settings && !error && <p className="muted">Loading…</p>}
+      {!permissions && !settings && !error && <p className="muted">{t("set.automation.loading")}</p>}
 
       {permissions && (
         <>
-          <h4>macOS permissions</h4>
+          <h4>{t("set.automation.macPerms")}</h4>
           {(Object.keys(PERMISSION_LABEL) as PermissionKind[]).map((kind) => (
             <div key={kind} className="settings-provider">
               <div className="mcp-server-header">
-                <strong>{PERMISSION_LABEL[kind]}</strong>
-                <span className="muted">{statusLabel(permissions[kind])}</span>
+                <strong>{t(PERMISSION_LABEL[kind])}</strong>
+                <span className="muted">{t(statusLabel(permissions[kind]))}</span>
               </div>
               {permissions[kind] !== "granted" && permissions[kind] !== "unsupported" && (
                 <button type="button" className="link-btn" onClick={() => void requestPermission(kind)}>
-                  Open Settings
+                  {t("set.automation.openSettings")}
                 </button>
               )}
             </div>
@@ -102,26 +105,24 @@ export function AutomationSection() {
 
       {settings && (
         <>
-          <h4>Kill switch</h4>
+          <h4>{t("set.automation.kill")}</h4>
           <div className="settings-provider">
             <div className="mcp-server-header">
-              <strong>{settings.paused ? "All automations paused" : "Automations running normally"}</strong>
+              <strong>{settings.paused ? t("set.automation.paused") : t("set.automation.running")}</strong>
               <button type="button" className="icon-btn" onClick={() => void togglePaused()} disabled={saving}>
-                {saving ? "Saving…" : settings.paused ? "Resume" : "Pause all"}
+                {saving ? t("set.automation.saving") : settings.paused ? t("set.automation.resume") : t("set.automation.pauseAll")}
               </button>
             </div>
             <p className="muted">
-              Blocks every workflow run — manual, scheduled, event-triggered or webhook — until turned back off.
+              {t("set.automation.killHelp")}
             </p>
           </div>
         </>
       )}
 
-      <h4>Webhook secrets</h4>
+      <h4>{t("set.automation.webhook")}</h4>
       <p className="muted">
-        A workflow's webhook trigger reads its secret from an environment variable on this machine (the trigger's
-        "secret env var" field in the Workflows tab), never from a value stored here — set it before starting
-        Yggdrasil and restart the app for it to take effect.
+        {t("set.automation.webhookHelp")}
       </p>
     </section>
   );

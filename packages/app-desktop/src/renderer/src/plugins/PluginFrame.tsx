@@ -2,6 +2,7 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "rea
 import { useGateway } from "@yggdrasil/client-web";
 import type { PluginRecord } from "../types.js";
 import { createPluginHost } from "./pluginHost.js";
+import { useI18n } from "../i18n/index.js";
 import type { PluginConsoleEntry, PluginErrorEntry } from "./pluginTypes.js";
 
 type Props = {
@@ -56,6 +57,7 @@ export const PluginFrame = forwardRef<PluginFrameHandle, Props>(function PluginF
   { plugin, version, visible, onOpenFile, onOpenTab, onConsole, onError },
   ref,
 ) {
+  const { t } = useI18n();
   const iframeRef = useRef<HTMLIFrameElement>(null);
   const { call, onEvent } = useGateway();
   // Keyed by plugin.key via the parent's own `key` prop convention (callers
@@ -174,7 +176,7 @@ export const PluginFrame = forwardRef<PluginFrameHandle, Props>(function PluginF
   if (plugin.error || !plugin.url) {
     return (
       <div className="plugin-frame-error">
-        <p>Complemento roto: {plugin.manifest.name}</p>
+        <p>{t("plugins.frame.broken", { name: plugin.manifest.name })}</p>
         {plugin.error && <pre>{plugin.error}</pre>}
       </div>
     );

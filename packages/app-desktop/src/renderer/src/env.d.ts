@@ -53,6 +53,8 @@ import type {
   WhisperModelName,
   WhisperSettings,
   PhoneLinkInfo,
+  HubTestResult,
+  HubUrlCheck,
 } from "./types.js";
 import type { ThemeSettings } from "./ui/theme/types.js";
 
@@ -66,6 +68,7 @@ declare global {
       gatewayUrl: string | null;
       gatewayLanUrl: string | null;
       projectName: string | null;
+      projectPath: string | null;
       projectColor: string | null;
       isDefaultProject: boolean;
       defaultProjectId: string | null;
@@ -76,6 +79,9 @@ declare global {
         save: (input: { hubUrl?: string; hubKey?: string; publish?: boolean }) => Promise<PhoneLinkInfo>;
         publishNow: () => Promise<PhoneLinkInfo>;
         qr: () => Promise<string>;
+        checkUrl: (hubUrl: string) => Promise<HubUrlCheck>;
+        generateKey: () => Promise<string>;
+        test: (input: { hubUrl: string; hubKey: string }) => Promise<HubTestResult>;
       };
       theme: {
         initial: ThemeSettings;
@@ -83,6 +89,21 @@ declare global {
         set: (settings: ThemeSettings) => Promise<ThemeSettings>;
         reset: () => Promise<ThemeSettings>;
         onChange: (handler: (settings: ThemeSettings) => void) => () => void;
+      };
+      lsp: {
+        start: (language: string) => Promise<unknown>;
+        send: (sessionId: string, message: unknown) => void;
+        status: () => Promise<unknown>;
+        setTrusted: (trusted: boolean) => Promise<void>;
+        readExternal: (uri: string) => Promise<string | null>;
+        onMessage: (handler: (payload: unknown) => void) => () => void;
+        onClosed: (handler: (payload: unknown) => void) => () => void;
+        onTrustChanged: (handler: (payload: unknown) => void) => () => void;
+      };
+      editorSettings: {
+        get: () => Promise<import("./files/editorPrefs.js").EditorPrefs>;
+        set: (settings: import("./files/editorPrefs.js").EditorPrefs) => Promise<import("./files/editorPrefs.js").EditorPrefs>;
+        onChange: (handler: (settings: import("./files/editorPrefs.js").EditorPrefs) => void) => () => void;
       };
       workspace: {
         view: () => Promise<WorkspaceView>;
@@ -128,9 +149,12 @@ declare global {
         resize: (id: string, cols: number, rows: number) => Promise<void>;
         dispose: (id: string) => Promise<void>;
         read: (id: string, maxChars?: number) => Promise<string | undefined>;
+        forPid: (pid: number) => Promise<string | undefined>;
+        snapshot: (id: string) => Promise<{ data: string; cols: number; rows: number; seq: number } | undefined>;
         getLayout: () => Promise<TerminalLayout>;
         saveLayout: (layout: TerminalLayout) => Promise<void>;
-        onData: (handler: (id: string, chunk: string) => void) => () => void;
+        onData: (handler: (id: string, chunk: string, seq?: number) => void) => () => void;
+        onResized: (handler: (id: string, cols: number, rows: number) => void) => () => void;
         onExit: (handler: (id: string, exitCode: number | null) => void) => () => void;
         onSpec: (handler: (paneId: string, specPath: string) => void) => () => void;
         onPaneCreated: (
@@ -141,6 +165,7 @@ declare global {
             command?: string;
             args?: string[];
             sourcePaneId?: string;
+            initialPrompt?: string;
           }) => void,
         ) => () => void;
         onPaneShow: (handler: (pane: { id: string; title: string; cwd: string; command?: string }) => void) => () => void;
@@ -191,8 +216,15 @@ declare global {
         show: () => Promise<void>;
         hide: () => Promise<void>;
         getUrl: () => Promise<string>;
+        snapshot: () => Promise<{ base64: string; mimeType: string } | null>;
         startPick: (timeoutMs?: number) => Promise<PickedElement | null>;
         onRequestShow: (handler: () => void) => () => void;
+        comments: {
+          setMode: (on: boolean) => Promise<void>;
+          onMode: (handler: (on: boolean) => void) => () => void;
+          setProviders: (providers: Array<{ id: string; label: string; command: string }>) => Promise<void>;
+          setPaneTitles: (titles: Record<string, string>) => Promise<void>;
+        };
       };
       agentTeams: {
         list: () => Promise<AgentTeam[]>;
@@ -237,9 +269,16 @@ declare global {
         pickToImport: () => Promise<string[]>;
         fileUrl: (relativePath: string) => string;
         openExternal: (relativePath: string) => Promise<void>;
+        absolutePath: (relativePath: string) => Promise<string>;
+        saveAsset: (noteRelativePath: string, fileName: string, data: ArrayBuffer) => Promise<{ src: string }>;
+        pickToAttach: () => Promise<{
+          attachments: Array<{ relativePath: string; type: "file" | "directory" }>;
+          rejected: string[];
+        }>;
       };
       clipboard: {
         readFilePaths: () => Promise<string[]>;
+        writeFilePaths: (relativePaths: string[]) => Promise<{ ok: boolean; error?: string }>;
       };
       dialog: {
         openDirectory: () => Promise<string | null>;

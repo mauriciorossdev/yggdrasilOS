@@ -157,7 +157,7 @@ class _CapabilitiesScreenState extends State<CapabilitiesScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: YggColors.accent)));
+    if (_loading) return Scaffold(body: Center(child: CircularProgressIndicator(color: YggColors.accent)));
     return Scaffold(
       appBar: AppBar(title: Text(AppStrings.t('capabilities.title'))),
       body: ListView(
@@ -237,7 +237,7 @@ class _CapabilitiesScreenState extends State<CapabilitiesScreen> {
                     padding: const EdgeInsets.only(top: 2),
                     child: Text(
                       AppStrings.t('capabilities.autoApproveDesc'),
-                      style: const TextStyle(fontSize: 12, color: YggColors.textFainter),
+                      style: TextStyle(fontSize: 12, color: YggColors.textFainter),
                     ),
                   ),
                 ],
@@ -296,7 +296,7 @@ class _CapabilitiesScreenState extends State<CapabilitiesScreen> {
                         padding: const EdgeInsets.only(top: 2),
                         child: Text(
                           AppStrings.t(tool.descriptionKey!),
-                          style: const TextStyle(fontSize: 12, color: YggColors.textFainter),
+                          style: TextStyle(fontSize: 12, color: YggColors.textFainter),
                         ),
                       ),
                   ],
@@ -318,7 +318,7 @@ class _CapabilitiesScreenState extends State<CapabilitiesScreen> {
               padding: const EdgeInsets.only(top: 6),
               child: Text(
                 AppStrings.t('capabilities.findFilesPermBadge'),
-                style: const TextStyle(fontSize: 12, color: YggColors.textFainter),
+                style: TextStyle(fontSize: 12, color: YggColors.textFainter),
               ),
             ),
           if (isFindFiles && _findFilesJustDenied) ...[
@@ -326,7 +326,7 @@ class _CapabilitiesScreenState extends State<CapabilitiesScreen> {
               padding: const EdgeInsets.only(top: 6),
               child: Text(
                 AppStrings.t('capabilities.findFilesPermDeniedText'),
-                style: const TextStyle(fontSize: 12, color: YggColors.errorRed),
+                style: TextStyle(fontSize: 12, color: YggColors.errorRed),
               ),
             ),
             if (_findFilesDeniedPermanently)
@@ -336,7 +336,7 @@ class _CapabilitiesScreenState extends State<CapabilitiesScreen> {
                   onTap: openAppSettings,
                   child: Text(
                     AppStrings.t('capabilities.openSettings'),
-                    style: const TextStyle(fontSize: 12, color: YggColors.accent, fontWeight: FontWeight.w500),
+                    style: TextStyle(fontSize: 12, color: YggColors.accent, fontWeight: FontWeight.w500),
                   ),
                 ),
               ),
@@ -348,7 +348,7 @@ class _CapabilitiesScreenState extends State<CapabilitiesScreen> {
                 onTap: _broadenAccess,
                 child: Text(
                   AppStrings.t('capabilities.broadenAccess'),
-                  style: const TextStyle(fontSize: 12, color: YggColors.accent),
+                  style: TextStyle(fontSize: 12, color: YggColors.accent),
                 ),
               ),
             ),
@@ -361,7 +361,7 @@ class _CapabilitiesScreenState extends State<CapabilitiesScreen> {
         padding: const EdgeInsets.fromLTRB(16, 20, 16, 6),
         child: Text(
           label.toUpperCase(),
-          style: const TextStyle(fontFamily: 'monospace', fontSize: 11, letterSpacing: 1.2, color: YggColors.textFainter),
+          style: TextStyle(fontFamily: YggFonts.mono, fontSize: 11, letterSpacing: 1.2, color: YggColors.textFainter),
         ),
       );
 }

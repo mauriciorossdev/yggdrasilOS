@@ -77,6 +77,7 @@ See [`docs/`](docs/README.md). Part of the documentation is written in Spanish.
 
 - [Iteration roadmap](docs/roadmap-iteraciones.md)
 - [Web console](docs/web-console.md)
+- [Self-hosted link server](deploy/README.md) — connect the phone app from any network
 - [Sessions and memory](docs/sessions.md) — compaction, `sessions.patch`, `tools.list`
 - [Testing](docs/testing.md) — E2E layers, Ollama Cloud live tests
 - [Creating plugins](docs/creating-plugins.md)
@@ -99,8 +100,8 @@ Nothing in this repository ships with credentials or a hosted backend:
 - **LLM providers** — set `OLLAMA_API_KEY` / `OPENAI_API_KEY` etc. ([provider config](docs/provider-config.md)).
 - **GitHub / Google connectors** — create your own OAuth app and set `GITHUB_OAUTH_CLIENT_ID` (Device Flow enabled) or
   `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`.
-- **Sync / phone hub** — self-host `packages/sync-server` (see `deploy/railway/`) and enter its URL in the desktop app's
-  settings.
+- **Phone link** — run your own link server to reach your desktops from any network ([guide](deploy/README.md)).
+- **Sync** — self-host `packages/sync-server` and enter its URL in the desktop app's settings.
 - **Mobile push** — add your own Firebase config, see [`mobile/app/README.md`](mobile/app/README.md).
 - **Desktop auto-update** — off by default; set `YGGDRASIL_UPDATE_URL` to a feed you host.
 

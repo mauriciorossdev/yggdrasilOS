@@ -28,7 +28,7 @@ class FilesTab extends StatelessWidget {
           child: Text(
             AppStrings.t('projects.notOpenOnComputer'),
             textAlign: TextAlign.center,
-            style: const TextStyle(color: YggColors.textFaint),
+            style: TextStyle(color: YggColors.textFaint),
           ),
         ),
       );

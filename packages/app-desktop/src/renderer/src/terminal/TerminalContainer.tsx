@@ -1,7 +1,9 @@
 import { Fragment, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from "react";
+import { createPortal } from "react-dom";
 import { PencilIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { useI18n } from "../i18n/index.js";
 import type { AgentTeam, PaneNode } from "../types.js";
-import { collectLeaves, newLeaf, paneReducer, projectVisibleTree, type LeafPane } from "./paneTree.js";
+import { collectLeaves, newLeaf, paneReducer, projectReflowedTree, REFLOW_ID_PREFIX, type LeafPane } from "./paneTree.js";
 import { TerminalPane } from "./TerminalPane.js";
 import { liveOrphans } from "./liveOrphans.js";
 import { requestTab } from "../chat/mainTabsBridge.js";
@@ -9,13 +11,19 @@ import { PaneDivider } from "./PaneDivider.js";
 import type { TerminalRegistry } from "./terminalRegistry.js";
 import { onLoadFlow, onLoadTeam, onNewTerminal, onTerminalTabVisible } from "./terminalBridge.js";
 import { buildFlowLinks, setFlowLinks } from "./flowLinks.js";
+import { onFocusPane, publishTerminalPanes } from "./terminalPanesStore.js";
+import { useGateway } from "@yggdrasil/client-web";
+import { createNodeWorktrees } from "../worktrees/nodeWorktrees.js";
 import { buildFlowLeaves, selectTeamRootNodes } from "./buildFlowLeaves.js";
 import { TerminalNavbar } from "./TerminalNavbar.js";
+import { PaneBranchProvider } from "./paneBranchContext.js";
 import { terminalLaunchClis } from "../onboarding/harnessFilter.js";
 import { useOnboarding } from "../onboarding/store.js";
 import { FeatureHeader } from "./FeatureHeader.js";
 import { MinimizedDock } from "./MinimizedDock.js";
 import { TerminalCanvasView } from "./TerminalCanvasView.js";
+import { BROWSER_AGENT_ROLE, BROWSER_AGENT_TITLE } from "../browser/browserAgentState.js";
+import { dockPane, getBrowserAgent, onCreateBrowserAgent, setDockOpen, useBrowserAgent } from "../browser/browserAgentStore.js";
 
 const SAVE_DEBOUNCE_MS = 400;
 const MIN_PANE_FRACTION = 0.1;
@@ -94,10 +102,20 @@ function PaneNodeView({
 }
 
 export function TerminalContainer() {
+  return (
+    <PaneBranchProvider>
+      <TerminalContainerBody />
+    </PaneBranchProvider>
+  );
+}
+
+function TerminalContainerBody() {
+  const { t } = useI18n();
   const [state, dispatch] = useReducer(paneReducer, { root: null, activePaneId: null });
   const [projectPath, setProjectPath] = useState<string | null>(null);
   const [hydrated, setHydrated] = useState(false);
   const [savedTeams, setSavedTeams] = useState<AgentTeam[]>([]);
+  const { call } = useGateway();
   const registryRef = useRef<TerminalRegistry>(new Map());
   const hydratedRef = useRef(false);
 
@@ -114,7 +132,27 @@ export function TerminalContainer() {
   // dark "Focus on mobile" overlay (TerminalPane.tsx) tells anyone looking at
   // the desktop window why that specific pane just got wider/redrew.
   const [mobileFocusedIds, setMobileFocusedIds] = useState<Set<string>>(new Set());
-  const visibleRoot = useMemo(() => projectVisibleTree(state.root, minimizedIds), [state.root, minimizedIds]);
+  // Divider drags while panes are minimized: the reflowed splits aren't in state.root, so their sizes live here.
+  const [reflowSizes, setReflowSizes] = useState<Record<string, number[]>>({});
+  // The pane docked in the Browser tab (browserAgentStore.ts) is drawn there by
+  // the portal below, so the grid hides it exactly like a minimized one — it
+  // stays in state.root, so no pty is disposed.
+  const browserAgent = useBrowserAgent();
+  const hiddenIds = useMemo(() => {
+    if (!browserAgent.dockedId) return minimizedIds;
+    return new Set([...minimizedIds, browserAgent.dockedId]);
+  }, [minimizedIds, browserAgent.dockedId]);
+  const visibleRoot = useMemo(
+    () => projectReflowedTree(state.root, hiddenIds, reflowSizes),
+    [state.root, hiddenIds, reflowSizes],
+  );
+  const paneDispatch: typeof dispatch = (action) => {
+    if (action.type === "RESIZE" && action.splitId.startsWith(REFLOW_ID_PREFIX)) {
+      setReflowSizes((prev) => ({ ...prev, [action.splitId]: action.sizes }));
+      return;
+    }
+    dispatch(action);
+  };
   const viewMode = state.viewMode ?? "grid";
   const minimizePane = (id: string) => setMinimizedIds((prev) => new Set(prev).add(id));
   const restorePane = (id: string) => {
@@ -126,7 +164,7 @@ export function TerminalContainer() {
     dispatch({ type: "FOCUS", id });
   };
 
-  const loadTeam = (team: AgentTeam) => {
+  const loadTeam = async (team: AgentTeam) => {
     // Only the root(s) get a real pane — a worker only ever exists because
     // its orchestrator's own conversation called create_pane for it, and
     // that has no session-resume, so recreating N frozen worker panes and
@@ -135,12 +173,19 @@ export function TerminalContainer() {
     // path already proven to work on a genuine first run.
     const edges = team.edges ?? [];
     const roots = selectTeamRootNodes(team.nodes, edges);
-    const { leaves } = buildFlowLeaves(roots, projectPath, edges, team.nodes);
+    let cwdByNode = new Map<string, string>();
+    try {
+      cwdByNode = await createNodeWorktrees(call, roots);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : String(err));
+      return;
+    }
+    const { leaves } = buildFlowLeaves(roots, projectPath, edges, team.nodes, cwdByNode);
     dispatch({ type: "LOAD_FLOW", leaves });
   };
 
   const deleteTeam = (team: AgentTeam) => {
-    if (!window.confirm(`Delete team "${team.name}"? This can't be undone.`)) return;
+    if (!window.confirm(t("term.teams.deleteConfirm", { name: team.name }))) return;
     void window.yggdrasil.agentTeams.delete(team.id).then(setSavedTeams);
   };
 
@@ -248,12 +293,12 @@ export function TerminalContainer() {
   useEffect(
     () =>
       onLoadTeam((team) => {
-        if (state.root && !window.confirm(`Load team "${team.name}"? This replaces your current Terminal layout.`)) {
+        if (state.root && !window.confirm(t("term.container.loadTeamConfirm", { name: team.name }))) {
           return;
         }
         loadTeam(team);
       }),
-    [state.root, projectPath],
+    [state.root, projectPath, t],
   );
 
   // The Terminal tab just became visible (MainTabs) — any pane mounted
@@ -274,7 +319,65 @@ export function TerminalContainer() {
   const leaves = collectLeaves(state.root);
   // Same "minimized panes stay hidden" rule projectVisibleTree applies to
   // the grid's tree, flattened for TerminalCanvasView's flat node list.
-  const canvasLeaves = leaves.filter((l) => !minimizedIds.has(l.id));
+  const canvasLeaves = leaves.filter((l) => !hiddenIds.has(l.id));
+  const dockedLeaf = leaves.find((l) => l.id === browserAgent.dockedId);
+
+  // Sidebar's Terminal entry lists the open panes (terminalPanesStore.ts) and
+  // can ask for one to be brought to front, un-minimizing it if needed.
+  useEffect(() => {
+    publishTerminalPanes({
+      panes: leaves.map((l) => ({
+        id: l.id,
+        title: l.title,
+        command: l.command,
+        cwd: l.cwd,
+        minimized: minimizedIds.has(l.id),
+        docked: l.id === browserAgent.dockedId,
+      })),
+      activeId: state.activePaneId,
+    });
+    // Main lists panes by raw id; the Browser comments popover wants the names shown here.
+    void window.yggdrasil.browserTab.comments.setPaneTitles(Object.fromEntries(leaves.map((l) => [l.id, l.title])));
+  }, [leaves, minimizedIds, state.activePaneId, browserAgent.dockedId]);
+  useEffect(
+    () =>
+      onFocusPane((id) => {
+        // A docked pane lives in the Browser tab: show it there, not in the grid.
+        if (id === getBrowserAgent().dockedId) {
+          dispatch({ type: "FOCUS", id });
+          setDockOpen(true);
+          requestTab("browser");
+          return;
+        }
+        restorePane(id);
+        requestTab("terminal");
+      }),
+    [],
+  );
+
+  // A docked pane that no longer exists (closed, or a layout that didn't survive a restart) frees the dock.
+  useEffect(() => {
+    if (hydrated && browserAgent.dockedId && !leaves.some((l) => l.id === browserAgent.dockedId)) dockPane(null);
+  }, [hydrated, leaves, browserAgent.dockedId]);
+
+  // "Start agent" in the Browser tab's dock: spawn a pane and dock it.
+  useEffect(
+    () =>
+      onCreateBrowserAgent(({ command, label }) => {
+        if (!projectPath) return;
+        const leaf: LeafPane = {
+          ...newLeaf(projectPath, BROWSER_AGENT_TITLE),
+          command,
+          // Only claude has --append-system-prompt; other CLIs rely on the MCP tool descriptions.
+          args: command === "claude" ? ["--append-system-prompt", BROWSER_AGENT_ROLE] : undefined,
+        };
+        dispatch({ type: "ADD_ROOT", leaf });
+        dockPane(leaf.id);
+        setDockOpen(true);
+        void label;
+      }),
+    [projectPath],
+  );
 
   // "Compact" navbar button — every open pane, not just the active one, so
   // running out of context doesn't require clicking into each pane in turn.
@@ -329,6 +432,7 @@ export function TerminalContainer() {
           cwd: pane.cwd,
           command: pane.command,
           args: pane.args,
+          initialPrompt: pane.initialPrompt,
           attach: true,
         };
         if (!state.root) {
@@ -421,7 +525,7 @@ export function TerminalContainer() {
       <FeatureHeader />
       <div className={`terminal-body${visibleRoot ? "" : " terminal-body-empty"}`}>
         {!hydrated ? (
-          <p className="muted">Loading terminal…</p>
+          <p className="muted">{t("term.container.loading")}</p>
         ) : viewMode === "canvas" && state.root ? (
           <TerminalCanvasView
             leaves={canvasLeaves}
@@ -438,15 +542,19 @@ export function TerminalContainer() {
             activePaneId={state.activePaneId}
             registry={registryRef.current}
             projectPath={projectPath}
-            dispatch={dispatch}
+            dispatch={paneDispatch}
             onMinimize={minimizePane}
             mobileFocusedIds={mobileFocusedIds}
           />
         ) : state.root ? (
-          <p className="muted">All terminals minimized — restore one from the dock below.</p>
+          <p className="muted">
+            {leaves.every((l) => l.id === browserAgent.dockedId)
+              ? t("term.container.onlyBrowserAgent")
+              : t("term.container.allMinimized")}
+          </p>
         ) : (
           <div className="terminal-team-banner">
-            <p className="muted">New terminal</p>
+            <p className="muted">{t("term.container.newTerminal")}</p>
             <div className="terminal-team-banner-list">
               {launchClis.map((cli) => (
                 <button
@@ -459,13 +567,15 @@ export function TerminalContainer() {
                 </button>
               ))}
               <button type="button" className="new-chat" onClick={() => startNewTerminal()}>
-                System shell
+                {t("term.container.systemShell")}
               </button>
             </div>
             {savedTeams.length > 0 && (
               <>
                 <p className="muted">
-                  {savedTeams.length === 1 ? "1 saved team" : `${savedTeams.length} saved teams`} for this project
+                  {savedTeams.length === 1
+                    ? t("term.container.savedTeamsOne")
+                    : t("term.container.savedTeamsMany", { count: savedTeams.length })}
                 </p>
                 <div className="terminal-team-banner-list">
                   {savedTeams.map((team) =>
@@ -482,12 +592,12 @@ export function TerminalContainer() {
                     ) : (
                       <div key={team.id} className="terminal-team-row">
                         <button type="button" className="new-chat" onClick={() => loadTeam(team)}>
-                          Load "{team.name}" ({team.nodes.length})
+                          {t("term.container.loadTeam", { name: team.name, count: team.nodes.length })}
                         </button>
-                        <button type="button" className="icon-btn" title="Rename team" onClick={() => startRenameTeam(team)}>
+                        <button type="button" className="icon-btn" title={t("term.container.renameTeamTitle")} onClick={() => startRenameTeam(team)}>
                           <PencilIcon className="hero-icon" />
                         </button>
-                        <button type="button" className="icon-btn" title="Delete team" onClick={() => deleteTeam(team)}>
+                        <button type="button" className="icon-btn" title={t("term.teams.deleteTitle")} onClick={() => deleteTeam(team)}>
                           <TrashIcon className="hero-icon" />
                         </button>
                       </div>
@@ -502,6 +612,25 @@ export function TerminalContainer() {
       {minimizedIds.size > 0 && (
         <MinimizedDock panes={leaves.filter((l) => minimizedIds.has(l.id))} onRestore={restorePane} />
       )}
+      {dockedLeaf &&
+        browserAgent.slot &&
+        createPortal(
+          <TerminalPane
+            leaf={dockedLeaf}
+            registry={registryRef.current}
+            projectPath={projectPath}
+            active={dockedLeaf.id === state.activePaneId}
+            onFocus={() => dispatch({ type: "FOCUS", id: dockedLeaf.id })}
+            onRename={(title) => dispatch({ type: "RENAME", id: dockedLeaf.id, title })}
+            onSplit={() => undefined}
+            onClose={() => dispatch({ type: "CLOSE", id: dockedLeaf.id })}
+            onMinimize={() => setDockOpen(false)}
+            dispatch={paneDispatch}
+            mobileFocused={mobileFocusedIds.has(dockedLeaf.id)}
+            docked
+          />,
+          browserAgent.slot,
+        )}
     </div>
   );
 }

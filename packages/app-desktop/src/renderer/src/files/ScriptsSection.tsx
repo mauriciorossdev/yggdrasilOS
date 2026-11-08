@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
 import { CollapsibleSection } from "../components/CollapsibleSection.js";
 import type { FsListResult, FsReadResult } from "../types.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = {
   projectPath: string | undefined;
@@ -29,6 +30,7 @@ const LOCKFILE_PACKAGE_MANAGERS: Array<{ file: string; packageManager: string }>
  * header either — when the project has no package.json or no scripts.
  */
 export function ScriptsSection({ projectPath }: Props) {
+  const { t } = useI18n();
   const { call, authenticated } = useGateway();
   const [scripts, setScripts] = useState<Record<string, string> | null>(null);
   const [packageManager, setPackageManager] = useState("npm");
@@ -80,7 +82,7 @@ export function ScriptsSection({ projectPath }: Props) {
   };
 
   return (
-    <CollapsibleSection title="Scripts" className="scripts-section">
+    <CollapsibleSection title="Scripts" id="scripts" count={Object.keys(scripts).length} className="scripts-section">
       {error && (
         <p className="error" style={{ margin: "0 12px 4px", fontSize: 12 }}>
           {error}
@@ -97,7 +99,7 @@ export function ScriptsSection({ projectPath }: Props) {
             <button
               type="button"
               className="icon-btn"
-              title={`Run "${packageManager} run ${name}" in a new terminal`}
+              title={t("scripts.run", { command: `${packageManager} run ${name}` })}
               onClick={() => runScript(name)}
               disabled={runningScript === name}
             >

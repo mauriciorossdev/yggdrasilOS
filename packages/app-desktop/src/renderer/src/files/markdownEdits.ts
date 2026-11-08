@@ -1,4 +1,5 @@
 import type { editor as MonacoEditorNS } from "monaco-editor";
+import type { FormatCommand } from "./richFormat.js";
 
 // All of these mutate through editor.executeEdits so the change lands on
 // Monaco's own undo stack (a single Cmd/Ctrl+Z undoes the toolbar action),
@@ -81,4 +82,41 @@ export function insertLink(editor: MonacoEditorNS.IStandaloneCodeEditor): void {
     endColumn: urlEnd.column,
   });
   editor.focus();
+}
+
+/** Inserts a thematic break on its own line, with blank lines around it so it isn't read as a heading underline. */
+export function insertRule(editor: MonacoEditorNS.IStandaloneCodeEditor): void {
+  insertTextAtCursor(editor, "\n\n---\n\n");
+}
+
+/** The raw-markdown counterpart of runRichCommand: the same toolbar command, written as syntax. */
+export function runSourceCommand(editor: MonacoEditorNS.IStandaloneCodeEditor, command: FormatCommand): void {
+  switch (command) {
+    case "bold":
+      return wrapSelection(editor, "**");
+    case "italic":
+      return wrapSelection(editor, "_");
+    case "strike":
+      return wrapSelection(editor, "~~");
+    case "h1":
+      return prefixLines(editor, "# ");
+    case "h2":
+      return prefixLines(editor, "## ");
+    case "h3":
+      return prefixLines(editor, "### ");
+    case "bullet":
+      return prefixLines(editor, "- ");
+    case "ordered":
+      return prefixLines(editor, "1. ");
+    case "task":
+      return prefixLines(editor, "- [ ] ");
+    case "quote":
+      return prefixLines(editor, "> ");
+    case "code":
+      return wrapSelection(editor, "`");
+    case "codeblock":
+      return wrapSelection(editor, "```\n", "\n```");
+    case "rule":
+      return insertRule(editor);
+  }
 }

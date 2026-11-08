@@ -22,6 +22,12 @@ export type OllamaResolvedConfig = {
   baseUrl?: string;
   defaultModel?: string;
   contextWindow?: number;
+  /** Passed to Ollama as `think` (see OllamaClientOptions.think). */
+  think?: boolean;
+  /** Bearer token for Ollama Cloud. Falls back to the OLLAMA_API_KEY environment variable. */
+  apiKey?: string;
+  /** Retries for transient request failures (429, 5xx, dropped connections). Default 10; 0 disables. */
+  maxRetries?: number;
 };
 
 function resolveOllamaConfig(
@@ -33,6 +39,11 @@ function resolveOllamaConfig(
     : {};
   const fromCtx = (ctx?.config ?? {}) as OllamaResolvedConfig;
   return { ...fromGlobal, ...fromCtx };
+}
+
+/** Config first, then OLLAMA_API_KEY; empty strings count as unset. */
+export function apiKeyOf(cfg: OllamaResolvedConfig, env: NodeJS.ProcessEnv = process.env): string | undefined {
+  return cfg.apiKey?.trim() || env.OLLAMA_API_KEY?.trim() || undefined;
 }
 
 export function createOllamaProvider(options?: {
@@ -51,7 +62,7 @@ export function createOllamaProvider(options?: {
       // like a normal, working model list. Let it throw; the gateway's
       // providers.list handler catches this per-provider and surfaces it as
       // a real "unreachable" warning instead.
-      const tags = await clientListModels({ baseUrl });
+      const tags = await clientListModels({ baseUrl, apiKey: apiKeyOf(cfg) });
       return tags.models.map((m): ProviderModel => ({
         id: m.name,
         label: m.name,
@@ -67,13 +78,13 @@ export function createOllamaProvider(options?: {
     async chatComplete(ctx, params: ChatCompleteParams): Promise<ChatCompleteResult> {
       const cfg = resolveOllamaConfig(options?.globalConfig, ctx);
       const baseUrl = cfg.baseUrl ?? DEFAULT_BASE_URL;
-      return clientChatComplete({ baseUrl }, params);
+      return clientChatComplete({ baseUrl, think: cfg.think, apiKey: apiKeyOf(cfg), retry: { maxRetries: cfg.maxRetries } }, params);
     },
 
     async chatCompleteStream(ctx, params, onEvent) {
       const cfg = resolveOllamaConfig(options?.globalConfig, ctx);
       const baseUrl = cfg.baseUrl ?? DEFAULT_BASE_URL;
-      return clientChatCompleteStream({ baseUrl }, params, onEvent);
+      return clientChatCompleteStream({ baseUrl, think: cfg.think, apiKey: apiKeyOf(cfg), retry: { maxRetries: cfg.maxRetries } }, params, onEvent);
     },
   };
 }

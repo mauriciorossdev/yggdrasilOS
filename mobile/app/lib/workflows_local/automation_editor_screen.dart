@@ -109,7 +109,7 @@ class _AutomationEditorScreenState extends State<AutomationEditorScreen> {
                 Expanded(
                   child: Text(
                     _drafting ? AppStrings.t('auto.dictating') : AppStrings.t('auto.dictate'),
-                    style: const TextStyle(color: YggColors.textMuted),
+                    style: TextStyle(color: YggColors.textMuted),
                   ),
                 ),
               ],
@@ -153,7 +153,7 @@ class _TriggersSection extends StatelessWidget {
             children: [
               Expanded(
                 child: Text(AppStrings.tp('trig.count', {'n': '${triggers.length}'}),
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 11, letterSpacing: 1.2, color: YggColors.textFainter)),
+                    style: TextStyle(fontFamily: YggFonts.mono, fontSize: 11, letterSpacing: 1.2, color: YggColors.textFainter)),
               ),
               TextButton.icon(onPressed: () => _add(context), icon: const Icon(Icons.add, size: 18), label: Text(AppStrings.t('trig.add'))),
             ],
@@ -161,7 +161,7 @@ class _TriggersSection extends StatelessWidget {
           if (triggers.isEmpty)
             Padding(
               padding: const EdgeInsets.only(bottom: 8),
-              child: Text(AppStrings.t('trig.manualOnly'), style: const TextStyle(fontSize: 12, color: YggColors.textFainter)),
+              child: Text(AppStrings.t('trig.manualOnly'), style: TextStyle(fontSize: 12, color: YggColors.textFainter)),
             )
           else
             ConstrainedBox(
@@ -174,7 +174,7 @@ class _TriggersSection extends StatelessWidget {
                       dense: true,
                       leading: Icon(_iconFor(triggers[i].type), size: 20),
                       title: Text(triggers[i].label),
-                      subtitle: Text(AppStrings.t('trig.tapToEdit'), style: const TextStyle(fontSize: 11, color: YggColors.textFainter)),
+                      subtitle: Text(AppStrings.t('trig.tapToEdit'), style: TextStyle(fontSize: 11, color: YggColors.textFainter)),
                       onTap: () => _edit(context, i),
                       trailing: IconButton(
                         icon: const Icon(Icons.close, size: 18),
@@ -239,7 +239,7 @@ class StepListView extends StatelessWidget {
       children: [
         Expanded(
           child: steps.isEmpty
-              ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(AppStrings.t('auto.noSteps'), textAlign: TextAlign.center, style: const TextStyle(color: YggColors.textMuted))))
+              ? Center(child: Padding(padding: const EdgeInsets.all(24), child: Text(AppStrings.t('auto.noSteps'), textAlign: TextAlign.center, style: TextStyle(color: YggColors.textMuted))))
               : ListView.separated(
                   padding: const EdgeInsets.fromLTRB(12, 8, 12, 8),
                   itemCount: steps.length,
@@ -249,7 +249,7 @@ class StepListView extends StatelessWidget {
                     return ListTile(
                       leading: Icon(_iconFor(s)),
                       title: Text(_titleFor(s)),
-                      subtitle: Text(_subtitleFor(s), style: const TextStyle(fontSize: 12, color: YggColors.textFainter)),
+                      subtitle: Text(_subtitleFor(s), style: TextStyle(fontSize: 12, color: YggColors.textFainter)),
                       onTap: () => _edit(context, i),
                       trailing: IconButton(
                         icon: const Icon(Icons.close),
@@ -341,7 +341,7 @@ class _AddStepSheet extends StatelessWidget {
               ExpansionTile(
                 tilePadding: const EdgeInsets.symmetric(horizontal: 4),
                 title: Text(AppStrings.t(category).toUpperCase(),
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 11, letterSpacing: 1.2, color: YggColors.textFainter)),
+                    style: TextStyle(fontFamily: YggFonts.mono, fontSize: 11, letterSpacing: 1.2, color: YggColors.textFainter)),
                 children: [
                   for (final cap in deviceCapabilities.where((c) => c.categoryKey == category)) _capabilityTile(context, cap),
                 ],
@@ -354,7 +354,7 @@ class _AddStepSheet extends StatelessWidget {
 
   Widget _capabilityTile(BuildContext context, DeviceCapability cap) {
     final title = Text(AppStrings.t(cap.titleKey));
-    final subtitle = Text(cap.name, style: const TextStyle(fontSize: 11, color: YggColors.textFainter));
+    final subtitle = Text(cap.name, style: TextStyle(fontSize: 11, color: YggColors.textFainter));
     if (cap.name == 'phone_open_app') {
       return _InstalledAppsTile(cap: cap, onPick: (pkg) => _pick(context, cap, {'packageName': pkg}));
     }
@@ -436,7 +436,7 @@ class _InstalledAppsTileState extends State<_InstalledAppsTile> {
     return ExpansionTile(
       tilePadding: const EdgeInsets.symmetric(horizontal: 12),
       title: Text(AppStrings.t(widget.cap.titleKey)),
-      subtitle: Text(widget.cap.name, style: const TextStyle(fontSize: 11, color: YggColors.textFainter)),
+      subtitle: Text(widget.cap.name, style: TextStyle(fontSize: 11, color: YggColors.textFainter)),
       onExpansionChanged: (open) {
         if (open && _apps == null) {
           setState(() {
@@ -464,7 +464,7 @@ class _InstalledAppsTileState extends State<_InstalledAppsTile> {
                       contentPadding: const EdgeInsets.only(left: 32, right: 12),
                       title: Text(app['appName'] ?? app['packageName'] ?? ''),
                       subtitle: Text(app['packageName'] ?? '',
-                          style: const TextStyle(fontSize: 11, color: YggColors.textFainter)),
+                          style: TextStyle(fontSize: 11, color: YggColors.textFainter)),
                       onTap: () => widget.onPick(app['packageName'] ?? ''),
                     ),
                 ],
@@ -559,7 +559,7 @@ class _CapabilityFormSheetState extends State<_CapabilityFormSheet> {
             children: [
               Text(AppStrings.t(widget.capability.titleKey), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600)),
               const SizedBox(height: 4),
-              Text(widget.capability.name, style: const TextStyle(fontSize: 11, color: YggColors.textFainter)),
+              Text(widget.capability.name, style: TextStyle(fontSize: 11, color: YggColors.textFainter)),
               const SizedBox(height: 12),
               for (final entry in _props.entries)
                 Padding(
@@ -574,7 +574,7 @@ class _CapabilityFormSheetState extends State<_CapabilityFormSheet> {
                   ),
                 ),
               if (widget.capability.name == 'phone_launch_intent')
-                Text(AppStrings.t('auto.extrasUnsupported'), style: const TextStyle(fontSize: 12, color: YggColors.textFainter)),
+                Text(AppStrings.t('auto.extrasUnsupported'), style: TextStyle(fontSize: 12, color: YggColors.textFainter)),
               TextField(
                 controller: _saveAs,
                 decoration: InputDecoration(labelText: AppStrings.t('auto.saveAs'), helperText: AppStrings.t('auto.saveAsHint'), border: const OutlineInputBorder()),

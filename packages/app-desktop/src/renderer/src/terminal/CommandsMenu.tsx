@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
+import { useI18n } from "../i18n/index.js";
 import { useDismiss } from "../ui/useDismiss.js";
 
 type Props = {
@@ -49,6 +50,7 @@ const COMMANDS = [
 
 /** Same click-outside/Escape-to-close dropdown as TerminalNavbar's "Arrange" menu, reusing `.context-menu` styling plus a scroll cap (`.terminal-commands-menu`) since this list runs longer than a typical context menu. */
 export function CommandsMenu({ disabled, onSelect }: Props) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -59,11 +61,11 @@ export function CommandsMenu({ disabled, onSelect }: Props) {
       <button
         type="button"
         className="icon-btn"
-        title="Send a Claude Code command to the team's orchestrator pane"
+        title={t("term.commands.title")}
         disabled={disabled}
         onClick={() => setOpen((o) => !o)}
       >
-        <CommandLineIcon className="hero-icon" /> Commands
+        <CommandLineIcon className="hero-icon" /> {t("term.commands.label")}
       </button>
       {open && (
         <div className="context-menu terminal-commands-menu">

@@ -76,25 +76,25 @@ class _PiUsageSheetState extends State<_PiUsageSheet> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(AppStrings.t('pi.usageTitle'), style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: YggColors.text)),
+            Text(AppStrings.t('pi.usageTitle'), style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600, color: YggColors.text)),
             if (usage?['plan'] != null)
               Padding(
                 padding: const EdgeInsets.only(top: 2),
-                child: Text('${AppStrings.t('pi.plan')}: ${usage!['plan']}', style: const TextStyle(fontSize: 12.5, color: YggColors.textMuted)),
+                child: Text('${AppStrings.t('pi.plan')}: ${usage!['plan']}', style: TextStyle(fontSize: 12.5, color: YggColors.textMuted)),
               ),
             const SizedBox(height: 16),
             if (_error != null)
-              Text(_error!, style: const TextStyle(color: YggColors.textMuted))
+              Text(_error!, style: TextStyle(color: YggColors.textMuted))
             else if (usage == null)
-              const Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: YggColors.accent)))
+              Center(child: Padding(padding: EdgeInsets.all(16), child: CircularProgressIndicator(color: YggColors.accent)))
             else if (limits.isEmpty)
-              Text(AppStrings.t('pi.usageEmpty'), style: const TextStyle(color: YggColors.textMuted))
+              Text(AppStrings.t('pi.usageEmpty'), style: TextStyle(color: YggColors.textMuted))
             else
               for (final l in limits) ...[
                 Row(
                   children: [
-                    Expanded(child: Text(_kindLabel(l['kind'].toString()), style: const TextStyle(color: YggColors.text))),
-                    Text('${(l['percent'] as num).round()}%', style: const TextStyle(fontWeight: FontWeight.w600, color: YggColors.text)),
+                    Expanded(child: Text(_kindLabel(l['kind'].toString()), style: TextStyle(color: YggColors.text))),
+                    Text('${(l['percent'] as num).round()}%', style: TextStyle(fontWeight: FontWeight.w600, color: YggColors.text)),
                   ],
                 ),
                 const SizedBox(height: 6),
@@ -104,15 +104,15 @@ class _PiUsageSheetState extends State<_PiUsageSheet> {
                     value: ((l['percent'] as num) / 100).clamp(0.0, 1.0).toDouble(),
                     minHeight: 6,
                     color: (l['percent'] as num) >= 90
-                        ? Colors.redAccent
+                        ? YggColors.danger
                         : (l['percent'] as num) >= 70
-                            ? Colors.orangeAccent
+                            ? YggColors.working
                             : YggColors.accent,
                     backgroundColor: YggColors.hairline,
                   ),
                 ),
                 const SizedBox(height: 4),
-                Text(_resets(l['resetsAt']?.toString()), style: const TextStyle(fontSize: 11.5, color: YggColors.textFainter)),
+                Text(_resets(l['resetsAt']?.toString()), style: TextStyle(fontSize: 11.5, color: YggColors.textFainter)),
                 const SizedBox(height: 14),
               ],
           ],

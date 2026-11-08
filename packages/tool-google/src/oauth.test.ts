@@ -59,7 +59,7 @@ describe("buildAuthUrl", () => {
     expect(url.searchParams.get("scope")).toBe(GOOGLE_OAUTH_SCOPES.join(" "));
   });
 
-  it("scope set has no send/delete-capable Gmail scope, no full-access Calendar scope, and only per-file Drive access", () => {
+  it("scope set has no send/delete-capable Gmail scope, no full-access Calendar scope and only per-file Drive access", () => {
     expect(GOOGLE_OAUTH_SCOPES).toEqual([
       "https://www.googleapis.com/auth/calendar.events",
       "https://www.googleapis.com/auth/gmail.readonly",

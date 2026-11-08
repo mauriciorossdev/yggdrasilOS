@@ -18,6 +18,7 @@
   },
   "dependencies": {
     "@yggdrasil/config": "workspace:*",
+    "@yggdrasil/git-worktrees": "workspace:*",
     "@yggdrasil/kernel": "workspace:*",
     "@yggdrasil/pipeline": "workspace:*",
     "@yggdrasil/sdk": "workspace:*",

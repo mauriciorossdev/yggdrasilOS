@@ -62,7 +62,14 @@ export function MessageList({
   const hiddenAbove = startIndex;
 
   return (
-    <Box flexDirection="column" flexGrow={1} overflow="hidden">
+    <Box flexDirection="column" flexGrow={1} justifyContent="flex-end" overflow="hidden">
+      {(scrollOffset > 0 || hiddenAbove > 0) && (
+        <Box justifyContent="center">
+          <Text color={theme.dim}>
+            ↑ {hiddenAbove + scrollOffset} messages above — Shift+↑↓ to scroll
+          </Text>
+        </Box>
+      )}
       {visibleMessages.length === 0 && !isStreaming && (
         <Box justifyContent="center" paddingY={1}>
           <Text color={theme.dim}>
@@ -83,13 +90,6 @@ export function MessageList({
         <Box gap={1} marginBottom={1}>
           <Text color={theme.warning}>⟳</Text>
           <Text color={theme.dim}>Thinking…</Text>
-        </Box>
-      )}
-      {(scrollOffset > 0 || hiddenAbove > 0) && (
-        <Box justifyContent="center">
-          <Text color={theme.dim}>
-            ↑ {hiddenAbove + scrollOffset} messages above — Shift+↑↓ to scroll
-          </Text>
         </Box>
       )}
     </Box>

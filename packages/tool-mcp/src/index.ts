@@ -2,9 +2,9 @@ import type { YggdrasilConfig } from "@yggdrasil/config";
 import { getRegistry } from "@yggdrasil/kernel";
 import { definePlugin } from "@yggdrasil/sdk";
 import { bridgeMcpTools, connectMcpServer } from "./client.js";
-import { createMcpManager, type McpServers } from "./manager.js";
+import { createMcpManager, parseMcpTestServer, resolveTestConfig, type McpServers } from "./manager.js";
 
-export type { McpServerState, McpServerStatus } from "./manager.js";
+export type { McpServerState, McpServerStatus, McpTestResult } from "./manager.js";
 
 function serversOf(config: unknown): McpServers {
   return (config as YggdrasilConfig).mcpServers ?? {};
@@ -65,6 +65,15 @@ const plugin = definePlugin({
       const servers = serversOf(ctx.config);
       await getManager(ctx.logger).reconnect(serverId, servers);
       return { servers: getManager(ctx.logger).status(servers) };
+    });
+
+    // Try a server config from the Settings form without saving it. Blank env/headers fall back to the
+    // saved ones of `serverId` (the client never sees those), so testing an unchanged server still works.
+    api.registerGatewayMethod("mcp.test", async (params, ctx) => {
+      const candidate = parseMcpTestServer(params.server);
+      const serverId = typeof params.serverId === "string" ? params.serverId : "";
+      const config = resolveTestConfig(candidate, serverId ? serversOf(ctx.config)[serverId] : undefined);
+      return getManager(ctx.logger).test(config);
     });
 
     api.registerGatewayMethod("mcp.disconnect", async (params, ctx) => {

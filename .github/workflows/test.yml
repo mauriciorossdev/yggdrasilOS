@@ -18,6 +18,12 @@ jobs:
   test:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    # Tests that commit (git-methods) need an identity; runners have none.
+    env:
+      GIT_AUTHOR_NAME: ci
+      GIT_AUTHOR_EMAIL: ci@example.com
+      GIT_COMMITTER_NAME: ci
+      GIT_COMMITTER_EMAIL: ci@example.com
     steps:
       - uses: actions/checkout@v7
 
@@ -44,6 +50,35 @@ jobs:
       - run: pnpm test:unit
       - run: pnpm test:integration
       - run: pnpm test:e2e
+
+  # The worktree code handles paths git prints as C:/..., case-insensitive folders and
+  # a Windows-only process lookup; the rest of the suite stays on Linux.
+  test-worktrees-windows:
+    runs-on: windows-latest
+    # First run on Windows: report, don't block, until it is known to be stable there.
+    continue-on-error: true
+    env:
+      GIT_AUTHOR_NAME: ci
+      GIT_AUTHOR_EMAIL: ci@example.com
+      GIT_COMMITTER_NAME: ci
+      GIT_COMMITTER_EMAIL: ci@example.com
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version: "22"
+          cache: pnpm
+      # These tests are pure JS plus git; skip install scripts so app-desktop's postinstall
+      # (electron-builder rebuilding node-pty, which needs Visual Studio) doesn't run.
+      - run: pnpm install --ignore-scripts
+      - run: >-
+          pnpm exec vitest run
+          packages/git-worktrees
+          packages/gateway/src/git-methods.test.ts
+          packages/app-desktop/src/renderer/src/worktrees
+          packages/app-desktop/src/main/pidTree.test.ts
+          packages/app-desktop/src/main/worktreeOption.test.ts
 
   # Real-model tests. Secrets are not available to pull requests from forks, so
   # this only runs on pushes to main, and skips itself when the key is not set.

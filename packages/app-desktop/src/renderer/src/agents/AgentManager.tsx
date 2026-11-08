@@ -8,8 +8,10 @@ import {
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
+import { useI18n } from "../i18n/index.js";
 import type { AgentInfo, CreateAgentResult, CustomRole, GetAgentResult, ProviderInfo } from "../types.js";
 import { BUILTIN_ROLES, type Role } from "./roles.js";
+import { EMPTY_TOOLS_FORM, toolsPayload, toolsToForm, type ToolsFormState } from "./toolsForm.js";
 
 type Props = {
   agents: AgentInfo[];
@@ -25,7 +27,7 @@ type FormState = {
   modelId: string;
   systemPrompt: string;
   scope: "local" | "global";
-};
+} & ToolsFormState;
 
 const EMPTY_FORM: FormState = {
   id: "",
@@ -34,10 +36,12 @@ const EMPTY_FORM: FormState = {
   modelId: "",
   systemPrompt: "",
   scope: "local",
+  ...EMPTY_TOOLS_FORM,
 };
 
 export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
   const { call } = useGateway();
+  const { t } = useI18n();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState<FormState>(EMPTY_FORM);
@@ -78,7 +82,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
   const applyRole = (roleId: string) => {
     const role: Role | undefined = BUILTIN_ROLES.find((r) => r.id === roleId) ?? customRoles.find((r) => r.id === roleId);
     if (!role) return;
-    setForm((f) => ({ ...f, label: f.label || role.label, systemPrompt: role.systemPrompt }));
+    setForm((f) => ({ ...f, label: f.label || (role.labelKey ? t(role.labelKey) : role.label), systemPrompt: role.systemPrompt }));
     setPendingRoleId("");
   };
 
@@ -94,7 +98,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
   const submit = async () => {
     const id = form.id.trim();
     if (!id) {
-      setError("Agent id is required");
+      setError(t("agents.manager.idRequired"));
       return;
     }
     setSubmitting(true);
@@ -107,6 +111,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
         model: form.modelId || undefined,
         systemPrompt: form.systemPrompt.trim() || undefined,
         scope: form.scope,
+        ...toolsPayload(form, !!editingId),
       };
       await call<CreateAgentResult>(editingId ? "agents.update" : "agents.create", payload);
       const res = await call<{ agents: AgentInfo[] }>("agents.list");
@@ -137,6 +142,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
         modelId: full.model ?? "",
         systemPrompt: full.systemPrompt ?? "",
         scope: full.scope ?? "local",
+        ...toolsToForm(full.tools),
       });
       setEditingId(full.id);
       setShowForm(true);
@@ -148,7 +154,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
   };
 
   const deleteAgentConfirm = async (a: AgentInfo) => {
-    if (!window.confirm(`Delete agent "${a.label ?? a.id}"? This can't be undone.`)) return;
+    if (!window.confirm(t("agents.manager.deleteConfirm", { name: a.label ?? a.id }))) return;
     setError(null);
     setDeletingId(a.id);
     try {
@@ -175,7 +181,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
     <div className="modal-overlay" onClick={onClose}>
       <div className="modal agent-manager" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Agents</h2>
+          <h2>{t("agents.manager.title")}</h2>
           <button type="button" className="icon-btn" onClick={onClose}>
             <XMarkIcon className="hero-icon" />
           </button>
@@ -197,7 +203,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
                     <button
                       type="button"
                       className="icon-btn"
-                      title="Edit agent"
+                      title={t("agents.manager.edit")}
                       onClick={() => void startEdit(a)}
                       disabled={loadingEdit === a.id || deletingId === a.id}
                     >
@@ -206,7 +212,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
                     <button
                       type="button"
                       className="icon-btn"
-                      title="Delete agent"
+                      title={t("agents.manager.delete")}
                       onClick={() => void deleteAgentConfirm(a)}
                       disabled={deletingId === a.id || loadingEdit === a.id}
                     >
@@ -215,10 +221,10 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
                   </div>
                 </li>
               ))}
-              {agents.length === 0 && <li className="muted">No agents configured</li>}
+              {agents.length === 0 && <li className="muted">{t("agents.manager.none")}</li>}
             </ul>
             <button type="button" className="new-chat" onClick={() => setShowForm(true)}>
-              + New agent
+              {t("agents.manager.new")}
             </button>
           </>
         )}
@@ -231,41 +237,41 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
               void submit();
             }}
           >
-            <h3 className="agent-form-title">{editingId ? `Edit ${editingId}` : "New agent"}</h3>
+            <h3 className="agent-form-title">{editingId ? t("agents.manager.formEdit", { id: editingId }) : t("agents.manager.formNew")}</h3>
             <label>
-              Id
+              {t("agents.manager.id")}
               <input
                 value={form.id}
                 onChange={(e) => setForm((f) => ({ ...f, id: e.target.value }))}
-                placeholder="e.g. code-reviewer"
+                placeholder={t("agents.manager.idPlaceholder")}
                 autoFocus={!editingId}
                 disabled={Boolean(editingId)}
               />
             </label>
             <label>
-              Label
+              {t("agents.manager.label")}
               <input
                 value={form.label}
                 onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
-                placeholder="e.g. Code Reviewer"
+                placeholder={t("agents.manager.labelPlaceholder")}
               />
             </label>
             <label>
-              Role
+              {t("agents.manager.role")}
               <select
                 value={pendingRoleId}
                 onChange={(e) => applyRole(e.target.value)}
               >
-                <option value="">Pick a role to prefill label + system prompt…</option>
-                <optgroup label="Built-in">
+                <option value="">{t("agents.manager.rolePick")}</option>
+                <optgroup label={t("agents.manager.roleBuiltin")}>
                   {BUILTIN_ROLES.map((r) => (
                     <option key={r.id} value={r.id}>
-                      {r.label}
+                      {r.labelKey ? t(r.labelKey) : r.label}
                     </option>
                   ))}
                 </optgroup>
                 {customRoles.length > 0 && (
-                  <optgroup label="Custom">
+                  <optgroup label={t("agents.manager.roleCustom")}>
                     {customRoles.map((r) => (
                       <option key={r.id} value={r.id}>
                         {r.label}
@@ -276,13 +282,13 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
               </select>
             </label>
             <label>
-              Provider
+              {t("agents.manager.provider")}
               <div className="provider-select-row">
                 <select
                   value={form.providerId}
                   onChange={(e) => setForm((f) => ({ ...f, providerId: e.target.value, modelId: "" }))}
                 >
-                  <option value="">(default)</option>
+                  <option value="">{t("agents.manager.default")}</option>
                   {providers.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.label}
@@ -292,7 +298,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
                 <button
                   type="button"
                   className="icon-btn"
-                  title="Refresh model list from the provider's host"
+                  title={t("agents.manager.refreshModels")}
                   onClick={loadProviders}
                   disabled={loadingProviders}
                 >
@@ -302,18 +308,17 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
             </label>
             {selectedProvider?.error && (
               <p className="provider-warning">
-                <ExclamationTriangleIcon className="hero-icon" /> Unreachable — {selectedProvider.error}. Model list
-                unavailable; check the host in Settings → Providers.
+                <ExclamationTriangleIcon className="hero-icon" /> {t("agents.manager.unreachable", { error: selectedProvider.error })}
               </p>
             )}
             <label>
-              Model
+              {t("agents.manager.model")}
               <select
                 value={form.modelId}
                 onChange={(e) => setForm((f) => ({ ...f, modelId: e.target.value }))}
                 disabled={models.length === 0}
               >
-                <option value="">(default)</option>
+                <option value="">{t("agents.manager.default")}</option>
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.label}
@@ -322,14 +327,36 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
               </select>
             </label>
             <label>
-              System prompt
+              {t("agents.manager.systemPrompt")}
               <textarea
                 value={form.systemPrompt}
                 onChange={(e) => setForm((f) => ({ ...f, systemPrompt: e.target.value }))}
-                placeholder="Instructions for this agent…"
+                placeholder={t("agents.manager.systemPromptPlaceholder")}
                 rows={4}
               />
             </label>
+            <label className="agent-form-check">
+              <input
+                type="checkbox"
+                checked={form.toolsRestricted}
+                onChange={(e) => setForm((f) => ({ ...f, toolsRestricted: e.target.checked }))}
+              />
+              {t("agents.manager.restrictTools")}
+            </label>
+            {form.toolsRestricted && (
+              <>
+                <input
+                  value={form.toolsAllow}
+                  onChange={(e) => setForm((f) => ({ ...f, toolsAllow: e.target.value }))}
+                  placeholder="fs_read_*, web_fetch"
+                />
+                <p className="agent-form-hint">
+                  {form.toolsAllow.trim()
+                    ? t("agents.manager.toolsHintSome")
+                    : t("agents.manager.toolsHintNone")}
+                </p>
+              </>
+            )}
             {!savingRole ? (
               <button
                 type="button"
@@ -337,7 +364,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
                 disabled={!form.systemPrompt.trim()}
                 onClick={() => setSavingRole(true)}
               >
-                <StarIcon className="hero-icon" /> Save as custom role
+                <StarIcon className="hero-icon" /> {t("agents.manager.saveRole")}
               </button>
             ) : (
               <div className="scope-choice">
@@ -345,7 +372,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
                   className="context-menu-input"
                   value={newRoleLabel}
                   onChange={(e) => setNewRoleLabel(e.target.value)}
-                  placeholder="Role name, e.g. Combat Designer"
+                  placeholder={t("agents.manager.roleNamePlaceholder")}
                   autoFocus
                   onKeyDown={(e) => {
                     if (e.key === "Enter") {
@@ -359,7 +386,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
                   }}
                 />
                 <button type="button" onClick={() => void confirmSaveRole()} disabled={!newRoleLabel.trim()}>
-                  Save role
+                  {t("agents.manager.saveRoleConfirm")}
                 </button>
                 <button
                   type="button"
@@ -368,12 +395,12 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
                     setNewRoleLabel("");
                   }}
                 >
-                  Cancel
+                  {t("agents.manager.cancel")}
                 </button>
               </div>
             )}
             <label>
-              Save as
+              {t("agents.manager.saveAs")}
               <div className="scope-choice">
                 <label>
                   <input
@@ -383,7 +410,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
                     disabled={Boolean(editingId)}
                     onChange={() => setForm((f) => ({ ...f, scope: "local" }))}
                   />
-                  Local to this project
+                  {t("agents.manager.scopeLocal")}
                 </label>
                 <label>
                   <input
@@ -393,7 +420,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
                     disabled={Boolean(editingId)}
                     onChange={() => setForm((f) => ({ ...f, scope: "global" }))}
                   />
-                  Global (all projects)
+                  {t("agents.manager.scopeGlobal")}
                 </label>
               </div>
             </label>
@@ -402,10 +429,10 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
 
             <div className="agent-form-actions">
               <button type="button" onClick={cancelForm} disabled={submitting}>
-                Cancel
+                {t("agents.manager.cancel")}
               </button>
               <button type="submit" disabled={submitting || !form.id.trim()}>
-                {submitting ? "Saving…" : editingId ? "Save changes" : "Save agent"}
+                {submitting ? t("agents.manager.saving") : editingId ? t("agents.manager.saveChanges") : t("agents.manager.saveAgent")}
               </button>
             </div>
           </form>

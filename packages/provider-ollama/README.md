@@ -34,8 +34,11 @@ Reads `providers.ollama` from `yggdrasil.config.json` (see `resolveOllamaConfig`
 - `baseUrl` — default `http://127.0.0.1:11434`.
 - `defaultModel` — used only as the `listModels` fallback label when the Ollama daemon can't be reached.
 - `contextWindow` — passed through on `ProviderModel` entries, not enforced by this package.
+- `apiKey` — Bearer token for Ollama Cloud (`baseUrl: "https://ollama.com"`); falls back to the `OLLAMA_API_KEY` environment variable. A local server needs none. A 401/403 says whether the key is missing or was rejected, without echoing it.
+- `think` — sent to Ollama as `think`. Unset follows the model's default. `false` removes the empty replies thinking models (qwen3.5) can produce, but made `qwen3.5:9b` give up much earlier in our agentic evals (5/15 vs 14/15 runs passed), so it is an option, not a recommendation.
+- `maxRetries` — retries of a failed chat request (default `10`; `0` disables). Retried: HTTP 408/429/500/502/503/504/529 and dropped connections (ECONNRESET, ETIMEDOUT…), with exponential backoff (1 s doubling to 30 s, ±25 % jitter) that honors `Retry-After` (capped at 60 s). Not retried: other 4xx, a refused connection (a stopped local Ollama fails fast), or anything once the response has started streaming (it would repeat text already shown). A cancelled turn stops waiting immediately. Each retry is reported through `ChatCompleteParams.onRetry`; the harness emits it as the `provider.retry` event (`{ sessionKey, attempt, delayMs, reason }`), the TUI shows "↻ retrying in Ns (HTTP 500, attempt 2)" in its status bar, and the agentic evals count it in the "Net retries" column. Added after Ollama Cloud returned the odd HTTP 500 that ended whole agent turns.
 
-`resolveApiKey()` always returns `"local"` — Ollama's native API doesn't require a key; this just satisfies the `ProviderPlugin` interface.
+`resolveApiKey()` always returns `"local"`; it only satisfies the `ProviderPlugin` interface — the real key (if any) is read per request from `apiKey` / `OLLAMA_API_KEY`.
 
 ## Extending / what's safe to change
 

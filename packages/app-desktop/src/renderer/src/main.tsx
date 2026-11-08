@@ -9,6 +9,7 @@ import "./ui/theme/tokens.css";
 import "./ui/ui.css";
 import "./styles.css";
 import { applyTheme } from "./ui/theme/themeRuntime.js";
+import { t } from "./i18n/index.js";
 
 // Theme first (before any render) so the first frame already has the user's colors.
 applyTheme(window.yggdrasil.theme.initial);
@@ -20,7 +21,7 @@ const gatewayUrl = window.yggdrasil.gatewayUrl;
 if (!gatewayUrl) {
   root.render(
     <StrictMode>
-      <p className="error">No gateway URL for this window.</p>
+      <p className="error">{t("app.noGatewayUrl")}</p>
     </StrictMode>,
   );
 } else {

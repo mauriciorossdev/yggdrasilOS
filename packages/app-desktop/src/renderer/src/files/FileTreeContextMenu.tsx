@@ -1,5 +1,9 @@
-import { useRef, useState, type KeyboardEvent } from "react";
+import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { useDismiss } from "../ui/useDismiss.js";
+import { useActiveTab } from "../ui/mainTabsStore.js";
+import { useTerminalPanes } from "../terminal/terminalPanesStore.js";
+import { buildSendTargets, type SendTarget } from "./sendTargets.js";
+import { useI18n } from "../i18n/index.js";
 
 type Mode = "menu" | "rename" | "confirm-delete" | "new-file" | "new-folder";
 
@@ -18,6 +22,17 @@ type Props = {
   onReveal?: () => void;
   onOpenInBlender?: () => void;
   onShare?: () => void;
+  /** Copy the file/folder to the OS clipboard. */
+  onCopy?: () => void;
+  /** Copy its absolute path / its path relative to the project, as text. */
+  onCopyPath?: () => void;
+  onCopyRelativePath?: () => void;
+  /** Paste what is on the OS clipboard into this folder (folders only). */
+  onPaste?: () => void;
+  /** Open with whatever app the OS associates with it. */
+  onOpenExternal?: () => void;
+  /** Send to the chat or to an open terminal; the menu lists them and marks the one in focus. */
+  onSendTo?: (target: SendTarget) => void;
 };
 
 // Mirrors ProjectContextMenu.tsx/SessionContextMenu.tsx's positioning/
@@ -40,12 +55,46 @@ export function FileTreeContextMenu({
   onReveal,
   onOpenInBlender,
   onShare,
+  onCopy,
+  onCopyPath,
+  onCopyRelativePath,
+  onPaste,
+  onOpenExternal,
+  onSendTo,
 }: Props) {
+  const { t: tr } = useI18n();
   const [mode, setMode] = useState<Mode>("menu");
   const [inputValue, setInputValue] = useState(name);
   const ref = useRef<HTMLDivElement>(null);
 
   useDismiss(ref, onClose);
+
+  const { panes, activeId } = useTerminalPanes();
+  const activeTab = useActiveTab();
+  const sendTargets = onSendTo ? buildSendTargets(panes, activeId, activeTab) : [];
+
+  // The menu grew taller than it used to be: keep it on screen near the bottom edge.
+  const [top, setTop] = useState(y);
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    const overflow = y + el.offsetHeight + 8 - window.innerHeight;
+    setTop(overflow > 0 ? Math.max(8, y - overflow) : y);
+  }, [y, mode]);
+
+  const item = (label: string, action: () => void, extra?: string) => (
+    <button
+      type="button"
+      className="context-menu-item"
+      onClick={() => {
+        action();
+        onClose();
+      }}
+    >
+      {label}
+      {extra && <span className="context-menu-badge">{extra}</span>}
+    </button>
+  );
 
   const submit = () => {
     const value = inputValue.trim();
@@ -70,12 +119,16 @@ export function FileTreeContextMenu({
   };
 
   return (
-    <div className="context-menu" ref={ref} style={{ left: x, top: y }}>
+    <div className="context-menu" ref={ref} style={{ left: x, top }}>
       {mode === "menu" && (
         <>
           <button type="button" className="context-menu-item" onClick={() => setMode("rename")}>
-            Rename
+            {tr("doc.menu.rename")}
           </button>
+          {onCopy && item(tr("doc.menu.copy"), onCopy)}
+          {onCopyPath && item(tr("doc.menu.copyPath"), onCopyPath)}
+          {onCopyRelativePath && item(tr("doc.menu.copyRelativePath"), onCopyRelativePath)}
+          {onPaste && item(tr("doc.menu.paste"), onPaste)}
           {onNewFile && (
             <button
               type="button"
@@ -85,7 +138,7 @@ export function FileTreeContextMenu({
                 setMode("new-file");
               }}
             >
-              New file
+              {tr("doc.tree.newFile")}
             </button>
           )}
           {onNewFolder && (
@@ -97,7 +150,7 @@ export function FileTreeContextMenu({
                 setMode("new-folder");
               }}
             >
-              New folder
+              {tr("doc.tree.newFolder")}
             </button>
           )}
           {onImportFiles && (
@@ -109,21 +162,23 @@ export function FileTreeContextMenu({
                 onClose();
               }}
             >
-              Import files…
+              {tr("doc.menu.import")}
             </button>
           )}
-          {onOpenInIde && (
-            <button
-              type="button"
-              className="context-menu-item"
-              onClick={() => {
-                onOpenInIde();
-                onClose();
-              }}
-            >
-              Open in IDE
-            </button>
+          {onSendTo && sendTargets.length > 0 && (
+            <>
+              <div className="context-menu-separator" />
+              <div className="context-menu-label">{tr("doc.menu.sendTo")}</div>
+              {sendTargets.map((target) => (
+                <div key={target.kind === "chat" ? "chat" : target.id}>
+                  {item(target.label, () => onSendTo(target), target.focused ? tr("doc.menu.focused") : undefined)}
+                </div>
+              ))}
+              <div className="context-menu-separator" />
+            </>
           )}
+          {onOpenInIde && item(tr("doc.menu.openIde"), onOpenInIde)}
+          {onOpenExternal && item(tr("doc.menu.openDefault"), onOpenExternal)}
           {onOpenInBlender && (
             <button
               type="button"
@@ -133,7 +188,7 @@ export function FileTreeContextMenu({
                 onClose();
               }}
             >
-              Open in Blender
+              {tr("doc.openBlender")}
             </button>
           )}
           {onReveal && (
@@ -145,7 +200,7 @@ export function FileTreeContextMenu({
                 onClose();
               }}
             >
-              Open in file explorer
+              {tr("doc.menu.reveal")}
             </button>
           )}
           {onShare && (
@@ -157,11 +212,11 @@ export function FileTreeContextMenu({
                 onClose();
               }}
             >
-              Compartir…
+              {tr("doc.menu.share")}
             </button>
           )}
           <button type="button" className="context-menu-item danger" onClick={() => setMode("confirm-delete")}>
-            Delete
+            {tr("doc.delete")}
           </button>
         </>
       )}
@@ -173,7 +228,7 @@ export function FileTreeContextMenu({
           onChange={(e) => setInputValue(e.target.value)}
           onKeyDown={onInputKeyDown}
           onBlur={submit}
-          placeholder={mode === "new-file" ? "file name" : mode === "new-folder" ? "folder name" : undefined}
+          placeholder={mode === "new-file" ? tr("doc.tree.fileName") : mode === "new-folder" ? tr("doc.tree.folderName") : undefined}
           autoFocus
         />
       )}
@@ -181,7 +236,7 @@ export function FileTreeContextMenu({
       {mode === "confirm-delete" && (
         <>
           <div className="context-menu-confirm-label">
-            {isDir ? `Delete "${name}" and everything inside it?` : `Delete "${name}"?`}
+            {isDir ? tr("doc.menu.confirmDeleteDir", { name }) : tr("doc.menu.confirmDelete", { name })}
           </div>
           <button
             type="button"
@@ -191,10 +246,10 @@ export function FileTreeContextMenu({
               onClose();
             }}
           >
-            Confirm delete
+            {tr("doc.menu.confirmDeleteBtn")}
           </button>
           <button type="button" className="context-menu-item" onClick={() => setMode("menu")}>
-            Cancel
+            {tr("doc.cancel")}
           </button>
         </>
       )}

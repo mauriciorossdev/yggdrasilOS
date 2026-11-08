@@ -67,7 +67,7 @@ describe("tool-google plugin registration", () => {
     );
   });
 
-  it("registers exactly the connectors.google methods plus the Drive upload method", () => {
+  it("registers exactly the connectors.google gateway methods plus the Drive upload", () => {
     const api = fakeApi();
     plugin.register(api as never);
     expect([...api.gatewayMethods.keys()].sort()).toEqual([

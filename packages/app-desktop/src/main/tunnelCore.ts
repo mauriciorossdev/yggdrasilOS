@@ -3,7 +3,7 @@ import { hubWsUrl, isPublishable, type PhoneLinkSettings } from "./phoneLinkCore
 
 /**
  * Desktop end of the phone-link tunnel (phase B): one outbound socket to the
- * Railway hub (/tunnel-host/<desktopId>); for every phone channel the hub opens,
+ * link server (/tunnel-host/<desktopId>); for every phone channel the hub opens,
  * a socket to that project's local gateway, piping text frames both ways. The
  * local socket carries `x-yggdrasil-tunnel: 1` so the gateway treats it as a
  * remote client (key required, no loopback trust) — it is the phone, not us.
@@ -82,7 +82,7 @@ export class TunnelClient {
       this.host = null;
       for (const ch of this.channels.values()) ch.local?.close();
       this.channels.clear();
-      if (code === 4401) this.lastError = "Railway rechazó la clave";
+      if (code === 4401) this.lastError = "El servidor de enlace rechazó la clave";
       else if (reason.length) this.lastError = reason.toString();
       this.state = "error";
       this.scheduleRetry();

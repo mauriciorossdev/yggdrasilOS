@@ -21,7 +21,7 @@ afterEach(async () => {
 const sample = {
   desktopId: "desk-macbook-1",
   name: "MacBook de Alex",
-  projects: [{ id: "p1", name: "harness_pp", port: 51234 }],
+  projects: [{ id: "p1", name: "my-project", port: 51234 }],
   endpoints: { lan: "192.168.1.20", tailscale: "100.64.0.7" },
   gatewayKey: "ygd_secret",
 };
@@ -32,7 +32,7 @@ describe("DesktopRegistry", () => {
     await reg.load();
     const view = await reg.register(sample);
     expect(view).toMatchObject({ desktopId: "desk-macbook-1", online: true, gatewayKey: "ygd_secret" });
-    expect(view.projects).toEqual([{ id: "p1", name: "harness_pp", port: 51234 }]);
+    expect(view.projects).toEqual([{ id: "p1", name: "my-project", port: 51234 }]);
 
     const again = new DesktopRegistry(file, now);
     await again.load();

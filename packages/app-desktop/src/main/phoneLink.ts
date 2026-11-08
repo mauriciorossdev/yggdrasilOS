@@ -6,13 +6,18 @@ import { listProjects } from "./projects.js";
 import { readSettingsFile, updateSettingsFile } from "./settingsFile.js";
 import {
   HubPublisher,
+  checkHubUrl,
   friendlyHostName,
   hubQrPayload,
   localGatewayRequiresKey,
   isPublishable,
   newDesktopId,
   newGatewayKey,
+  newHubKey,
   pickAddresses,
+  savedKeyWouldMove,
+  testHubConnection,
+  type HubUrlCheck,
   type OpenProject,
   type PhoneLinkSettings,
   type PublishStatus,
@@ -22,6 +27,7 @@ import { TunnelClient, type TunnelState } from "./tunnelCore.js";
 /** What the Settings → Teléfono section shows (never the hub key itself). */
 export type PhoneLinkInfo = {
   hubUrl: string;
+  hubUrlCheck: HubUrlCheck;
   hasHubKey: boolean;
   publish: boolean;
   desktopName: string;
@@ -87,7 +93,7 @@ const publisher = new HubPublisher({
   getAddresses: () => pickAddresses(networkInterfaces()),
 });
 
-// Phase B: keeps an outbound socket to Railway so the phone reaches this
+// Phase B: keeps an outbound socket to the link server so the phone reaches this
 // desktop from any network (no VPN) — only while publishing is on.
 const tunnel = new TunnelClient({
   getSettings: loadPhoneLinkSettings,
@@ -117,6 +123,7 @@ async function info(): Promise<PhoneLinkInfo> {
   const s = await loadPhoneLinkSettings();
   return {
     hubUrl: s.hubUrl ?? "",
+    hubUrlCheck: checkHubUrl(s.hubUrl ?? ""),
     hasHubKey: !!s.hubKey,
     publish: !!s.publish,
     desktopName: friendlyHostName(hostname()),
@@ -132,7 +139,12 @@ export function registerPhoneLinkIpc(): void {
 
   ipcMain.handle("phoneLink:save", async (_event, input: { hubUrl?: string; hubKey?: string; publish?: boolean }) => {
     let next: PhoneLinkSettings = { ...(await loadPhoneLinkSettings()) };
-    if (typeof input.hubUrl === "string") next.hubUrl = input.hubUrl.trim();
+    if (savedKeyWouldMove(next, input)) throw new Error("Pega la clave de este servidor: la guardada no se envía a otra URL.");
+    if (typeof input.hubUrl === "string") {
+      const check = checkHubUrl(input.hubUrl);
+      if (check === "invalid" || check === "insecure-public") throw new Error("Esa URL del servidor de enlace no se puede usar sin cifrar.");
+      next.hubUrl = input.hubUrl.trim();
+    }
     // An empty key field means "keep the saved one" — the UI never receives it back.
     if (typeof input.hubKey === "string" && input.hubKey.trim()) next.hubKey = input.hubKey.trim();
     if (typeof input.publish === "boolean") next.publish = input.publish;
@@ -143,6 +155,18 @@ export function registerPhoneLinkIpc(): void {
     return info();
   });
 
+  ipcMain.handle("phoneLink:checkUrl", (_event, hubUrl: unknown) => checkHubUrl(String(hubUrl ?? "")));
+
+  ipcMain.handle("phoneLink:generateKey", () => newHubKey());
+
+  ipcMain.handle("phoneLink:test", async (_event, input: { hubUrl?: string; hubKey?: string }) => {
+    const s = await loadPhoneLinkSettings();
+    const hubUrl = String(input?.hubUrl ?? "").trim();
+    // The saved key only ever goes to the URL it was saved with.
+    const savedKey = hubUrl === s.hubUrl ? (s.hubKey ?? "") : "";
+    return testHubConnection(hubUrl, String(input?.hubKey ?? "").trim() || savedKey);
+  });
+
   ipcMain.handle("phoneLink:publishNow", async () => {
     await publisher.publishNow();
     return info();
@@ -151,7 +175,8 @@ export function registerPhoneLinkIpc(): void {
   // The hub key travels inside the QR: only generated on demand, never stored as an image.
   ipcMain.handle("phoneLink:qr", async () => {
     const s = await loadPhoneLinkSettings();
-    if (!s.hubUrl || !s.hubKey) throw new Error("Guarda primero la URL y la clave de Railway.");
+    if (!s.hubUrl || !s.hubKey) throw new Error("Guarda primero la URL y la clave del servidor de enlace.");
+    if (checkHubUrl(s.hubUrl) === "insecure-public") throw new Error("Esa URL del servidor de enlace no se puede usar sin cifrar.");
     return QRCode.toDataURL(hubQrPayload(s.hubUrl, s.hubKey), { margin: 1, width: 320 });
   });
 }

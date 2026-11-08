@@ -11,7 +11,7 @@ export type DesktopTtsOverrides = {
  * Electron API) — YGGDRASIL_DESKTOP_SETTINGS_PATH is set by
  * packages/app-desktop/src/main/gateway.ts when this gateway was spawned by
  * the desktop app; unset when run standalone (`yggdrasil run`, CI, the
- * Railway hub deploy), where TTS is configured purely via env vars instead
+ * link server deploy), where TTS is configured purely via env vars instead
  * (REPLICATE_API_TOKEN/REPLICATE_TTS_VOICE, see tts.ts) and there's no
  * Settings → Voz UI at all. Same pattern as
  * extensions/service-workflows/src/killSwitch.ts's automation kill switch.

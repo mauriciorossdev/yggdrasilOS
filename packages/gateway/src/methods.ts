@@ -1,5 +1,7 @@
 import type { AgentConfig, YggdrasilConfig } from "@yggdrasil/config";
 import { registerGitMethods } from "./git-methods.js";
+import { searchContent } from "./fs-search-content.js";
+import { indexNotes } from "./documents-index.js";
 import { QUEUEABLE_TOOLS, drainDeviceQueue, type QueuedCall } from "./assistant/deviceQueue.js";
 import type { AssistantServices } from "./assistant/services.js";
 import { deleteAssistantDoc, listAssistantDocs, receiveDocumentChunk } from "./documentUpload.js";
@@ -105,6 +107,8 @@ const pendingApprovals = new Map<string, { resolve: (ok: boolean) => void }>();
 // Not persisted to disk — resets to "auto" per-session on gateway restart.
 // See tool-loop.ts's approval decision logic.
 const approvalModes = new Map<string, ApprovalMode>();
+// In-flight chat.send turns by sessionKey, so chat.cancel can abort them.
+const turnControllers = new Map<string, AbortController>();
 function getApprovalMode(sessionKey: string): ApprovalMode {
   return approvalModes.get(sessionKey) ?? "auto";
 }
@@ -1014,6 +1018,16 @@ function registerBuiltinMethods(): void {
     };
   });
 
+  // Omitted = undefined, so an update keeps what is stored. `{}` clears the restriction; `{ allow: [] }` means no tools at all (see AgentConfig.tools).
+  const parseAgentTools = (raw: unknown): AgentConfig["tools"] => {
+    if (raw === undefined || raw === null) return undefined;
+    if (typeof raw !== "object" || Array.isArray(raw)) throw new Error("agents: tools must be an object like { allow: string[] }");
+    const allow = (raw as { allow?: unknown }).allow;
+    if (allow === undefined) return {};
+    if (!Array.isArray(allow) || allow.some((t) => typeof t !== "string")) throw new Error("agents: tools.allow must be an array of strings");
+    return { allow: allow as string[] };
+  };
+
   registerCoreMethod("agents.create", async (params, ctx) => {
     const id = String(params.id ?? "").trim();
     if (!id) throw new Error("agents.create: id is required");
@@ -1031,6 +1045,7 @@ function registerBuiltinMethods(): void {
       contextProviders: Array.isArray(params.contextProviders)
         ? (params.contextProviders as string[])
         : undefined,
+      tools: parseAgentTools(params.tools),
     };
 
     const created = await createAgent({ agent, scope, workspaceRoot: ctx.workspaceRoot });
@@ -1083,6 +1098,7 @@ function registerBuiltinMethods(): void {
       contextProviders: Array.isArray(params.contextProviders)
         ? (params.contextProviders as string[])
         : undefined,
+      tools: parseAgentTools(params.tools),
     };
 
     const updated = await updateAgent({ agent, scope, workspaceRoot: ctx.workspaceRoot });
@@ -1638,6 +1654,42 @@ function registerBuiltinMethods(): void {
     return { entries: results.slice(0, limit) };
   });
 
+  // Names AND text: which files under `root` (a folder relative to the workspace, "" = all of it)
+  // mention `query`, with a short snippet of each hit. Reads file contents, so it is gated like fs.read.
+  registerCoreMethod("fs.searchContent", async (params, ctx, connectionId) => {
+    if (!isLoopbackConnection(connectionId) && !(await isTrustedDeviceConnection(ctx.workspaceRoot, connectionId))) {
+      await requireFsApproval(ctx, "fs.searchContent", params, "moderate", connectionId);
+    }
+    const root = ctx.workspaceRoot;
+    if (!root) throw new Error("fs.searchContent: this gateway has no workspaceRoot");
+
+    const scope = String(params.root ?? "");
+    resolveWithinRoot(root, "fs.searchContent", scope);
+    return searchContent({
+      root,
+      scope,
+      query: String(params.query ?? ""),
+      limit: params.limit !== undefined ? Number(params.limit) : undefined,
+      maxSnippets: params.maxSnippets !== undefined ? Number(params.maxSnippets) : undefined,
+    });
+  });
+
+  // Titles and the links between notes under `root` (or just the given `paths`), for the Documents view's
+  // `[[` picker and backlinks. Reads file contents, so it is gated like fs.read.
+  registerCoreMethod("documents.index", async (params, ctx, connectionId) => {
+    if (!isLoopbackConnection(connectionId) && !(await isTrustedDeviceConnection(ctx.workspaceRoot, connectionId))) {
+      await requireFsApproval(ctx, "documents.index", params, "moderate", connectionId);
+    }
+    const root = ctx.workspaceRoot;
+    if (!root) throw new Error("documents.index: this gateway has no workspaceRoot");
+
+    const scope = String(params.root ?? "notes");
+    resolveWithinRoot(root, "documents.index", scope);
+    const paths = Array.isArray(params.paths) ? params.paths.map((p) => String(p)) : undefined;
+    for (const p of paths ?? []) resolveWithinRoot(root, "documents.index", p);
+    return indexNotes({ root, scope, paths });
+  });
+
   type GitFileStatus = "modified" | "added" | "deleted" | "renamed" | "untracked" | "unmerged";
   type GitFileEntry = { path: string; status: GitFileStatus };
 
@@ -1937,7 +1989,13 @@ function registerBuiltinMethods(): void {
 
     const approvalHandler = createGatewayApprovalHandler(ctx.events);
 
-    const result = await runChannelTurn({
+    // One in-flight turn per session: chat.cancel aborts it through this controller.
+    const controller = new AbortController();
+    turnControllers.set(sessionKey, controller);
+
+    let result: Awaited<ReturnType<typeof runChannelTurn>>;
+    try {
+      result = await runChannelTurn({
       message,
       config: ctx.config,
       workspaceRoot: ctx.workspaceRoot ?? undefined,
@@ -1945,6 +2003,7 @@ function registerBuiltinMethods(): void {
       approveTool: approvalHandler,
       approvalMode: getApprovalMode(sessionKey),
       events: ctx.events,
+      signal: controller.signal,
       onDelta: (delta) => {
         void ctx.events.emit("chat.delta", {
           sessionKey,
@@ -1952,7 +2011,11 @@ function registerBuiltinMethods(): void {
           partial: true,
         });
       },
-    });
+      });
+    } finally {
+      // A newer turn on the same session may have replaced the entry; only drop our own.
+      if (turnControllers.get(sessionKey) === controller) turnControllers.delete(sessionKey);
+    }
 
     pushTurnLog({
       sessionKey: result.sessionKey,
@@ -1974,6 +2037,15 @@ function registerBuiltinMethods(): void {
       harnessId: result.harnessId,
       usage: result.usage,
     };
+  });
+
+  registerCoreMethod("chat.cancel", async (params) => {
+    const sessionKey = String(params.sessionKey ?? "");
+    if (!sessionKey) throw new Error("chat.cancel: sessionKey required");
+    const controller = turnControllers.get(sessionKey);
+    if (!controller || controller.signal.aborted) return { sessionKey, cancelled: false };
+    controller.abort();
+    return { sessionKey, cancelled: true };
   });
 
   registerCoreMethod("turns.recent", async () => ({

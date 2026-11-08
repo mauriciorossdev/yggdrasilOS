@@ -52,5 +52,7 @@
 
   /* per-project color (TitleBar sets these when the user picks a project color) */
   --project-border-color: transparent;
+  /* Unlike the window line, panels still need an edge with no project color. */
+  --project-panel-border-color: var(--ygg-border);
   --project-accent-color: var(--ygg-accent);
 }

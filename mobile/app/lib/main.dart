@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:app_links/app_links.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:permission_handler/permission_handler.dart';
 
 import 'assistant/assistant_home_screen.dart';
@@ -21,7 +22,10 @@ import 'services/yggdrasil_client.dart';
 import 'theme/ygg_theme.dart';
 import 'workflows_local/background_entry.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  // Before the first frame, so the saved theme is what paints first.
+  await YggThemeController.instance.load();
   runApp(const YggdrasilApp());
 }
 
@@ -93,6 +97,19 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
     });
     _initVoiceDeepLink();
     _initPush();
+    YggThemeController.instance.addListener(_onThemeChanged);
+  }
+
+  // YggColors reads the active palette on every access, but a widget only picks
+  // that up when it rebuilds — so a theme change rebuilds the whole tree (state
+  // is kept: this only re-runs build methods).
+  void _onThemeChanged() {
+    void rebuild(Element element) {
+      element.markNeedsBuild();
+      element.visitChildren(rebuild);
+    }
+
+    WidgetsBinding.instance.rootElement?.visitChildren(rebuild);
   }
 
   Future<void> _linkHub(HubLink link) async {
@@ -165,6 +182,7 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
     _voiceLinkSub?.cancel();
     _pushOpenSub?.cancel();
     _eventsController.close();
+    YggThemeController.instance.removeListener(_onThemeChanged);
     super.dispose();
   }
 
@@ -191,7 +209,7 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
     } else if (uri.host == 'projects') {
       unawaited(openProjectsFromDeepLink(_navigatorKey));
     } else if (uri.host == 'hub') {
-      // Opened from the desktop's QR / link: learn the Railway gateway.
+      // Opened from the desktop's QR / link: learn the link server.
       final link = HubLink.parse(uri.toString());
       if (link != null) unawaited(_linkHub(link));
     } else if (uri.host == 'assistant') {
@@ -328,6 +346,11 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
         navigatorKey: _navigatorKey,
         title: 'Yggdrasil',
         theme: buildYggTheme(),
+        builder: (context, child) => AnnotatedRegion<SystemUiOverlayStyle>(
+          value: (YggThemeController.instance.palette.isDark ? SystemUiOverlayStyle.light : SystemUiOverlayStyle.dark)
+              .copyWith(statusBarColor: Colors.transparent),
+          child: child ?? const SizedBox.shrink(),
+        ),
         home: AssistantHomeScreen(
           client: _client,
           events: _eventsController.stream,

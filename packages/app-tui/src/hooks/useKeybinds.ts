@@ -6,10 +6,20 @@ export function useKeybinds(
   viewMode: ViewMode,
   onExit: () => void,
   onCycleMode: () => void,
+  /** Cancels the turn in flight; the keys below only act on it while `canCancel` is true. */
+  onCancel: () => void,
+  canCancel: boolean,
 ): void {
   useInput((input, key) => {
     if (input === "c" && key.ctrl) {
-      onExit();
+      // First Ctrl+C stops a running turn; with nothing running it quits.
+      if (canCancel) onCancel();
+      else onExit();
+      return;
+    }
+
+    if (key.escape && canCancel && viewMode === "chat") {
+      onCancel();
       return;
     }
 

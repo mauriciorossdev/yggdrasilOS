@@ -2,6 +2,7 @@ import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { branchRemoteTarget, branchUrl, compareUrl, remoteWeb } from "./branchUrl.js";
 import type { BranchInfo, RemoteInfo } from "./types.js";
 import { useDismiss } from "../ui/useDismiss.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = {
   x: number;
@@ -24,6 +25,7 @@ type Props = {
 // (incl. an inline <input> rather than window.prompt — Electron's renderer
 // doesn't implement prompt()).
 export function BranchContextMenu({ x, y, branch, currentBranch, remotes, disabled, onClose, onCheckout, onCreateFrom, onMerge, onPush, onPull, onDelete }: Props) {
+  const { t } = useI18n();
   const [mode, setMode] = useState<"menu" | "create">("menu");
   const [name, setName] = useState("");
   const [pos, setPos] = useState({ left: x, top: y });
@@ -47,10 +49,10 @@ export function BranchContextMenu({ x, y, branch, currentBranch, remotes, disabl
   const web = target ? remoteWeb(target.remote.url) : null;
   const linkReason = !target
     ? remotes.length === 0
-      ? "Este repositorio no tiene remotos"
-      : "La rama no está publicada (sin upstream)"
+      ? t("repo.menu.noRemotes")
+      : t("repo.menu.notPublished")
     : !web
-      ? "Remoto no reconocido (solo GitHub, GitLab y Bitbucket)"
+      ? t("repo.menu.unknownRemote")
       : undefined;
 
   const act = (fn: () => void) => () => {
@@ -79,10 +81,10 @@ export function BranchContextMenu({ x, y, branch, currentBranch, remotes, disabl
       {mode === "menu" && (
         <>
           <button type="button" className="context-menu-item" disabled={disabled || isCurrent} onClick={act(onCheckout)}>
-            {branch.remote ? "Cambiar a esta rama (crear local)" : "Cambiar a esta rama"}
+            {branch.remote ? t("repo.menu.checkoutRemote") : t("repo.menu.checkout")}
           </button>
           <button type="button" className="context-menu-item" disabled={disabled} onClick={() => setMode("create")}>
-            Crear rama desde aquí…
+            {t("repo.menu.createFrom")}
           </button>
           <div className="context-menu-separator" />
           <button
@@ -92,7 +94,7 @@ export function BranchContextMenu({ x, y, branch, currentBranch, remotes, disabl
             title={linkReason}
             onClick={web && target ? open(branchUrl(web, target.branch)) : undefined}
           >
-            Abrir en el navegador
+            {t("repo.menu.openBrowser")}
           </button>
           <button
             type="button"
@@ -101,22 +103,22 @@ export function BranchContextMenu({ x, y, branch, currentBranch, remotes, disabl
             title={linkReason}
             onClick={web && target ? open(compareUrl(web, target.branch)) : undefined}
           >
-            Crear PR / MR…
+            {t("repo.menu.createPr")}
           </button>
           <button type="button" className="context-menu-item" onClick={act(() => void navigator.clipboard?.writeText(branch.name))}>
-            Copiar nombre de la rama
+            {t("repo.menu.copyName")}
           </button>
           <div className="context-menu-separator" />
           <button type="button" className="context-menu-item" disabled={disabled || isCurrent || !currentBranch} onClick={act(onMerge)}>
-            {currentBranch ? `Merge en "${currentBranch}"` : "Merge en la actual"}
+            {currentBranch ? t("repo.menu.mergeInto", { branch: currentBranch }) : t("repo.menu.mergeIntoCurrent")}
           </button>
           {!branch.remote && (
             <button type="button" className="context-menu-item" disabled={disabled} onClick={act(onPush)}>
-              {branch.upstream ? "Push" : "Publicar (push -u)"}
+              {branch.upstream ? "Push" : t("repo.menu.publish")}
             </button>
           )}
           {isCurrent && (
-            <button type="button" className="context-menu-item" disabled={disabled || !branch.upstream} title={branch.upstream ? undefined : "Sin upstream"} onClick={act(onPull)}>
+            <button type="button" className="context-menu-item" disabled={disabled || !branch.upstream} title={branch.upstream ? undefined : t("repo.menu.noUpstream")} onClick={act(onPull)}>
               Pull
             </button>
           )}
@@ -124,7 +126,7 @@ export function BranchContextMenu({ x, y, branch, currentBranch, remotes, disabl
             <>
               <div className="context-menu-separator" />
               <button type="button" className="context-menu-item danger" disabled={disabled || isCurrent} onClick={act(onDelete)}>
-                Borrar rama…
+                {t("repo.menu.delete")}
               </button>
             </>
           )}
@@ -132,17 +134,17 @@ export function BranchContextMenu({ x, y, branch, currentBranch, remotes, disabl
       )}
       {mode === "create" && (
         <>
-          <div className="context-menu-confirm-label">Nueva rama desde “{branch.name}” (y cambiar a ella)</div>
+          <div className="context-menu-confirm-label">{t("repo.menu.newFrom", { branch: branch.name })}</div>
           <input
             className="context-menu-input"
             autoFocus
-            placeholder="nombre-de-la-rama"
+            placeholder={t("repo.menu.namePlaceholder")}
             value={name}
             onChange={(e) => setName(e.target.value)}
             onKeyDown={onInputKey}
           />
           <button type="button" className="context-menu-item" disabled={!name.trim()} onClick={submit}>
-            Crear y cambiar
+            {t("repo.menu.createSwitch")}
           </button>
         </>
       )}

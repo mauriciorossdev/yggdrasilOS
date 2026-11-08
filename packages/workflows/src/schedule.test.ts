@@ -95,11 +95,12 @@ describe("decideScheduleTick", () => {
   it("misfire=runOnce still discards the fire once it's past the grace window", () => {
     const decision = decideScheduleTick({
       cron: DAILY_AT_9,
+      timezone: "UTC", // without it the cron runs in the host's zone and the test depends on it
       baselineAt: new Date("2026-01-01T09:00:00.000Z"),
       lastCheckedAt: new Date("2026-01-01T09:00:30.000Z"),
-      now: new Date("2026-01-02T09:30:00.000Z"), // the latest occurrence (09:00) is 30 min old
+      now: new Date("2026-01-02T18:00:00.000Z"), // the Jan 2 09:00 occurrence is 9h old
       misfire: "runOnce",
-      misfireGraceMs: 60_000, // 1 min grace — far too late to replay
+      misfireGraceMs: 60_000, // 1 min grace — the miss is well past it
     });
     expect(decision.action).toBe("skip-misfire");
   });

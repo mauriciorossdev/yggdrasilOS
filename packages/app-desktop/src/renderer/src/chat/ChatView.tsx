@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
 import { chatReducer, initialChatState } from "./chatReducer.js";
+import { t as tStatic, useI18n } from "../i18n/index.js";
 import { useChatEvents } from "./useChatEvents.js";
 import { MessageList } from "./MessageList.js";
 import { ApprovalBar } from "./ApprovalBar.js";
@@ -10,13 +11,16 @@ import { ComposerToolbar } from "./ComposerToolbar.js";
 import { AgentManager } from "../agents/AgentManager.js";
 import { SettingsView } from "../settings/SettingsView.js";
 import { FileContentPanel } from "../files/FileContentPanel.js";
+import { registerFallbackFileOpener } from "../files/openFileBus.js";
 import { DocumentsView } from "../documents/DocumentsView.js";
 import { FilesView } from "../files/FilesView.js";
 import { MainTabs, type ExtraTab, type MainTab } from "./MainTabs.js";
 import { requestTab } from "./mainTabsBridge.js";
+import { onChatAttach } from "./chatAttachBridge.js";
 import { TerminalContainer } from "../terminal/TerminalContainer.js";
 import { AgentFlowView } from "../agentFlow/AgentFlowView.js";
 import { WorkflowsView } from "../workflows/WorkflowsView.js";
+import { WorktreesView } from "../worktrees/WorktreesView.js";
 import { BrowserTabView } from "../browser/BrowserTabView.js";
 import { RepositoryView } from "../repository/RepositoryView.js";
 import { HomeView } from "../home/HomeView.js";
@@ -26,6 +30,9 @@ import { PluginFrame } from "../plugins/PluginFrame.js";
 import { PluginToolRuntime } from "../plugins/PluginToolRuntime.js";
 import { PluginPanel } from "../plugins/PluginPanel.js";
 import type { SidePanel } from "../plugins/pluginTypes.js";
+import { readPanelPinned, SIDE_PANEL_MOTION_MS, sidePanelReducer, writePanelPinned } from "./sidePanelMotion.js";
+import { setBrowserTabCovered, setBrowserTabOcclusion } from "../browser/browserTabBridge.js";
+import { PanelPinButton } from "../files/PanelPinButton.js";
 import type {
   AgentInfo,
   ApprovalMode,
@@ -46,24 +53,51 @@ function newSessionKey(): string {
   return `${CHANNEL_ID}:${ACCOUNT_ID}:user-${crypto.randomUUID()}`;
 }
 
+/** Width of .file-content-resizer in styles.css. */
+const PANEL_RESIZER_WIDTH = 4;
+
 export function ChatView() {
   const { call, onEvent } = useGateway();
+  const { t } = useI18n();
   const [state, dispatch] = useReducer(chatReducer, undefined, initialChatState);
   const [showAgentManager, setShowAgentManager] = useState(false);
   const [showSettings, setShowSettings] = useState(false);
-  const [sidePanel, setSidePanel] = useState<SidePanel | null>(null);
+  const [{ panel: sidePanel, phase: panelPhase }, dispatchPanel] = useReducer(sidePanelReducer<SidePanel>, {
+    panel: null,
+    phase: "open",
+  });
   const [panelWidth, setPanelWidth] = useState(() => window.innerWidth * 0.6);
 
   // Every time the panel becomes visible it should start at 60vw, not
   // whatever width a previous open session was resized/left at.
   const openFile = useCallback((relativePath: string) => {
     setPanelWidth(window.innerWidth * 0.6);
-    setSidePanel({ kind: "file", path: relativePath });
+    dispatchPanel({ type: "open", panel: { kind: "file", path: relativePath } });
   }, []);
+  useEffect(() => registerFallbackFileOpener(openFile), [openFile]);
   const openPluginPanel = useCallback((key: string) => {
     setPanelWidth(window.innerWidth * 0.6);
-    setSidePanel({ kind: "plugin", key });
+    dispatchPanel({ type: "open", panel: { kind: "plugin", key } });
   }, []);
+  useEffect(() => {
+    if (panelPhase === "open") return;
+    const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const timer = setTimeout(() => dispatchPanel({ type: "settled" }), reduced ? 0 : SIDE_PANEL_MOTION_MS);
+    return () => clearTimeout(timer);
+  }, [panelPhase]);
+  const [panelPinned, setPanelPinned] = useState(readPanelPinned);
+  const togglePanelPinned = useCallback(() => {
+    setPanelPinned((pinned) => {
+      writePanelPinned(!pinned);
+      return !pinned;
+    });
+  }, []);
+  // The Browser tab's page is a native layer that paints over any DOM, whatever its
+  // z-index, so floating over it means cutting the page off where the panel starts.
+  const panelFloating = !!sidePanel && !panelPinned;
+  useEffect(() => {
+    setBrowserTabOcclusion(panelFloating ? panelWidth + PANEL_RESIZER_WIDTH : 0);
+  }, [panelFloating, panelWidth]);
   const [activeMainTab, setActiveMainTab] = useState<MainTab>(window.yggdrasil.isDefaultProject ? "home" : "chat");
   const [attachedFiles, setAttachedFiles] = useState<Attachment[]>([]);
 
@@ -161,7 +195,7 @@ export function ChatView() {
       } catch (err) {
         dispatch({
           type: "ADD_SYSTEM_MESSAGE",
-          text: `Failed to load: ${err instanceof Error ? err.message : String(err)}`,
+          text: tStatic("chat.view.failedLoad", { message: err instanceof Error ? err.message : String(err) }),
         });
       }
     })();
@@ -170,6 +204,9 @@ export function ChatView() {
   const attachFile = useCallback((a: Attachment) => {
     setAttachedFiles((prev) => (prev.some((x) => x.relativePath === a.relativePath) ? prev : [...prev, a]));
   }, []);
+
+  // "Send to chat" from the file tree's context menu.
+  useEffect(() => onChatAttach(attachFile), [attachFile]);
 
   const removeAttachment = useCallback((relativePath: string) => {
     setAttachedFiles((prev) => prev.filter((a) => a.relativePath !== relativePath));
@@ -249,11 +286,11 @@ export function ChatView() {
         if (message.startsWith("Timeout:")) {
           await refreshSessions();
         } else {
-          dispatch({ type: "ADD_SYSTEM_MESSAGE", text: `Error: ${message}` });
+          dispatch({ type: "ADD_SYSTEM_MESSAGE", text: t("chat.view.error", { message }) });
         }
       }
     },
-    [call, state.sessionKey, state.activeAgentId, state.modelOverride, refreshSessions, attachedFiles, resolveAttachments],
+    [call, t, state.sessionKey, state.activeAgentId, state.modelOverride, refreshSessions, attachedFiles, resolveAttachments],
   );
 
   const setMode = useCallback(
@@ -263,11 +300,11 @@ export function ChatView() {
       void call("tools.setApprovalMode", { sessionKey: state.sessionKey, mode: next }).catch((err) => {
         dispatch({
           type: "ADD_SYSTEM_MESSAGE",
-          text: `Failed to change mode: ${err instanceof Error ? err.message : String(err)}`,
+          text: t("chat.view.failedMode", { message: err instanceof Error ? err.message : String(err) }),
         });
       });
     },
-    [call, state.sessionKey],
+    [call, t, state.sessionKey],
   );
 
   const cycleMode = useCallback(() => {
@@ -328,11 +365,11 @@ export function ChatView() {
       } catch (err) {
         dispatch({
           type: "ADD_SYSTEM_MESSAGE",
-          text: `Rename failed: ${err instanceof Error ? err.message : String(err)}`,
+          text: t("chat.view.renameFailed", { message: err instanceof Error ? err.message : String(err) }),
         });
       }
     },
-    [call, refreshSessions],
+    [call, t, refreshSessions],
   );
 
   const deleteSession = useCallback(
@@ -344,11 +381,11 @@ export function ChatView() {
       } catch (err) {
         dispatch({
           type: "ADD_SYSTEM_MESSAGE",
-          text: `Delete failed: ${err instanceof Error ? err.message : String(err)}`,
+          text: t("chat.view.deleteFailed", { message: err instanceof Error ? err.message : String(err) }),
         });
       }
     },
-    [call, refreshSessions, state.sessionKey, newChat],
+    [call, t, refreshSessions, state.sessionKey, newChat],
   );
 
   const handleAgentsCreated = useCallback(
@@ -406,15 +443,43 @@ export function ChatView() {
     [openPluginTabs, pluginsByKey, pluginsVersion, activeMainTab, openFile, closePluginTab],
   );
 
+  // Preventing the default stops the drag from selecting the text it crosses, and the
+  // capture keeps it alive over the editor, terminals and plugin iframes under the pointer.
+  const startPanelResize = (e: React.PointerEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    const handle = e.currentTarget;
+    handle.setPointerCapture(e.pointerId);
+    // Pointer capture doesn't reach across the Browser tab's native page, so it's swapped for a still image meanwhile.
+    const overBrowser = activeMainTab === "browser";
+    if (overBrowser) setBrowserTabCovered(true);
+    const startX = e.clientX;
+    const startWidth = panelWidth;
+    const move = (m: PointerEvent) => setPanelWidth(Math.max(200, startWidth - (m.clientX - startX)));
+    const up = () => {
+      handle.removeEventListener("pointermove", move);
+      handle.removeEventListener("pointerup", up);
+      handle.removeEventListener("pointercancel", up);
+      if (overBrowser) setBrowserTabCovered(false);
+    };
+    handle.addEventListener("pointermove", move);
+    handle.addEventListener("pointerup", up);
+    handle.addEventListener("pointercancel", up);
+  };
+
   /** One aside slot, two possible contents — same outer shell/CSS classes either way (FileContentPanel and PluginPanel both render `<aside className="file-content-panel ...">`), so the two resizer/positioning blocks below stay identical regardless of which is open. */
   const renderSidePanel = (extraClassName?: string) => {
     if (!sidePanel) return null;
+    const motionClass = panelPhase === "open" ? "" : `file-content-panel--${panelPhase}`;
+    const className = [extraClassName, motionClass].filter(Boolean).join(" ") || undefined;
+    const headerActions = <PanelPinButton pinned={panelPinned} onToggle={togglePanelPinned} />;
     if (sidePanel.kind === "file") {
       return (
         <FileContentPanel
+          key={sidePanel.path}
           relativePath={sidePanel.path}
-          onClose={() => setSidePanel(null)}
-          className={extraClassName}
+          headerActions={headerActions}
+          onClose={() => dispatchPanel({ type: "close" })}
+          className={className}
           style={{ width: panelWidth }}
         />
       );
@@ -425,10 +490,11 @@ export function ChatView() {
       <PluginPanel
         plugin={plugin}
         version={pluginsVersion}
-        onClose={() => setSidePanel(null)}
+        headerActions={headerActions}
+        onClose={() => dispatchPanel({ type: "close" })}
         onOpenFile={openFile}
         onOpenTab={(tab) => requestTab(tab as MainTab)}
-        className={extraClassName}
+        className={className}
         style={{ width: panelWidth }}
       />
     );
@@ -456,7 +522,8 @@ export function ChatView() {
         onReloadPlugins={() => void reloadPlugins()}
       />
       <PluginToolRuntime plugins={plugins} />
-      <div className="chat-main">
+      {/* The panel floats over everything by default; pinned, it takes its own column. */}
+      <div className="chat-main" style={sidePanel && panelPinned ? { paddingRight: panelWidth + PANEL_RESIZER_WIDTH } : undefined}>
         <MainTabs
           homeContent={window.yggdrasil.isDefaultProject ? <HomeView /> : undefined}
           chatContent={
@@ -495,6 +562,7 @@ export function ChatView() {
           }
           terminalContent={<TerminalContainer />}
           agentFlowContent={<AgentFlowView />}
+          worktreesContent={<WorktreesView />}
           workflowsContent={<WorkflowsView />}
           documentsContent={<DocumentsView />}
           browserContent={<BrowserTabView />}
@@ -526,20 +594,8 @@ export function ChatView() {
           <>
             <div
               className="file-content-resizer file-content-resizer-drawer"
-              style={{ right: panelWidth }}
-              onPointerDown={(e) => {
-                const startX = e.clientX;
-                const startWidth = panelWidth;
-                const onMouseMove = (e: MouseEvent) => {
-                  setPanelWidth(Math.max(200, startWidth - (e.clientX - startX)));
-                };
-                const onMouseUp = () => {
-                  window.removeEventListener("mousemove", onMouseMove);
-                  window.removeEventListener("mouseup", onMouseUp);
-                };
-                window.addEventListener("mousemove", onMouseMove);
-                window.addEventListener("mouseup", onMouseUp);
-              }}
+              style={{ right: panelWidth, visibility: panelPhase === "open" ? undefined : "hidden" }}
+              onPointerDown={startPanelResize}
             />
             {renderSidePanel("file-content-panel-drawer")}
           </>
@@ -548,20 +604,8 @@ export function ChatView() {
       {sidePanel && activeMainTab !== "terminal" && (
         <div
           className="file-content-resizer"
-          style={{ right: panelWidth }}
-          onPointerDown={(e) => {
-            const startX = e.clientX;
-            const startWidth = panelWidth;
-            const onMouseMove = (e: MouseEvent) => {
-              setPanelWidth(Math.max(200, startWidth - (e.clientX - startX)));
-            };
-            const onMouseUp = () => {
-              window.removeEventListener("mousemove", onMouseMove);
-              window.removeEventListener("mouseup", onMouseUp);
-            };
-            window.addEventListener("mousemove", onMouseMove);
-            window.addEventListener("mouseup", onMouseUp);
-          }}
+          style={{ right: panelWidth, visibility: panelPhase === "open" ? undefined : "hidden" }}
+          onPointerDown={startPanelResize}
         />
       )}
       {sidePanel && activeMainTab !== "terminal" && renderSidePanel()}

@@ -1,5 +1,14 @@
 import { useEffect, useState } from "react";
-import { ArrowsPointingOutIcon, Cog6ToothIcon, FolderOpenIcon, PlusIcon } from "@heroicons/react/20/solid";
+import {
+  ArrowsPointingOutIcon,
+  ChevronDoubleLeftIcon,
+  ChevronDoubleRightIcon,
+  Cog6ToothIcon,
+  FolderIcon,
+  FolderOpenIcon,
+  PlusIcon,
+  SparklesIcon,
+} from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import type { IndexProgress } from "../types.js";
 import type { AgentInfo, PluginRecord, ProjectRecord, SessionInfo } from "../types.js";
@@ -7,13 +16,20 @@ import { SessionContextMenu } from "./SessionContextMenu.js";
 import { ProjectContextMenu } from "./ProjectContextMenu.js";
 import { FileTree } from "../files/FileTree.js";
 import { RemoteFilesPanel } from "../files/RemoteFilesPanel.js";
+import { BranchIcon } from "../files/FileIcons.js";
+import { useGitChanges } from "../files/useGitChanges.js";
 import { ScriptsSection } from "../files/ScriptsSection.js";
 import { PluginsSection } from "../plugins/PluginsSection.js";
 import { MainNav } from "./MainNav.js";
 import { setActiveTab } from "../ui/mainTabsStore.js";
+import { toggleSidebarCollapsed, useSidebarCollapsed } from "../ui/sidebarStore.js";
 
 import { useProjects } from "../projects/useProjects.js";
+import { useI18n } from "../i18n/index.js";
 import { CollapsibleSection } from "../components/CollapsibleSection.js";
+/** Circumference of the indexing ring (r = 10 in a 24-unit viewBox). */
+const RING = 2 * Math.PI * 10;
+
 type Props = {
   sessions: SessionInfo[];
   activeSessionKey: string | null;
@@ -56,6 +72,8 @@ export function SessionSidebar({
   onOpenPluginPanel,
   onReloadPlugins,
 }: Props) {
+  const { t } = useI18n();
+  const collapsed = useSidebarCollapsed();
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [projectMenu, setProjectMenu] = useState<ProjectMenuState | null>(null);
   const [filesRefreshKey, setFilesRefreshKey] = useState(0);
@@ -66,6 +84,7 @@ export function SessionSidebar({
   const { projects, error: projectsError, openExisting, createNew, open, rename, reveal, openInIde, clone, remove, purge } =
     useProjects();
   const { call, onEvent } = useGateway();
+  const git = useGitChanges();
   const projectPath = projects.find(
     (p) => p.id === window.yggdrasil.projectId,
   )?.path;
@@ -79,6 +98,7 @@ export function SessionSidebar({
   );
 
   const indexProject = async () => {
+    if (isIndexing) return;
     setIsIndexing(true);
     setIndexError(null);
     setIndexProgress(null);
@@ -93,24 +113,55 @@ export function SessionSidebar({
     }
   };
 
+  const indexPercent =
+    isIndexing && indexProgress && indexProgress.total > 0
+      ? Math.min(100, (indexProgress.processed / indexProgress.total) * 100)
+      : 0;
+  const indexTip = !isIndexing
+    ? t("chat.sidebar.index")
+    : indexProgress && indexProgress.total > 0
+      ? t("chat.sidebar.indexingProgress", { processed: indexProgress.processed, total: indexProgress.total })
+      : t("chat.sidebar.indexing");
+
   return (
-    <aside className="sidebar">
-      <button type="button" className="new-chat" onClick={onNewChat}>
-        + New chat
-      </button>
+    <aside className={collapsed ? "sidebar sidebar--collapsed" : "sidebar"}>
+      <div className="sidebar-top">
+        <button
+          type="button"
+          className="new-chat"
+          onClick={onNewChat}
+          title={collapsed ? t("chat.sidebar.newChat") : undefined}
+          aria-label={t("chat.sidebar.newChat")}
+        >
+          {collapsed ? <PlusIcon className="hero-icon" /> : t("chat.sidebar.newChatBtn")}
+        </button>
+        <button
+          type="button"
+          className="icon-btn sidebar-collapse-btn"
+          onClick={toggleSidebarCollapsed}
+          title={collapsed ? t("chat.sidebar.expand") : t("chat.sidebar.collapse")}
+          aria-label={collapsed ? t("chat.sidebar.expand") : t("chat.sidebar.collapse")}
+          aria-expanded={!collapsed}
+        >
+          {collapsed ? <ChevronDoubleRightIcon className="hero-icon" /> : <ChevronDoubleLeftIcon className="hero-icon" />}
+        </button>
+      </div>
 
-      <MainNav />
+      <MainNav collapsed={collapsed} />
 
+      {/* Sections stay mounted while collapsed (hidden by CSS) so file-tree expansion, index progress etc. survive a toggle. */}
       <div className="sidebar-sections">
         {window.yggdrasil.isDefaultProject && (
           <CollapsibleSection
-            title="Projects"
+            title={t("chat.sidebar.projects")}
+            id="projects"
+            count={projects.length}
             actions={
               <div className="collapsible-actions">
                 <button
                   type="button"
                   className="icon-btn"
-                  title="Open folder…"
+                  title={t("chat.sidebar.openFolder")}
                   onClick={() => void openExisting()}
                 >
                   <FolderOpenIcon className="hero-icon" />
@@ -118,7 +169,7 @@ export function SessionSidebar({
                 <button
                   type="button"
                   className="icon-btn"
-                  title="New project…"
+                  title={t("chat.sidebar.newProject")}
                   onClick={() => void createNew()}
                 >
                   <PlusIcon className="hero-icon" />
@@ -149,14 +200,14 @@ export function SessionSidebar({
                 </li>
               ))}
               {projects.length === 0 && (
-                <li className="muted">No projects yet</li>
+                <li className="muted">{t("chat.sidebar.noProjects")}</li>
               )}
               {projectsError && <li className="error">{projectsError}</li>}
             </ul>
           </CollapsibleSection>
         )}
 
-        <CollapsibleSection title="Sessions" className="sessions-section">
+        <CollapsibleSection title={t("chat.sidebar.sessions")} id="sessions" count={sessions.length} className="sessions-section">
           <ul>
             {sessions.map((s) => (
               <li key={s.sessionKey}>
@@ -174,18 +225,20 @@ export function SessionSidebar({
               </li>
             ))}
             {sessions.length === 0 && (
-              <li className="muted">No sessions yet</li>
+              <li className="muted">{t("chat.sidebar.noSessions")}</li>
             )}
           </ul>
         </CollapsibleSection>
 
         <CollapsibleSection
-          title="Agents"
+          title={t("chat.sidebar.agents")}
+          id="agents"
+          count={agents.length}
           actions={
             <button
               type="button"
               className="icon-btn"
-              title="Manage agents…"
+              title={t("chat.sidebar.manageAgentsTip")}
               onClick={onManageAgents}
             >
               <PlusIcon className="hero-icon" />
@@ -206,92 +259,95 @@ export function SessionSidebar({
                 </button>
               </li>
             ))}
-            {agents.length === 0 && <li className="muted">No agents yet</li>}
+            {agents.length === 0 && <li className="muted">{t("chat.sidebar.noAgents")}</li>}
           </ul>
         </CollapsibleSection>
 
         <CollapsibleSection
-          title="Files"
+          title={t("chat.sidebar.files")}
+          id="files"
+          badge={git.count}
           className="files-section"
           actions={
-            <button
-              type="button"
-              className="icon-btn"
-              title="Open file explorer"
-              onClick={() => setActiveTab("files")}
-            >
-              <ArrowsPointingOutIcon className="hero-icon" />
-            </button>
+            <div className="files-header-actions">
+              <div className="files-seg" role="tablist" aria-label={t("chat.sidebar.filesView")}>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={filesTab === "local"}
+                  aria-label={t("chat.sidebar.local")}
+                  data-tip={t("chat.sidebar.local")}
+                  className={`icon-btn tip${filesTab === "local" ? " on" : ""}`}
+                  onClick={() => setFilesTab("local")}
+                >
+                  <FolderIcon className="hero-icon" />
+                </button>
+                <button
+                  type="button"
+                  role="tab"
+                  aria-selected={filesTab === "remote"}
+                  aria-label={t("chat.sidebar.remoteDiff")}
+                  data-tip={t("chat.sidebar.remoteDiff")}
+                  className={`icon-btn tip tip-r${filesTab === "remote" ? " on" : ""}`}
+                  onClick={() => setFilesTab("remote")}
+                >
+                  <BranchIcon />
+                  {git.count > 0 && <span className="files-badge">{git.count > 99 ? "99+" : git.count}</span>}
+                </button>
+              </div>
+              <button
+                type="button"
+                className="icon-btn tip tip-r"
+                data-tip={t("chat.sidebar.openExplorer")}
+                aria-label={t("chat.sidebar.openExplorer")}
+                onClick={() => setActiveTab("files")}
+              >
+                <ArrowsPointingOutIcon className="hero-icon" />
+              </button>
+            </div>
           }
         >
-          <div className="files-tab-bar">
-            <button
-              type="button"
-              className={`files-tab ${filesTab === "local" ? "active" : ""}`}
-              onClick={() => setFilesTab("local")}
-            >
-              Local
-            </button>
-            <button
-              type="button"
-              className={`files-tab ${filesTab === "remote" ? "active" : ""}`}
-              onClick={() => setFilesTab("remote")}
-            >
-              Remote
-            </button>
-          </div>
+          {isIndexing && (
+            <div className="files-progress" role="progressbar" aria-label={t("chat.sidebar.indexingAria")}>
+              <i style={{ width: `${indexPercent}%` }} />
+            </div>
+          )}
 
           {filesTab === "local" ? (
             <>
-              <div
-                style={{
-                  display: "flex",
-                  gap: 8,
-                  padding: "4px 12px",
-                  borderBottom: "1px solid var(--ygg-border)",
-                }}
-              >
-                <button
-                  type="button"
-                  className="link-btn"
-                  onClick={indexProject}
-                  disabled={isIndexing}
-                  style={{ color: isIndexing ? "green" : "inherit" }}
-                >
-                  {isIndexing
-                    ? indexProgress && indexProgress.total > 0
-                      ? `Indexing… ${indexProgress.processed}/${indexProgress.total}`
-                      : "Indexing..."
-                    : "Indx"}
-                </button>
-                <div
-                  style={{
-                    flex: 1,
-                    background: "var(--ygg-border)",
-                    borderRadius: 2,
-                    height: 4,
-                    alignSelf: "center",
-                  }}
-                >
-                  <div
-                    style={{
-                      background: isIndexing ? "green" : "transparent",
-                      height: "100%",
-                      width:
-                        isIndexing && indexProgress && indexProgress.total > 0
-                          ? `${Math.min(100, (indexProgress.processed / indexProgress.total) * 100)}%`
-                          : "0%",
-                      transition: "width 100ms linear",
-                    }}
-                  />
-                </div>
-              </div>
               {indexError && (
                 <p className="error" style={{ margin: "0 12px 4px", fontSize: 12 }}>
                   {indexError}
                 </p>
               )}
-              <FileTree key={filesRefreshKey} onOpenFile={onOpenFile} />
+              <FileTree
+                key={filesRefreshKey}
+                onOpenFile={onOpenFile}
+                gitDecor={git.decor}
+                searchable
+                toolbarEnd={
+                  <button
+                    type="button"
+                    className={`icon-btn tip tip-r files-index${isIndexing ? " busy" : ""}`}
+                    data-tip={indexTip}
+                    aria-label={t("chat.sidebar.index")}
+                    aria-busy={isIndexing}
+                    onClick={() => void indexProject()}
+                  >
+                    <svg className="files-ring" viewBox="0 0 24 24" aria-hidden="true">
+                      <circle className="trk" cx="12" cy="12" r="10" />
+                      <circle
+                        className={`val${indexProgress && indexProgress.total > 0 ? "" : " indeterminate"}`}
+                        cx="12"
+                        cy="12"
+                        r="10"
+                        style={{ strokeDashoffset: RING * (1 - indexPercent / 100) }}
+                      />
+                    </svg>
+                    <SparklesIcon className="hero-icon" />
+                  </button>
+                }
+              />
             </>
           ) : (
             <RemoteFilesPanel />
@@ -310,11 +366,18 @@ export function SessionSidebar({
       </div>
 
       <div className="sidebar-footer">
-        <button type="button" className="link-btn" onClick={onManageAgents}>
-          Manage agents
+        <button type="button" className="link-btn sidebar-footer-manage" onClick={onManageAgents}>
+          {t("chat.sidebar.manageAgents")}
         </button>
-        <button type="button" className="link-btn" onClick={onOpenSettings}>
-          <Cog6ToothIcon className="hero-icon" /> Settings
+        <button
+          type="button"
+          className="link-btn"
+          onClick={onOpenSettings}
+          title={collapsed ? t("chat.sidebar.settings") : undefined}
+          aria-label={t("chat.sidebar.settings")}
+        >
+          <Cog6ToothIcon className="hero-icon" />
+          {!collapsed && ` ${t("chat.sidebar.settings")}`}
         </button>
       </div>
 

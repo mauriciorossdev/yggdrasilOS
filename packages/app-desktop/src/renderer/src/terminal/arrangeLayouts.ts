@@ -7,7 +7,7 @@ import type { PaneNode } from "../types.js";
 type LeafPane = Extract<PaneNode, { type: "leaf" }>;
 type SplitPane = Extract<PaneNode, { type: "split" }>;
 
-export type ArrangeLayout = "row" | "2row" | "2x2" | "3x3" | "auto";
+export type ArrangeLayout = "row" | "2row" | "2x2" | "3x3" | "auto" | "fit";
 
 export function evenSizes(count: number): number[] {
   const base = Math.floor((1 / count) * 1000) / 1000;
@@ -72,6 +72,13 @@ export function buildArrangedRoot(layout: ArrangeLayout, leaves: LeafPane[]): Pa
 
     case "3x3":
       return buildColumnOfRows(chunkFixed(leaves, 3));
+
+    case "fit": {
+      // As square as the count allows (2 -> side by side, 3-4 -> 2 columns, 5-9 -> 3...),
+      // used to refill the space freed by minimized panes.
+      if (leaves.length === 1) return leaves[0]!;
+      return buildColumnOfRows(chunkFixed(leaves, Math.ceil(Math.sqrt(leaves.length))));
+    }
 
     case "auto": {
       // Spotlight: leaf #1 (by convention, the orchestrator — a loaded Team

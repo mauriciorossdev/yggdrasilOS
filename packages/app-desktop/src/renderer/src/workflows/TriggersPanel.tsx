@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { XMarkIcon } from "@heroicons/react/20/solid";
+import { useI18n, type MessageKey } from "../i18n/index.js";
 import type { Trigger } from "./types.js";
 
 type Props = {
@@ -25,18 +26,24 @@ function defaultTrigger(type: NewTriggerType): Trigger {
   }
 }
 
-function summarize(trigger: Trigger): string {
+type Translate = (key: MessageKey, vars?: Record<string, string | number>) => string;
+
+function summarize(trigger: Trigger, tr: Translate): string {
   switch (trigger.type) {
     case "manual":
-      return "Manual — run button only";
+      return tr("wf.triggers.summary.manual");
     case "schedule":
-      return `Schedule — "${trigger.cron}"${trigger.timezone ? ` (${trigger.timezone})` : ""}`;
+      return trigger.timezone
+        ? tr("wf.triggers.summary.scheduleTz", { cron: trigger.cron, timezone: trigger.timezone })
+        : tr("wf.triggers.summary.schedule", { cron: trigger.cron });
     case "event":
-      return `Event — ${trigger.event}${trigger.filter ? " (filtered)" : ""}`;
+      return tr(trigger.filter ? "wf.triggers.summary.eventFiltered" : "wf.triggers.summary.event", { event: trigger.event });
     case "webhook":
-      return `Webhook — ${trigger.method} /hooks/workflows/<id>, secret env var "${trigger.secretRef}"`;
+      return tr("wf.triggers.summary.webhook", { method: trigger.method, secretRef: trigger.secretRef });
     case "mobile":
-      return `Mobile${trigger.deviceId ? ` — device ${trigger.deviceId}` : " — any paired device"}`;
+      return trigger.deviceId
+        ? tr("wf.triggers.summary.mobileDevice", { deviceId: trigger.deviceId })
+        : tr("wf.triggers.summary.mobileAny");
   }
 }
 
@@ -47,6 +54,7 @@ function summarize(trigger: Trigger): string {
  * "Run" button regardless of what's configured here.
  */
 export function TriggersPanel({ triggers, onChange, allowRemoteTrigger }: Props) {
+  const { t: tr } = useI18n();
   const [newType, setNewType] = useState<NewTriggerType>("schedule");
 
   const update = (id: string, patch: Partial<Trigger>) =>
@@ -56,23 +64,23 @@ export function TriggersPanel({ triggers, onChange, allowRemoteTrigger }: Props)
 
   return (
     <div className="agent-flow-sidebar workflow-drawer">
-      <h3>Triggers</h3>
+      <h3>{tr("wf.triggers.title")}</h3>
       {!allowRemoteTrigger && (
-        <p className="muted">Webhook and mobile triggers need "Allow remote trigger" on in Settings below to actually fire.</p>
+        <p className="muted">{tr("wf.triggers.remoteHint")}</p>
       )}
 
       <ul className="flow-connections-list">
         {triggers.map((trigger) => (
           <li key={trigger.id} className="workflow-trigger-row">
             <div>
-              <div>{summarize(trigger)}</div>
+              <div>{summarize(trigger, tr)}</div>
               {trigger.type === "schedule" && (
                 <div className="workflow-condition-row">
-                  <input value={trigger.cron} onChange={(e) => update(trigger.id, { cron: e.target.value })} placeholder="sec min hour dom month dow" />
+                  <input value={trigger.cron} onChange={(e) => update(trigger.id, { cron: e.target.value })} placeholder={tr("wf.triggers.cronPlaceholder")} />
                   <input
                     value={trigger.timezone ?? ""}
                     onChange={(e) => update(trigger.id, { timezone: e.target.value || undefined })}
-                    placeholder="timezone (optional)"
+                    placeholder={tr("wf.triggers.timezonePlaceholder")}
                   />
                 </div>
               )}
@@ -85,7 +93,7 @@ export function TriggersPanel({ triggers, onChange, allowRemoteTrigger }: Props)
               )}
               {trigger.type === "webhook" && (
                 <div className="workflow-condition-row">
-                  <input value={trigger.secretRef} onChange={(e) => update(trigger.id, { secretRef: e.target.value })} placeholder="env var name" />
+                  <input value={trigger.secretRef} onChange={(e) => update(trigger.id, { secretRef: e.target.value })} placeholder={tr("wf.triggers.envVarPlaceholder")} />
                   <select value={trigger.method} onChange={(e) => update(trigger.id, { method: e.target.value as "POST" | "GET" })}>
                     <option value="POST">POST</option>
                     <option value="GET">GET</option>
@@ -96,28 +104,28 @@ export function TriggersPanel({ triggers, onChange, allowRemoteTrigger }: Props)
                 <input
                   value={trigger.deviceId ?? ""}
                   onChange={(e) => update(trigger.id, { deviceId: e.target.value || undefined })}
-                  placeholder="deviceId (optional — blank = any paired device)"
+                  placeholder={tr("wf.triggers.deviceIdPlaceholder")}
                 />
               )}
             </div>
-            <button type="button" className="icon-btn" onClick={() => remove(trigger.id)} title="Remove trigger">
+            <button type="button" className="icon-btn" onClick={() => remove(trigger.id)} title={tr("wf.triggers.remove")}>
               <XMarkIcon className="hero-icon" />
             </button>
           </li>
         ))}
-        {triggers.length === 0 && <li className="muted">No triggers — this workflow only runs from the Run button.</li>}
+        {triggers.length === 0 && <li className="muted">{tr("wf.triggers.none")}</li>}
       </ul>
 
       <div className="flow-connection-form">
         <select value={newType} onChange={(e) => setNewType(e.target.value as NewTriggerType)}>
-          <option value="schedule">Schedule</option>
-          <option value="event">Event</option>
-          <option value="webhook">Webhook</option>
-          <option value="mobile">Mobile</option>
-          <option value="manual">Manual</option>
+          <option value="schedule">{tr("wf.triggers.type.schedule")}</option>
+          <option value="event">{tr("wf.triggers.type.event")}</option>
+          <option value="webhook">{tr("wf.triggers.type.webhook")}</option>
+          <option value="mobile">{tr("wf.triggers.type.mobile")}</option>
+          <option value="manual">{tr("wf.triggers.type.manual")}</option>
         </select>
         <button type="button" onClick={add}>
-          + Add trigger
+          {tr("wf.triggers.add")}
         </button>
       </div>
     </div>

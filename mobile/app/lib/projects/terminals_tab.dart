@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_strings.dart';
 import '../services/yggdrasil_client.dart';
 import '../theme/ygg_theme.dart';
+import '../ui/ui.dart';
 import 'terminal_view_screen.dart';
 
 class _Pane {
@@ -84,122 +85,83 @@ class _TerminalsTabState extends State<TerminalsTab> {
     }
   }
 
+  Widget _paneCard(_Pane pane) {
+    final title = terminalDisplayTitle(pane.title);
+    return YggCard(
+      color: YggColors.surface,
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => TerminalViewScreen(
+            client: widget.client!,
+            paneId: pane.id,
+            title: title,
+            harnessCommand: pane.command,
+          ),
+        ),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Expanded(
+                child: Text(title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: YggColors.text)),
+              ),
+              const SizedBox(width: 10),
+              pane.working
+                  ? YggChip(AppStrings.t('projects.statusWorking'), tone: YggChipTone.working, dot: true, pulse: true)
+                  : YggChip(AppStrings.t('projects.statusRunning'), tone: YggChipTone.ready, dot: true),
+            ],
+          ),
+          if (pane.cwd.isNotEmpty) ...[
+            const SizedBox(height: 8),
+            Text(compactPath(pane.cwd), maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: YggFonts.mono, fontSize: 11, color: YggColors.textMuted)),
+          ],
+          if (pane.command != null && pane.command!.isNotEmpty) ...[
+            const SizedBox(height: 10),
+            YggChip(pane.command!),
+          ],
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     if (widget.client == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            AppStrings.t('projects.notOpenOnComputer'),
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: YggColors.textFaint),
-          ),
-        ),
-      );
+      return YggEmptyState(icon: Icons.terminal, message: AppStrings.t('projects.notOpenOnComputer'));
     }
-    if (_loading)
-      return const Center(
-        child: CircularProgressIndicator(color: YggColors.accent),
-      );
+    if (_loading) {
+      return Center(child: CircularProgressIndicator(color: YggColors.accent));
+    }
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(
-          '${AppStrings.t('common.errorPrefix')}: $_error',
-          style: const TextStyle(color: YggColors.textMuted),
-        ),
+      return YggEmptyState(
+        icon: Icons.error_outline,
+        message: '${AppStrings.t('common.errorPrefix')}: $_error',
+        action: OutlinedButton(onPressed: _load, child: Text(AppStrings.t('common.retry'))),
       );
     }
     if (_panes.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            AppStrings.t('projects.noTerminals'),
-            style: const TextStyle(color: YggColors.textFaint),
-          ),
-        ),
-      );
+      return YggEmptyState(icon: Icons.terminal, message: AppStrings.t('projects.noTerminals'), hint: AppStrings.t('projects.terminalsHint'));
     }
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
-        itemCount: _panes.length,
-        itemBuilder: (_, i) {
-          final pane = _panes[i];
-          final statusLabel = pane.working
-              ? AppStrings.t('projects.statusWorking')
-              : AppStrings.t('projects.statusRunning');
-          return GestureDetector(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => TerminalViewScreen(
-                  client: widget.client!,
-                  paneId: pane.id,
-                  title: pane.title,
-                  harnessCommand: pane.command,
-                ),
-              ),
+      color: YggColors.accent,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+        children: [
+          for (final pane in _panes) ...[_paneCard(pane), const SizedBox(height: 10)],
+          const SizedBox(height: 14),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              AppStrings.t('projects.terminalsHint'),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12.5, height: 1.5, color: YggColors.textFainter),
             ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          pane.title,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 14.5,
-                            color: YggColors.text,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          pane.cwd,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            fontSize: 12.5,
-                            color: YggColors.textFaint,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 8,
-                      vertical: 4,
-                    ),
-                    decoration: BoxDecoration(
-                      color: pane.working
-                          ? YggColors.accent
-                          : YggColors.cardFillHigh,
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: Text(
-                      statusLabel,
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: pane.working
-                            ? YggColors.surface
-                            : YggColors.textFaint,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }

@@ -1,5 +1,6 @@
 import { useCallback, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
+import { t } from "../i18n/index.js";
 
 export type SpeakPhase = "idle" | "loading" | "speaking";
 export type SpeakMode = "summary" | "full";
@@ -32,7 +33,7 @@ export function useSpeakLastResponse(paneId: string) {
         voiceId: voiceId || undefined,
         mode,
       });
-      if (!result.audioBase64) throw new Error("terminals.speak devolvió audio vacío");
+      if (!result.audioBase64) throw new Error(t("term.speak.emptyAudio"));
       setPhase("speaking");
       const audio = new Audio(`data:${result.mimeType};base64,${result.audioBase64}`);
       // Deliberately NOT swallowed — a silently-resolved playback failure
@@ -42,7 +43,7 @@ export function useSpeakLastResponse(paneId: string) {
       await new Promise<void>((resolve, reject) => {
         audio.onended = () => resolve();
         audio.onerror = () =>
-          reject(new Error(`no se pudo reproducir el audio (${audio.error?.message ?? "error desconocido"})`));
+          reject(new Error(t("term.speak.playbackFailed", { detail: audio.error?.message ?? t("term.speak.unknownError") })));
         // Only the rejection path matters here — a resolved play() just
         // means playback STARTED, not finished; onended/onerror above are
         // what actually settle this promise.

@@ -148,34 +148,34 @@ class _GoogleConnectorScreenState extends State<GoogleConnectorScreen> {
                   width: 40,
                   height: 40,
                   decoration: BoxDecoration(color: YggColors.cardFillHigh, borderRadius: BorderRadius.circular(12)),
-                  child: const Icon(Icons.calendar_month_outlined, color: YggColors.text),
+                  child: Icon(Icons.calendar_month_outlined, color: YggColors.text),
                 ),
                 const SizedBox(width: 12),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      const Text('Google', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: YggColors.text)),
-                      Text(_statusLabel(), style: const TextStyle(fontSize: 12, color: YggColors.textMuted)),
+                      Text('Google', style: TextStyle(fontSize: 16, fontWeight: FontWeight.w500, color: YggColors.text)),
+                      Text(_statusLabel(), style: TextStyle(fontSize: 12, color: YggColors.textMuted)),
                     ],
                   ),
                 ),
                 if (_status == _Status.loading || _status == _Status.connecting)
-                  const SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: YggColors.accent))
+                  SizedBox(width: 18, height: 18, child: CircularProgressIndicator(strokeWidth: 2, color: YggColors.accent))
                 else if (_status == _Status.connected)
-                  const Icon(Icons.check_circle, color: YggColors.accent),
+                  Icon(Icons.check_circle, color: YggColors.accent),
               ],
             ),
             const SizedBox(height: 16),
             Text(
               AppStrings.t('connectors.googleDescription'),
-              style: const TextStyle(fontWeight: FontWeight.w300, fontSize: 13, color: YggColors.textMuted, height: 1.4),
+              style: TextStyle(fontWeight: FontWeight.w300, fontSize: 13, color: YggColors.textMuted, height: 1.4),
             ),
             if (_status == _Status.error) ...[
               const SizedBox(height: 10),
               Text(
                 _errorDetail ?? AppStrings.t('connectors.errorGeneric'),
-                style: const TextStyle(fontSize: 12, color: YggColors.errorRed),
+                style: TextStyle(fontSize: 12, color: YggColors.errorRed),
               ),
             ],
             const SizedBox(height: 22),

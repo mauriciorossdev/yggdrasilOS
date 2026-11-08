@@ -10,6 +10,30 @@ import '../services/yggdrasil_client.dart';
 const _chunkBytes = 384 * 1024;
 const _maxBytes = 100 * 1024 * 1024;
 
+/// Streams [content] to the Pi as a file named [name] (files.upload, saved under
+/// ~/Inbox/chat) and returns the path it was saved at.
+Future<String> uploadTextToPi(YggdrasilClient client, String name, String content) async {
+  final bytes = utf8.encode(content);
+  final uploadId = '${DateTime.now().millisecondsSinceEpoch}${Random().nextInt(1 << 32).toRadixString(36)}';
+  var index = 0;
+  for (var offset = 0;; offset += _chunkBytes) {
+    final end = min(offset + _chunkBytes, bytes.length);
+    final last = end >= bytes.length;
+    final res = await client.call('files.upload', {
+      'uploadId': uploadId,
+      'name': name,
+      'index': index++,
+      'data': base64Encode(bytes.sublist(offset, end)),
+      'final': last,
+    }, timeout: const Duration(seconds: 60));
+    if (last) {
+      final path = res is Map ? res['path']?.toString() : null;
+      if (path == null) throw Exception('La Pi no devolvió la ruta del archivo');
+      return path;
+    }
+  }
+}
+
 /// Picks a document on the phone and streams it to the Pi (files.upload,
 /// saved under ~/Inbox/chat). Returns `@path ` — Claude Code's own file
 /// reference syntax — to insert into the prompt, or null if the user

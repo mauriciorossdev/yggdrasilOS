@@ -1,6 +1,7 @@
 import { contrastRatio, isHexColor, readableOn } from "./color.js";
 import { findPreset } from "./presets.js";
 import { CORE_KEYS, type ThemeCore, type ThemeSettings } from "./types.js";
+import type { MessageKey } from "../../i18n/index.js";
 
 /** The preset's colors with the user's valid overrides applied on top. */
 export function resolveCore(settings: ThemeSettings): ThemeCore {
@@ -29,10 +30,10 @@ export function themeToCssVars(settings: ThemeSettings): Record<string, string> 
 }
 
 /** Human-readable readability problems; shown in Settings, never blocking. */
-export function themeWarnings(core: ThemeCore): string[] {
-  const warnings: string[] = [];
-  if (contrastRatio(core.text, core.bg) < 4.5) warnings.push("El texto casi no se distingue del fondo (contraste menor a 4.5).");
-  if (contrastRatio(core.text, core.surface) < 4.5) warnings.push("El texto casi no se distingue de la superficie (contraste menor a 4.5).");
-  if (contrastRatio(core.accent, core.bg) < 3) warnings.push("El acento casi no se distingue del fondo (contraste menor a 3).");
+export function themeWarnings(core: ThemeCore): MessageKey[] {
+  const warnings: MessageKey[] = [];
+  if (contrastRatio(core.text, core.bg) < 4.5) warnings.push("theme.warn.textBg");
+  if (contrastRatio(core.text, core.surface) < 4.5) warnings.push("theme.warn.textSurface");
+  if (contrastRatio(core.accent, core.bg) < 3) warnings.push("theme.warn.accentBg");
   return warnings;
 }

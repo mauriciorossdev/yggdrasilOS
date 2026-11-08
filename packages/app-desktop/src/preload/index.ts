@@ -49,6 +49,8 @@ import type {
   WhisperBackend,
   WhisperModelName,
   WhisperSettings,
+  HubTestResult,
+  HubUrlCheck,
   PhoneLinkInfo,
 } from "../renderer/src/types.js";
 
@@ -97,6 +99,8 @@ const api = {
   gatewayLanUrl: readArg("--ygg-gateway-lan-url"),
   /** Set only for project windows — TitleBar.tsx's display label. */
   projectName: readArg("--ygg-project-name"),
+  /** Set only for project windows — absolute folder, for the file URIs language servers need. */
+  projectPath: readArg("--ygg-project-path"),
   /** Set only for project windows — TitleBar.tsx's border color, empty string means unset. */
   projectColor: readArg("--ygg-project-color") || null,
   /** True only for the "Default Workspace" window — the hub with a Projects section. Other project windows are scoped to just that project. */
@@ -114,6 +118,38 @@ const api = {
       const listener = (_event: IpcRendererEvent, payload: ThemeSettings) => handler(payload);
       ipcRenderer.on("theme:changed", listener);
       return () => ipcRenderer.removeListener("theme:changed", listener);
+    },
+  },
+  lsp: {
+    start: (language: string): Promise<unknown> => ipcRenderer.invoke("lsp:start", language),
+    send: (sessionId: string, message: unknown): void => ipcRenderer.send("lsp:send", sessionId, message),
+    status: (): Promise<unknown> => ipcRenderer.invoke("lsp:status"),
+    setTrusted: (trusted: boolean): Promise<void> => ipcRenderer.invoke("lsp:setTrusted", trusted),
+    readExternal: (uri: string): Promise<string | null> => ipcRenderer.invoke("lsp:readExternal", uri),
+    onMessage: (handler: (payload: unknown) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, payload: unknown) => handler(payload);
+      ipcRenderer.on("lsp:message", listener);
+      return () => ipcRenderer.removeListener("lsp:message", listener);
+    },
+    onClosed: (handler: (payload: unknown) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, payload: unknown) => handler(payload);
+      ipcRenderer.on("lsp:closed", listener);
+      return () => ipcRenderer.removeListener("lsp:closed", listener);
+    },
+    onTrustChanged: (handler: (payload: unknown) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, payload: unknown) => handler(payload);
+      ipcRenderer.on("lsp:trustChanged", listener);
+      return () => ipcRenderer.removeListener("lsp:trustChanged", listener);
+    },
+  },
+  editorSettings: {
+    get: (): Promise<unknown> => ipcRenderer.invoke("editorSettings:get"),
+    set: (settings: unknown): Promise<unknown> => ipcRenderer.invoke("editorSettings:set", settings),
+    /** Fires in every window when any window changes them. */
+    onChange: (handler: (settings: unknown) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, payload: unknown) => handler(payload);
+      ipcRenderer.on("editorSettings:changed", listener);
+      return () => ipcRenderer.removeListener("editorSettings:changed", listener);
     },
   },
   workspace: {
@@ -194,14 +230,24 @@ const api = {
     dispose: (id: string): Promise<void> => ipcRenderer.invoke("terminal:dispose", id),
     read: (id: string, maxChars?: number): Promise<string | undefined> =>
       ipcRenderer.invoke("terminal:read", id, maxChars),
+    forPid: (pid: number): Promise<string | undefined> => ipcRenderer.invoke("terminal:forPid", pid),
+    snapshot: (id: string): Promise<{ data: string; cols: number; rows: number; seq: number } | undefined> =>
+      ipcRenderer.invoke("terminal:snapshot", id),
     getLayout: (): Promise<TerminalLayout> => ipcRenderer.invoke("terminal:getLayout", readArg("--ygg-project-id")),
     saveLayout: (layout: TerminalLayout): Promise<void> =>
       ipcRenderer.invoke("terminal:saveLayout", readArg("--ygg-project-id"), layout),
-    onData: (handler: (id: string, chunk: string) => void): (() => void) => {
-      const listener = (_event: IpcRendererEvent, payload: { id: string; chunk: string }) =>
-        handler(payload.id, payload.chunk);
+    onData: (handler: (id: string, chunk: string, seq?: number) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, payload: { id: string; chunk: string; seq?: number }) =>
+        handler(payload.id, payload.chunk, payload.seq);
       ipcRenderer.on("terminal:data", listener);
       return () => ipcRenderer.removeListener("terminal:data", listener);
+    },
+    /** The pane's own view resized its pty (a second view follows; it must not resize it). */
+    onResized: (handler: (id: string, cols: number, rows: number) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, payload: { id: string; cols: number; rows: number }) =>
+        handler(payload.id, payload.cols, payload.rows);
+      ipcRenderer.on("terminal:resized", listener);
+      return () => ipcRenderer.removeListener("terminal:resized", listener);
     },
     onExit: (handler: (id: string, exitCode: number | null) => void): (() => void) => {
       const listener = (_event: IpcRendererEvent, payload: { id: string; exitCode: number | null }) =>
@@ -225,11 +271,20 @@ const api = {
         command?: string;
         args?: string[];
         sourcePaneId?: string;
+        initialPrompt?: string;
       }) => void,
     ): (() => void) => {
       const listener = (
         _event: IpcRendererEvent,
-        payload: { id: string; title: string; cwd: string; command?: string; args?: string[]; sourcePaneId?: string },
+        payload: {
+          id: string;
+          title: string;
+          cwd: string;
+          command?: string;
+          args?: string[];
+          sourcePaneId?: string;
+          initialPrompt?: string;
+        },
       ) => handler(payload);
       ipcRenderer.on("pane:created", listener);
       return () => ipcRenderer.removeListener("pane:created", listener);
@@ -343,9 +398,27 @@ const api = {
       ipcRenderer.invoke("browserTab:setBounds", readArg("--ygg-project-id"), bounds),
     show: (): Promise<void> => ipcRenderer.invoke("browserTab:show", readArg("--ygg-project-id")),
     hide: (): Promise<void> => ipcRenderer.invoke("browserTab:hide", readArg("--ygg-project-id")),
+    snapshot: (): Promise<{ base64: string; mimeType: string } | null> =>
+      ipcRenderer.invoke("browserTab:snapshot", readArg("--ygg-project-id")),
     getUrl: (): Promise<string> => ipcRenderer.invoke("browserTab:getUrl", readArg("--ygg-project-id")),
     startPick: (timeoutMs?: number): Promise<PickedElement | null> =>
       ipcRenderer.invoke("browserTab:startPick", readArg("--ygg-project-id"), timeoutMs),
+    comments: {
+      /** Toolbar 💬 toggle: arm/disarm "click an element to comment" on the active page. */
+      setMode: (on: boolean): Promise<void> => ipcRenderer.invoke("browserTab:comments:setMode", readArg("--ygg-project-id"), on),
+      /** The page left comment mode itself (Escape). */
+      onMode: (handler: (on: boolean) => void): (() => void) => {
+        const listener = (_event: IpcRendererEvent, on: boolean) => handler(on);
+        ipcRenderer.on("browserTab:commentMode", listener);
+        return () => ipcRenderer.removeListener("browserTab:commentMode", listener);
+      },
+      /** Pane titles as the Terminal tab knows them: main only sees ids for panes the UI (not an agent) created. */
+      setPaneTitles: (titles: Record<string, string>): Promise<void> =>
+        ipcRenderer.invoke("browserTab:comments:setPaneTitles", readArg("--ygg-project-id"), titles),
+      /** CLIs launchable as a new agent from the in-page send popover. */
+      setProviders: (providers: Array<{ id: string; label: string; command: string }>): Promise<void> =>
+        ipcRenderer.invoke("browserTab:comments:setProviders", readArg("--ygg-project-id"), providers),
+    },
     /** browser_open (an agent) navigated and wants the user looking at it too — see paneControlServer.ts. */
     onRequestShow: (handler: () => void): (() => void) => {
       const listener = () => handler();
@@ -449,10 +522,22 @@ const api = {
         .join("/")}`,
     openExternal: (relativePath: string): Promise<void> =>
       ipcRenderer.invoke("files:openExternal", readArg("--ygg-project-id"), relativePath),
+    /** Absolute path of a project-relative one (confined to the project) — what gets written into a terminal. */
+    absolutePath: (relativePath: string): Promise<string> =>
+      ipcRenderer.invoke("files:absolutePath", readArg("--ygg-project-id"), relativePath),
+    /** Stores an image in `assets/` next to the note and returns its address relative to the note. */
+    saveAsset: (noteRelativePath: string, fileName: string, data: ArrayBuffer): Promise<{ src: string }> =>
+      ipcRenderer.invoke("files:saveAsset", readArg("--ygg-project-id"), noteRelativePath, fileName, new Uint8Array(data)),
+    /** Native picker for the chat's attach button; paths outside the project come back in `rejected`. */
+    pickToAttach: (): Promise<{ attachments: Array<{ relativePath: string; type: "file" | "directory" }>; rejected: string[] }> =>
+      ipcRenderer.invoke("files:pickToAttach", readArg("--ygg-project-id")),
   },
   clipboard: {
     /** Reads file/folder paths off the OS clipboard after a Finder Copy (see main/clipboardFiles.ts) — macOS only for now. */
     readFilePaths: (): Promise<string[]> => ipcRenderer.invoke("clipboard:readFilePaths"),
+    /** Copies project files/folders to the OS clipboard the way a file manager's Copy does. */
+    writeFilePaths: (relativePaths: string[]): Promise<{ ok: boolean; error?: string }> =>
+      ipcRenderer.invoke("clipboard:writeFilePaths", readArg("--ygg-project-id"), relativePaths),
   },
     dialog: {
       openDirectory: (): Promise<string | null> => ipcRenderer.invoke("dialog:openDirectory"),
@@ -581,6 +666,9 @@ const api = {
       ipcRenderer.invoke("phoneLink:save", input),
     publishNow: (): Promise<PhoneLinkInfo> => ipcRenderer.invoke("phoneLink:publishNow"),
     qr: (): Promise<string> => ipcRenderer.invoke("phoneLink:qr"),
+    checkUrl: (hubUrl: string): Promise<HubUrlCheck> => ipcRenderer.invoke("phoneLink:checkUrl", hubUrl),
+    generateKey: (): Promise<string> => ipcRenderer.invoke("phoneLink:generateKey"),
+    test: (input: { hubUrl: string; hubKey: string }): Promise<HubTestResult> => ipcRenderer.invoke("phoneLink:test", input),
   },
 };
 

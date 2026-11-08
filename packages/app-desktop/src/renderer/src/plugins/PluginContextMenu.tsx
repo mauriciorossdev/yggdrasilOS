@@ -1,6 +1,7 @@
 import { useRef } from "react";
 import type { PluginRecord } from "../types.js";
 import { useDismiss } from "../ui/useDismiss.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = {
   plugin: PluginRecord;
@@ -16,6 +17,7 @@ type Props = {
 
 /** Same outside-click/Escape-to-close shell as SessionContextMenu.tsx, no rename/delete — a complemento's identity lives in its own manifest.json, not something this menu edits. */
 export function PluginContextMenu({ plugin, x, y, onClose, onOpenTab, onOpenPanel, onReload, onReveal, onShare }: Props) {
+  const { t } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
 
   useDismiss(ref, onClose);
@@ -33,7 +35,7 @@ export function PluginContextMenu({ plugin, x, y, onClose, onOpenTab, onOpenPane
           onClose();
         }}
       >
-        Abrir como pestaña
+        {t("plugins.menu.openTab")}
       </button>
       <button
         type="button"
@@ -44,7 +46,7 @@ export function PluginContextMenu({ plugin, x, y, onClose, onOpenTab, onOpenPane
           onClose();
         }}
       >
-        Abrir como panel
+        {t("plugins.menu.openPanel")}
       </button>
       <button
         type="button"
@@ -54,7 +56,7 @@ export function PluginContextMenu({ plugin, x, y, onClose, onOpenTab, onOpenPane
           onClose();
         }}
       >
-        Recargar
+        {t("plugins.menu.reload")}
       </button>
       <button
         type="button"
@@ -64,7 +66,7 @@ export function PluginContextMenu({ plugin, x, y, onClose, onOpenTab, onOpenPane
           onClose();
         }}
       >
-        Mostrar carpeta
+        {t("plugins.menu.reveal")}
       </button>
       {onShare && (
         <button
@@ -75,7 +77,7 @@ export function PluginContextMenu({ plugin, x, y, onClose, onOpenTab, onOpenPane
             onClose();
           }}
         >
-          Compartir tablero…
+          {t("plugins.menu.shareBoard")}
         </button>
       )}
     </div>

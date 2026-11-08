@@ -1,5 +1,6 @@
 import { useRef } from "react";
 import { useDismiss } from "../ui/useDismiss.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = {
   x: number;
@@ -23,6 +24,7 @@ export function DocumentsTabContextMenu({
   onCloseAll,
   hasOthersToRight,
 }: Props) {
+  const { t } = useI18n();
   const ref = useRef<HTMLDivElement>(null);
 
   useDismiss(ref, onClose);
@@ -35,13 +37,13 @@ export function DocumentsTabContextMenu({
   return (
     <div className="context-menu" ref={ref} style={{ left: x, top: y }}>
       <button type="button" className="context-menu-item" onClick={run(onCloseTab)}>
-        Close
+        {t("doc.close")}
       </button>
       <button type="button" className="context-menu-item" disabled={!hasOthersToRight} onClick={run(onCloseOthersToRight)}>
-        Close tabs to the right
+        {t("docs.tabMenu.closeRight")}
       </button>
       <button type="button" className="context-menu-item" onClick={run(onCloseAll)}>
-        Close all
+        {t("docs.tabMenu.closeAll")}
       </button>
     </div>
   );

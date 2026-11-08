@@ -13,10 +13,15 @@ import '../services/locale_store.dart';
 import '../services/user_name_store.dart';
 import '../services/yggdrasil_client.dart';
 import '../theme/ygg_theme.dart';
+import '../ui/ui.dart';
 import '../gateway/gateway_settings_screen.dart';
 import '../pi/pi_settings_screen.dart';
 import '../local_projects/local_companion_settings_screen.dart';
+import '../standalone/persona.dart';
+import '../voice/tts_settings.dart';
 import 'capabilities_screen.dart';
+import 'personas_screen.dart';
+import 'voice_settings_screen.dart';
 import 'config_page.dart';
 
 /// Configuración — settings-consolidation-proposal.md. Replaces the old
@@ -44,6 +49,8 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   ConnectionProfile? _activeProfile;
   String? _userName;
+  String _personaName = '';
+  String _voiceLabel = '';
   int _enabledCapabilitiesCount = 0;
   bool _loading = true;
 
@@ -58,13 +65,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final name = await UserNameStore.get();
     final names = phoneDeviceToolSpecs.map((s) => s['name'] as String).toList();
     final states = await CapabilitiesStore.allStates(names);
+    final persona = await PersonaStore.resolve(null);
+    final tts = await TtsSettingsStore.load();
     if (!mounted) return;
     setState(() {
+      _voiceLabel = _voiceEngineLabel(tts);
       _activeProfile = profile;
       _userName = name;
+      _personaName = persona.name;
       _enabledCapabilitiesCount = states.values.where((v) => v).length;
       _loading = false;
     });
+  }
+
+  String _voiceEngineLabel(TtsSettings tts) =>
+      tts.effectiveEngine == TtsEngine.replicate ? 'Replicate' : AppStrings.t('voice.settings.system');
+
+  Future<void> _loadVoiceLabel() async {
+    final tts = await TtsSettingsStore.load();
+    if (mounted) setState(() => _voiceLabel = _voiceEngineLabel(tts));
+  }
+
+  Future<void> _loadPersonaName() async {
+    final persona = await PersonaStore.resolve(null);
+    if (mounted) setState(() => _personaName = persona.name);
   }
 
   Future<void> _openCapabilities() async {
@@ -113,7 +137,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () => Navigator.pop(context, 'es'),
             child: Row(
               children: [
-                if (AppStrings.current == 'es') const Icon(Icons.check, size: 18, color: YggColors.accent) else const SizedBox(width: 18),
+                if (AppStrings.current == 'es') Icon(Icons.check, size: 18, color: YggColors.accent) else const SizedBox(width: 18),
                 const SizedBox(width: 10),
                 const Text('Español'),
               ],
@@ -123,7 +147,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             onPressed: () => Navigator.pop(context, 'en'),
             child: Row(
               children: [
-                if (AppStrings.current == 'en') const Icon(Icons.check, size: 18, color: YggColors.accent) else const SizedBox(width: 18),
+                if (AppStrings.current == 'en') Icon(Icons.check, size: 18, color: YggColors.accent) else const SizedBox(width: 18),
                 const SizedBox(width: 10),
                 const Text('English'),
               ],
@@ -166,139 +190,161 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    if (_loading) return const Scaffold(body: Center(child: CircularProgressIndicator(color: YggColors.accent)));
+    if (_loading) return Scaffold(body: Center(child: CircularProgressIndicator(color: YggColors.accent)));
+    final profile = _activeProfile;
     return Scaffold(
-      appBar: AppBar(title: Text(AppStrings.t('settings.title'))),
+      appBar: AppBar(
+        leadingWidth: 68,
+        leading: Padding(
+          padding: const EdgeInsets.only(left: 16),
+          child: Align(
+            alignment: Alignment.centerLeft,
+            child: YggIconButton(icon: Icons.arrow_back, tooltip: MaterialLocalizations.of(context).backButtonTooltip, onTap: () => Navigator.maybePop(context)),
+          ),
+        ),
+        title: Text(AppStrings.t('settings.title')),
+      ),
       body: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
-          _sectionHeader(AppStrings.t('settings.personalization')),
-          ListTile(
-            title: Text(AppStrings.t('settings.yourName')),
-            subtitle: Text((_userName?.isNotEmpty ?? false) ? _userName! : AppStrings.t('settings.addYourName')),
-            onTap: _editUserName,
-          ),
-          ListTile(
-            title: Text(AppStrings.t('settings.language')),
-            subtitle: Text(AppStrings.current == 'en' ? 'English' : 'Español'),
-            onTap: _pickLanguage,
-          ),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-            child: Opacity(
-              opacity: 0.5,
-              child: Container(
-                padding: const EdgeInsets.all(14),
-                decoration: BoxDecoration(border: Border.all(color: YggColors.hairlineStrong), borderRadius: BorderRadius.circular(14)),
-                child: Row(
-                  children: [
-                    const Icon(Icons.lock_outline, size: 18),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Text(AppStrings.t('settings.personalityTitle'), style: const TextStyle(fontWeight: FontWeight.w500)),
-                          const SizedBox(height: 2),
-                          Text(AppStrings.t('settings.personalityBody'), style: const TextStyle(fontSize: 12)),
-                        ],
-                      ),
-                    ),
-                  ],
-                ),
+          YggSectionLabel(AppStrings.t('settings.personalization')),
+          YggListGroup(
+            children: [
+              YggListRow(
+                title: AppStrings.t('settings.yourName'),
+                value: (_userName?.isNotEmpty ?? false) ? _userName! : AppStrings.t('settings.addYourName'),
+                onTap: _editUserName,
               ),
-            ),
+              YggListRow(
+                title: AppStrings.t('settings.language'),
+                value: AppStrings.current == 'en' ? 'English' : 'Español',
+                onTap: _pickLanguage,
+              ),
+              YggListRow(
+                title: AppStrings.t('settings.theme'),
+                value: YggThemeController.instance.palette.name,
+                onTap: () async {
+                  await showYggThemePicker(context);
+                  if (mounted) setState(() {});
+                },
+              ),
+              YggListRow(
+                title: AppStrings.t('settings.personalityTitle'),
+                value: _personaName,
+                onTap: () async {
+                  await Navigator.push(context, MaterialPageRoute(builder: (_) => const PersonasScreen()));
+                  await _loadPersonaName();
+                },
+              ),
+              YggListRow(
+                title: AppStrings.t('voice.settings.title'),
+                value: _voiceLabel,
+                onTap: () async {
+                  await Navigator.push(context, MaterialPageRoute(builder: (_) => const VoiceSettingsScreen()));
+                  await _loadVoiceLabel();
+                },
+              ),
+            ],
           ),
-          const Divider(height: 1),
-          _sectionHeader(AppStrings.t('settings.activeConnection')),
-          if (_activeProfile != null)
-            ListTile(
-              leading: Icon(_activeProfile!.type == ConnectionProfileType.gateway ? Icons.dns_outlined : Icons.cloud_outlined),
-              title: Text(_activeProfile!.name.isNotEmpty ? _activeProfile!.name : AppStrings.t('profiles.unnamed')),
-              subtitle: Text(_activeProfile!.subtitle),
-              onTap: _openActiveConnection,
-            )
-          else
-            ListTile(
-              leading: const Icon(Icons.add_link),
-              title: Text(AppStrings.t('settings.connectToGateway')),
-              onTap: _openActiveConnection,
-            ),
+          const SizedBox(height: 22),
+          YggSectionLabel(AppStrings.t('settings.activeConnection')),
+          YggListGroup(
+            children: [
+              if (profile != null)
+                YggListRow(
+                  leading: Icon(profile.type == ConnectionProfileType.gateway ? Icons.dns_outlined : Icons.cloud_outlined),
+                  title: profile.name.isNotEmpty ? profile.name : AppStrings.t('profiles.unnamed'),
+                  subtitle: profile.subtitle,
+                  onTap: _openActiveConnection,
+                )
+              else
+                YggListRow(
+                  leading: const Icon(Icons.add_link),
+                  title: AppStrings.t('settings.connectToGateway'),
+                  accent: true,
+                  onTap: _openActiveConnection,
+                ),
+            ],
+          ),
           if (!_isDirectMode) ...[
-            const Divider(height: 1),
-            _sectionHeader(AppStrings.t('settings.agentSection')),
-            ListTile(
-              title: Text(AppStrings.t('settings.agentConfig')),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ConfigPage(client: widget.client))),
+            const SizedBox(height: 22),
+            YggSectionLabel(AppStrings.t('settings.agentSection')),
+            YggListGroup(
+              children: [
+                YggListRow(
+                  title: AppStrings.t('settings.agentConfig'),
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => ConfigPage(client: widget.client))),
+                ),
+              ],
             ),
             // Connectors need a gateway to hold the OAuth token
             // (external-actions-and-connectors-analysis.md §1.2) — hidden in
             // direct/standalone mode the same way Configuración de agente is.
-            _sectionHeader(AppStrings.t('settings.connectorsRow')),
-            ListTile(
-              title: const Text('Google'),
-              onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GoogleConnectorScreen(client: widget.client))),
+            const SizedBox(height: 22),
+            YggSectionLabel(AppStrings.t('settings.connectorsRow')),
+            YggListGroup(
+              children: [
+                YggListRow(
+                  title: 'Google',
+                  onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => GoogleConnectorScreen(client: widget.client))),
+                ),
+              ],
             ),
           ],
-          // Always visible (not gated by !_isDirectMode) — the phone_* tools
-          // run in gateway and standalone mode alike, capabilities-settings-
-          // ux.md §1.
-          const Divider(height: 1),
-          ListTile(
-            title: Text(AppStrings.t('settings.capabilitiesRow')),
-            subtitle: Text(
-              AppStrings.tp('settings.capabilitiesSubtitle', {
-                'enabled': '$_enabledCapabilitiesCount',
-                'total': '${phoneDeviceToolSpecs.length}',
-              }),
-            ),
-            onTap: _openCapabilities,
+          const SizedBox(height: 22),
+          // Always visible (not gated by !_isDirectMode) — the phone_* tools run in
+          // gateway and standalone mode alike, capabilities-settings-ux.md §1.
+          YggListGroup(
+            children: [
+              YggListRow(
+                title: AppStrings.t('settings.capabilitiesRow'),
+                value: AppStrings.tp('settings.capabilitiesSubtitle', {
+                  'enabled': '$_enabledCapabilitiesCount',
+                  'total': '${phoneDeviceToolSpecs.length}',
+                }),
+                onTap: _openCapabilities,
+              ),
+              YggListRow(
+                title: AppStrings.t('settings.automations'),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AutomationsScreen())),
+              ),
+            ],
           ),
-          ListTile(
-            title: Text(AppStrings.t('settings.automations')),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const AutomationsScreen())),
+          const SizedBox(height: 22),
+          // Also always visible — independent of the active chat ConnectionProfile:
+          // these power "manage the computer" features (Proyectos) and Proyectos
+          // Locales, which runs entirely on-device (Termux).
+          YggListGroup(
+            children: [
+              YggListRow(
+                title: AppStrings.t('settings.gateway'),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GatewaySettingsScreen())),
+              ),
+              YggListRow(
+                title: AppStrings.t('settings.host'),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PiSettingsScreen())),
+              ),
+              YggListRow(
+                title: AppStrings.t('settings.localCompanion'),
+                onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalCompanionSettingsScreen())),
+              ),
+            ],
           ),
-          // Also always visible — independent of the active chat
-          // ConnectionProfile, this powers "manage the computer" features
-          // like Proyectos regardless of whether chat is gateway or direct.
-          const Divider(height: 1),
-          ListTile(
-            title: Text(AppStrings.t('settings.gateway')),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GatewaySettingsScreen())),
-          ),
-          const Divider(height: 1),
-          ListTile(
-            title: Text(AppStrings.t('settings.pi')),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const PiSettingsScreen())),
-          ),
-          const Divider(height: 1),
-          // Also always visible, same reasoning as Gateway above — Proyectos
-          // Locales runs entirely on-device (Termux), independent of both
-          // the chat ConnectionProfile and GatewaySettings.
-          ListTile(
-            title: Text(AppStrings.t('settings.localCompanion')),
-            onTap: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const LocalCompanionSettingsScreen())),
-          ),
-          const Divider(height: 1),
-          _sectionHeader(AppStrings.t('settings.general')),
-          ListTile(
-            title: Text(AppStrings.t('settings.profilesRow')),
-            subtitle: Text(
-              _activeProfile != null
-                  ? AppStrings.tp('settings.profilesActiveSuffix', {'name': _activeProfile!.name})
-                  : AppStrings.t('settings.profilesNoneActive'),
-            ),
-            onTap: _openProfiles,
+          const SizedBox(height: 22),
+          YggSectionLabel(AppStrings.t('settings.general')),
+          YggListGroup(
+            children: [
+              YggListRow(
+                title: AppStrings.t('settings.profilesRow'),
+                subtitle: profile != null
+                    ? AppStrings.tp('settings.profilesActiveSuffix', {'name': profile.name})
+                    : AppStrings.t('settings.profilesNoneActive'),
+                onTap: _openProfiles,
+              ),
+            ],
           ),
         ],
       ),
     );
   }
-
-  Widget _sectionHeader(String label) => Padding(
-        padding: const EdgeInsets.fromLTRB(16, 20, 16, 6),
-        child: Text(
-          label.toUpperCase(),
-          style: const TextStyle(fontFamily: 'monospace', fontSize: 11, letterSpacing: 1.2, color: YggColors.textFainter),
-        ),
-      );
 }

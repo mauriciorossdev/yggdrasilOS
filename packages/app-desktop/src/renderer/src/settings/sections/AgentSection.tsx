@@ -1,4 +1,5 @@
 import type { ConfigShape, ProviderInfo } from "../../types.js";
+import { useI18n } from "../../i18n/index.js";
 
 type Props = {
   config: ConfigShape;
@@ -7,6 +8,7 @@ type Props = {
 };
 
 export function AgentSection({ config, setConfig, providers }: Props) {
+  const { t } = useI18n();
   const defaultAgent = config.agents?.find((a) => a.id === config.defaultAgent) ?? config.agents?.[0];
   const models = providers.find((p) => p.id === defaultAgent?.provider)?.models ?? [];
 
@@ -18,9 +20,9 @@ export function AgentSection({ config, setConfig, providers }: Props) {
 
   return (
     <section className="settings-section">
-      <h3>Agent</h3>
+      <h3>{t("set.agent.title")}</h3>
       <label>
-        Default agent
+        {t("set.agent.default")}
         <select
           value={config.defaultAgent ?? ""}
           onChange={(e) => setConfig({ ...config, defaultAgent: e.target.value })}
@@ -33,9 +35,9 @@ export function AgentSection({ config, setConfig, providers }: Props) {
         </select>
       </label>
       <label>
-        Provider
+        {t("set.agent.provider")}
         <select value={defaultAgent?.provider ?? ""} onChange={(e) => updateDefaultAgent("provider", e.target.value)}>
-          <option value="">(none)</option>
+          <option value="">{t("set.agent.none")}</option>
           {providers.map((p) => (
             <option key={p.id} value={p.id}>
               {p.label}
@@ -44,13 +46,13 @@ export function AgentSection({ config, setConfig, providers }: Props) {
         </select>
       </label>
       <label>
-        Model
+        {t("set.agent.model")}
         <select
           value={defaultAgent?.model ?? ""}
           onChange={(e) => updateDefaultAgent("model", e.target.value)}
           disabled={models.length === 0}
         >
-          <option value="">(default)</option>
+          <option value="">{t("set.agent.modelDefault")}</option>
           {models.map((m) => (
             <option key={m.id} value={m.id}>
               {m.label}

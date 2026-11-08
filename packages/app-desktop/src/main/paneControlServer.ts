@@ -17,8 +17,12 @@ import {
   writeToTerminal,
 } from "./terminals.js";
 import { readAgentTeams, recordAutoCapturedNode } from "./agentTeams.js";
+import { createAppWorktree, repoToplevel, slugifyWorktreeName, type CreatedWorktree } from "@yggdrasil/git-worktrees";
+import { parseWorktreeOption } from "./worktreeOption.js";
 import { composeSpecContext, composeSpecMessage, resolveSpecFile, SpecPathError } from "./paneSpec.js";
 import type { BrowserPageRead, PickedElement } from "./browserTabView.js";
+import type { ExtractedPage, ExtractMode } from "./browserExtract.js";
+import { saveFetchedAsset, type FetchedAsset } from "./browserAssets.js";
 import type { PluginRecord, PluginScope, PluginView, ScaffoldPluginSpec } from "./plugins.js";
 import { WorkspaceError } from "./workspace.js";
 import { getDesktopAutomationAdapter, PermissionRequiredError, type PermissionKind } from "./automation/index.js";
@@ -62,7 +66,7 @@ export type PaneControlHandle = {
   /** Same listing as GET /panes — exposed directly so panes:list (IPC, for ygg.panes.list) and the plugins MCP shim don't need to go over this server's own loopback HTTP just to reach code running in this same process. */
   listPanes: () => Promise<{ panes: PaneSummary[] }>;
   /** Same as POST /panes — see createPane below. */
-  createPane: (spec: CreatePaneSpec) => Promise<{ id: string }>;
+  createPane: (spec: CreatePaneSpec) => Promise<{ id: string; worktree?: CreatedWorktree }>;
   /** Same as POST /panes/:id/write — see writePane below. */
   writePane: (id: string, text: string, pressEnter: boolean, sourcePaneId?: string) => Promise<void>;
   /** Recent plain-text output of a live pane (undefined if it is gone) — what the cross-project workspace reads through. */
@@ -99,6 +103,13 @@ export type CreatePaneSpec = {
   purpose?: string;
   /** Feature doc assigned to this pane (notes/features/x.md). Validated before the pane exists; the pane stays idle. */
   specPath?: string;
+  /**
+   * Run the pane in its own git worktree (<repo>/.yggdrasil/worktrees/<name>, branch ygg/<name>) instead of the
+   * project folder. `true` derives the name from `title`; a string is used as the name. Not combinable with `cwd`.
+   */
+  worktree?: boolean | string;
+  /** A task kept on the pane for its "Start task" button — never submitted by itself. Set by the app UI only (the MCP/HTTP route does not read it). */
+  initialPrompt?: string;
   /** The *live* renderer-side pane id of the caller, if any — lets TerminalContainer.tsx split the new pane next to its actual source and lets the auto-capture Team recording resolve a stable source node. */
   sourcePaneId?: string;
 };
@@ -157,7 +168,11 @@ export async function startPaneControlServer(
   browserTab: {
     navigate: (url: string) => Promise<void>;
     startPick: (timeoutMs?: number) => Promise<PickedElement | null>;
+    /** Marks a Browser comment (by id) as done; false if no such comment. */
+    commentDone: (id: string) => Promise<boolean>;
     readPage: (maxChars?: number) => Promise<BrowserPageRead>;
+    extract: (opts: { mode: ExtractMode; selector?: string; maxChars?: number }) => Promise<ExtractedPage>;
+    fetchAsset: (input: { url?: string; selector?: string }) => Promise<FetchedAsset>;
     screenshot: () => Promise<{ base64: string; mimeType: string; width: number; height: number }>;
     click: (selector: string) => Promise<{ tag: string; text: string; url: string; title: string }>;
     type: (selector: string, text: string, submit?: boolean) => Promise<{ tag: string; url: string; title: string }>;
@@ -218,10 +233,43 @@ export async function startPaneControlServer(
     return { panes: merged };
   }
 
-  async function doCreatePane(spec: CreatePaneSpec): Promise<{ id: string }> {
+  /** A bad `worktree` request (not a repo, name taken, ...): the HTTP handler answers 400 with the message. */
+  class WorktreeError extends Error {}
+
+  /** Creates the worktree a pane will run in. `true` names it after the pane title, adding -2, -3... if that is taken. */
+  async function createPaneWorktree(option: true | string, title: string): Promise<CreatedWorktree> {
+    const repo = await repoToplevel(projectPath);
+    if (!repo) throw new WorktreeError("create_pane: this project is not a git repository, so it has no worktrees");
+    const attempt = async (name: string): Promise<CreatedWorktree> => {
+      try {
+        return await createAppWorktree(repo, { name }, "create_pane");
+      } catch (err) {
+        throw new WorktreeError(err instanceof Error ? err.message : String(err));
+      }
+    };
+    if (typeof option === "string") return attempt(option);
+    const stem = slugifyWorktreeName(title) || "agent";
+    let lastError: WorktreeError | undefined;
+    for (let n = 1; n <= 20; n++) {
+      try {
+        return await attempt(n === 1 ? stem : `${stem}-${n}`);
+      } catch (err) {
+        if (!(err instanceof WorktreeError) || !/already (exists|used)/.test(err.message)) throw err;
+        lastError = err;
+      }
+    }
+    throw lastError ?? new WorktreeError("create_pane: could not find a free worktree name");
+  }
+
+  async function doCreatePane(spec: CreatePaneSpec): Promise<{ id: string; worktree?: CreatedWorktree }> {
     const id = randomUUID();
-    const cwd = spec.cwd && spec.cwd.trim() ? spec.cwd : projectPath;
     const title = spec.title && spec.title.trim() ? spec.title : `agent-pane-${panes.size + 1}`;
+    const worktreeOption = parseWorktreeOption(spec.worktree);
+    if (worktreeOption && spec.cwd && spec.cwd.trim()) {
+      throw new WorktreeError("create_pane: `worktree` and `cwd` cannot be combined — the worktree is the working directory");
+    }
+    const worktree = worktreeOption ? await createPaneWorktree(worktreeOption, title) : undefined;
+    const cwd = worktree?.path ?? (spec.cwd && spec.cwd.trim() ? spec.cwd : projectPath);
 
     const command = spec.command;
     const rawArgs = spec.args;
@@ -251,9 +299,9 @@ export async function startPaneControlServer(
     createTerminal(
       { id, projectId, cwd, cols: DEFAULT_COLS, rows: DEFAULT_ROWS, command, args },
       undefined,
-      (chunk) => {
+      (chunk, seq) => {
         const win = getWindow();
-        if (win && !win.isDestroyed()) win.webContents.send("terminal:data", { id, chunk });
+        if (win && !win.isDestroyed()) win.webContents.send("terminal:data", { id, chunk, seq });
       },
       (exitCode) => {
         panes.delete(id);
@@ -269,7 +317,7 @@ export async function startPaneControlServer(
       // the stable flowNodeId substitution used below for Team bookkeeping)
       // — TerminalContainer.tsx needs it to split the new pane next to its
       // actual source rather than whatever pane happens to have UI focus.
-      win.webContents.send("pane:created", { id, title, cwd, command, args, sourcePaneId });
+      win.webContents.send("pane:created", { id, title, cwd, command, args, sourcePaneId, initialPrompt: spec.initialPrompt });
       if (resolvedSpec) win.webContents.send("pane:spec", { paneId: id, specPath: resolvedSpec.projectRelativePath });
     }
 
@@ -313,7 +361,7 @@ export async function startPaneControlServer(
       }
     }
 
-    return { id };
+    return worktree ? { id, worktree } : { id };
   }
 
   async function doWritePane(id: string, text: string, pressEnter: boolean, sourcePaneId?: string): Promise<void> {
@@ -391,7 +439,7 @@ export async function startPaneControlServer(
 
       if (req.method === "POST" && parts.length === 1 && parts[0] === "panes") {
         const body = await readJsonBody(req);
-        let result: { id: string };
+        let result: { id: string; worktree?: CreatedWorktree };
         try {
           result = await doCreatePane({
             cwd: typeof body.cwd === "string" ? body.cwd : undefined,
@@ -401,9 +449,10 @@ export async function startPaneControlServer(
             purpose: typeof body.purpose === "string" ? body.purpose : undefined,
             specPath: typeof body.specPath === "string" ? body.specPath : undefined,
             sourcePaneId: typeof body.sourcePaneId === "string" ? body.sourcePaneId : undefined,
+            worktree: parseWorktreeOption(body.worktree),
           });
         } catch (err) {
-          if (!(err instanceof SpecPathError)) throw err;
+          if (!(err instanceof SpecPathError) && !(err instanceof WorktreeError)) throw err;
           sendJson(res, 400, { error: err.message });
           return;
         }
@@ -583,6 +632,48 @@ export async function startPaneControlServer(
         if (win && !win.isDestroyed()) win.webContents.send("browserTab:requestShow");
         const picked = await browserTab.startPick(timeoutMs);
         sendJson(res, 200, { picked });
+        return;
+      }
+
+      if (req.method === "POST" && parts.length === 2 && parts[0] === "browser" && parts[1] === "comment-done") {
+        const body = await readJsonBody(req);
+        const id = typeof body.commentId === "string" ? body.commentId : "";
+        if (!id) {
+          sendJson(res, 400, { error: "commentId is required" });
+          return;
+        }
+        sendJson(res, 200, { ok: await browserTab.commentDone(id) });
+        return;
+      }
+
+      // browser_extract: full Markdown of an element / the main article / the page. Read-only, so no auto-switch to the tab.
+      if (req.method === "POST" && parts.length === 2 && parts[0] === "browser" && parts[1] === "extract") {
+        const body = await readJsonBody(req);
+        try {
+          const selector = typeof body.selector === "string" && body.selector.trim() ? body.selector : undefined;
+          const mode: ExtractMode =
+            body.mode === "page" || body.mode === "article" || body.mode === "element" ? body.mode : selector ? "element" : "article";
+          if (mode === "element" && !selector) throw new Error("selector is required for mode \"element\"");
+          sendJson(res, 200, await browserTab.extract({ mode, selector, maxChars: typeof body.maxChars === "number" ? body.maxChars : undefined }));
+        } catch (err) {
+          sendJson(res, 400, { error: err instanceof Error ? err.message : "extract failed" });
+        }
+        return;
+      }
+
+      // browser_save_asset: download through the page's session, write inside the project (browserAssets.ts enforces where/what).
+      if (req.method === "POST" && parts.length === 2 && parts[0] === "browser" && parts[1] === "save-asset") {
+        const body = await readJsonBody(req);
+        try {
+          if (typeof body.path !== "string") throw new Error("path is required");
+          const asset = await browserTab.fetchAsset({
+            url: typeof body.url === "string" ? body.url : undefined,
+            selector: typeof body.selector === "string" ? body.selector : undefined,
+          });
+          sendJson(res, 200, await saveFetchedAsset(projectPath, body.path, asset));
+        } catch (err) {
+          sendJson(res, 400, { error: err instanceof Error ? err.message : "save failed" });
+        }
         return;
       }
 

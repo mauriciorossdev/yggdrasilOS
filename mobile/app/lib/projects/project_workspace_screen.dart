@@ -91,9 +91,9 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
           children: _panes
               .map(
                 (p) => ListTile(
-                  title: Text(p.title, style: const TextStyle(color: YggColors.text)),
+                  title: Text(p.title, style: TextStyle(color: YggColors.text)),
                   trailing: p.working
-                      ? Text(AppStrings.t('projects.statusWorking'), style: const TextStyle(color: YggColors.accent, fontSize: 12))
+                      ? Text(AppStrings.t('projects.statusWorking'), style: TextStyle(color: YggColors.accent, fontSize: 12))
                       : null,
                   selected: p.id == _selectedPaneId,
                   onTap: () {
@@ -129,15 +129,15 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
         child: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Container(width: 7, height: 7, decoration: const BoxDecoration(color: Colors.greenAccent, shape: BoxShape.circle)),
+            Container(width: 7, height: 7, decoration: BoxDecoration(color: YggColors.ready, shape: BoxShape.circle)),
             const SizedBox(width: 8),
             Text(
               pane?.title ?? AppStrings.t('projects.orchestrator'),
-              style: const TextStyle(fontSize: 12.5, color: YggColors.text),
+              style: TextStyle(fontSize: 12.5, color: YggColors.text),
             ),
             if (_panes.length > 1) ...[
               const SizedBox(width: 4),
-              const Icon(Icons.keyboard_arrow_down, size: 16, color: YggColors.textFaint),
+              Icon(Icons.keyboard_arrow_down, size: 16, color: YggColors.textFaint),
             ],
           ],
         ),
@@ -153,7 +153,7 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
           crossAxisAlignment: CrossAxisAlignment.start,
           mainAxisSize: MainAxisSize.min,
           children: [
-            Text(widget.projectName, style: const TextStyle(fontSize: 12, color: YggColors.textFaint)),
+            Text(widget.projectName, style: TextStyle(fontSize: 12, color: YggColors.textFaint)),
             Text(AppStrings.t('projects.workspace'), style: const TextStyle(fontSize: 18)),
           ],
         ),
@@ -162,17 +162,17 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
         ],
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: YggColors.accent))
+          ? Center(child: CircularProgressIndicator(color: YggColors.accent))
           : _error != null
           ? Padding(
               padding: const EdgeInsets.all(24),
-              child: Text('${AppStrings.t('common.errorPrefix')}: $_error', style: const TextStyle(color: YggColors.textMuted)),
+              child: Text('${AppStrings.t('common.errorPrefix')}: $_error', style: TextStyle(color: YggColors.textMuted)),
             )
           : _selectedPaneId == null
           ? Center(
               child: Padding(
                 padding: const EdgeInsets.all(24),
-                child: Text(AppStrings.t('projects.noPanesForWorkspace'), style: const TextStyle(color: YggColors.textFaint)),
+                child: Text(AppStrings.t('projects.noPanesForWorkspace'), style: TextStyle(color: YggColors.textFaint)),
               ),
             )
           : LayoutBuilder(
@@ -188,7 +188,7 @@ class _ProjectWorkspaceScreenState extends State<ProjectWorkspaceScreen> {
                 if (constraints.maxWidth >= 760) {
                   return Row(
                     children: [
-                      Expanded(flex: 56, child: Container(decoration: const BoxDecoration(border: Border(right: BorderSide(color: YggColors.hairline))), child: chat)),
+                      Expanded(flex: 56, child: Container(decoration: BoxDecoration(border: Border(right: BorderSide(color: YggColors.hairline))), child: chat)),
                       Expanded(flex: 44, child: preview),
                     ],
                   );

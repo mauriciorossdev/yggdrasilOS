@@ -4,8 +4,8 @@ import { derivePaneSpecBadge } from "./paneSpecBadge.js";
 describe("derivePaneSpecBadge", () => {
   it("uses the explicit Status line when present", () => {
     const md = "# F\nStatus: checking\n\n## Tasks\n- [x] a\n- [x] b\n";
-    expect(derivePaneSpecBadge(md)).toEqual({ status: "checking", label: "Checking", done: 2, total: 2 });
-    expect(derivePaneSpecBadge("Status: needs-decision\n").label).toBe("Needs your decision");
+    expect(derivePaneSpecBadge(md)).toEqual({ status: "checking", labelKey: "term.spec.checking", done: 2, total: 2 });
+    expect(derivePaneSpecBadge("Status: needs-decision\n").labelKey).toBe("term.spec.needsDecision");
   });
 
   it("derives Ready when every task is ticked and there is no Status", () => {

@@ -5,7 +5,7 @@ import 'desktop_discovery.dart';
 import 'hub_link.dart';
 import 'hub_scan_screen.dart';
 
-/// Desktops published to the Railway hub (Ajustes → Teléfono on the desktop).
+/// Desktops published to the link server (Ajustes → Teléfono on the desktop).
 /// Tapping a project finds an address that answers (Tailscale, then LAN),
 /// creates the profile with the published key and makes it active.
 class DesktopsScreen extends StatefulWidget {

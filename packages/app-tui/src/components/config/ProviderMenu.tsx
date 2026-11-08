@@ -9,9 +9,11 @@ type Props = {
   agentId: string | null;
   onSelect: (providerId: string) => void;
   onBack: () => void;
+  /** Where esc leads, for the hint line ("back", "back to chat"). */
+  backLabel?: string;
 };
 
-export function ProviderMenu({ providers, config, agentId, onSelect, onBack }: Props): React.ReactElement {
+export function ProviderMenu({ providers, config, agentId, onSelect, onBack, backLabel = "back" }: Props): React.ReactElement {
   const [selectedIndex, setSelectedIndex] = useState(0);
 
   const currentProviderId = agentId
@@ -40,7 +42,7 @@ export function ProviderMenu({ providers, config, agentId, onSelect, onBack }: P
     return (
       <Box flexDirection="column">
         <Text color={theme.dim}>No providers available</Text>
-        <Text color={theme.dim}>esc to go back</Text>
+        <Text color={theme.dim}>esc {backLabel}</Text>
       </Box>
     );
   }
@@ -67,7 +69,7 @@ export function ProviderMenu({ providers, config, agentId, onSelect, onBack }: P
         </Box>
       ))}
       <Box marginTop={1}>
-        <Text color={theme.dim}>↑↓ navigate · enter select · esc back</Text>
+        <Text color={theme.dim}>↑↓ navigate · enter select · esc {backLabel}</Text>
       </Box>
     </Box>
   );

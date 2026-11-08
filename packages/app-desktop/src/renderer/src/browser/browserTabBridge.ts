@@ -23,3 +23,47 @@ export function onBrowserTabVisibleChange(fn: VisibleListener): () => void {
 export function notifyBrowserTabVisibleChange(visible: boolean): void {
   visibleListener?.(visible);
 }
+
+/**
+ * A DOM popup (the sidebar's terminal-list flyout) wants to draw where the
+ * native Browser view is: BrowserTabView freezes the page into a still image
+ * and hides the view while `covered` is true, then restores it.
+ */
+type CoverListener = (covered: boolean) => void;
+
+let coverListener: CoverListener | null = null;
+
+export function onBrowserTabCoverChange(fn: CoverListener): () => void {
+  coverListener = fn;
+  return () => {
+    if (coverListener === fn) coverListener = null;
+  };
+}
+
+export function setBrowserTabCovered(covered: boolean): void {
+  coverListener?.(covered);
+}
+
+/**
+ * How many pixels of the window's right edge a floating side panel takes.
+ * Stored, not just pushed: the Browser tab reads it whenever it reports its bounds.
+ */
+let occludedRight = 0;
+let occlusionListener: (() => void) | null = null;
+
+export function getBrowserTabOcclusion(): number {
+  return occludedRight;
+}
+
+export function setBrowserTabOcclusion(width: number): void {
+  if (width === occludedRight) return;
+  occludedRight = width;
+  occlusionListener?.();
+}
+
+export function onBrowserTabOcclusionChange(fn: () => void): () => void {
+  occlusionListener = fn;
+  return () => {
+    if (occlusionListener === fn) occlusionListener = null;
+  };
+}

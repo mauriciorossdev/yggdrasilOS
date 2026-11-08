@@ -31,6 +31,11 @@ jobs:
       # gateway, kernel, etc. as workspace packages.
       - run: pnpm build
 
+      # Regenerate the third-party license notices from the lockfile as
+      # installed on this runner so the installer never ships a stale list
+      # (electron-builder.yml copies it into resources).
+      - run: pnpm notices
+
       # Code signing is intentionally not configured yet (see the app-desktop
       # production-readiness plan). Without this, electron-builder on Windows
       # falls back to an ad-hoc signing path that needs symlink permissions

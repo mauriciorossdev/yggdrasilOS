@@ -53,6 +53,20 @@ export type UpdateAgentInput = {
   workspaceRoot?: string;
 };
 
+/**
+ * Fields a caller may not know about (the Agent Manager form doesn't send them). An update that leaves
+ * them out keeps the stored value instead of wiping what was set by hand in the config file.
+ */
+function keepUnsent(existing: AgentConfig, agent: AgentConfig): AgentConfig {
+  return {
+    ...agent,
+    ...(agent.tools === undefined && existing.tools !== undefined ? { tools: existing.tools } : {}),
+    ...(agent.contextProviders === undefined && existing.contextProviders !== undefined
+      ? { contextProviders: existing.contextProviders }
+      : {}),
+  };
+}
+
 /** Edits an existing agent in place — id and scope are the identity, not editable via this call. */
 export async function updateAgent(input: UpdateAgentInput): Promise<AgentWithScope> {
   const { agent, scope, workspaceRoot } = input;
@@ -74,10 +88,11 @@ export async function updateAgent(input: UpdateAgentInput): Promise<AgentWithSco
     if (idx === -1) {
       throw new Error(`agents.update: agent "${id}" not found in local scope`);
     }
+    const merged = keepUnsent(existing[idx]!, agent);
     const next = [...existing];
-    next[idx] = { ...agent, id };
+    next[idx] = { ...merged, id };
     await writeConfigFile(workspaceRoot, { agents: next });
-    return { ...agent, id, scope: "local" };
+    return { ...merged, id, scope: "local" };
   }
 
   const existingGlobal = await readGlobalAgents();
@@ -85,10 +100,11 @@ export async function updateAgent(input: UpdateAgentInput): Promise<AgentWithSco
   if (idx === -1) {
     throw new Error(`agents.update: agent "${id}" not found in global scope`);
   }
+  const merged = keepUnsent(existingGlobal[idx]!, agent);
   const next = [...existingGlobal];
-  next[idx] = { ...agent, id };
+  next[idx] = { ...merged, id };
   await writeGlobalAgents(next);
-  return { ...agent, id, scope: "global" };
+  return { ...merged, id, scope: "global" };
 }
 
 export type DeleteAgentInput = {

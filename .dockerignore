@@ -1,14 +1,36 @@
-.git
-node_modules
+# The image is published, so this is an allowlist: everything stays out unless
+# named here. A new file at the repo root can't reach the image by accident.
+*
+!package.json
+!pnpm-lock.yaml
+!pnpm-workspace.yaml
+!tsconfig.base.json
+!docker-entrypoint.sh
+!deploy
+!extensions
+!packages
+# pnpm-workspace.yaml lists mobile/*: this member is in the lockfile.
+!mobile/termux
+
+# Inside those folders: build output and anything local to a machine.
 **/node_modules
 **/dist
+**/coverage
 **/*.tsbuildinfo
-packages/app-desktop/resources
+**/.env
+**/.env.*
+**/*.db
+**/*.db-*
+**/*.sqlite
+**/*.sqlite-*
+**/*.pem
+**/*.key
+**/.yggdrasil
+**/.claude
+**/.mcp.json
+**/.DS_Store
+**/*.test.ts
+**/*.test.tsx
+# The desktop app isn't installed or built here (see Dockerfile).
+packages/app-desktop
 packages/app-avatar/resources
-mobile/*
-!mobile/termux
-*.sqlite
-*.db
-.DS_Store
-.env
-.env.*

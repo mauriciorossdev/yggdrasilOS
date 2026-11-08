@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../profiles/connection_profile.dart';
 import '../profiles/profile_store.dart';
 
-/// The Railway gateway ("hub") the phone learned from the desktop's QR:
+/// The link server ("hub") the phone learned from the desktop's QR:
 /// `yggdrasil://hub?url=<https url>&key=<api key>`.
 class HubLink {
   final String url;
@@ -11,15 +11,50 @@ class HubLink {
 
   const HubLink(this.url, this.key);
 
-  /// Parses the QR/deep-link payload; null for anything else.
+  /// Parses the QR/deep-link payload; null for anything else, including a
+  /// server this phone must not send its key to (see [isInsecurePayload]).
+  /// `wss`/`ws` become `https`/`http`, the form the rest of the app expects.
   static HubLink? parse(String raw) {
     final uri = Uri.tryParse(raw.trim());
     if (uri == null || uri.scheme != 'yggdrasil' || uri.host != 'hub') return null;
     final url = (uri.queryParameters['url'] ?? '').trim();
     final key = (uri.queryParameters['key'] ?? '').trim();
     final parsed = Uri.tryParse(url);
-    if (url.isEmpty || key.isEmpty || parsed == null || !(parsed.scheme == 'https' || parsed.scheme == 'http')) return null;
-    return HubLink(url.replaceAll(RegExp(r'/+$'), ''), key);
+    if (url.isEmpty || key.isEmpty || parsed == null || parsed.host.isEmpty) return null;
+    final scheme = switch (parsed.scheme) {
+      'https' || 'wss' => 'https',
+      'http' || 'ws' => 'http',
+      _ => null,
+    };
+    if (scheme == null || (scheme == 'http' && !isLocalHost(parsed.host))) return null;
+    return HubLink(parsed.replace(scheme: scheme).toString().replaceAll(RegExp(r'/+$'), ''), key);
+  }
+
+  /// A complete link rejected only because it is unencrypted on a public host.
+  static bool isInsecurePayload(String raw) {
+    final uri = Uri.tryParse(raw.trim());
+    if (uri == null || uri.scheme != 'yggdrasil' || uri.host != 'hub') return false;
+    final parsed = Uri.tryParse((uri.queryParameters['url'] ?? '').trim());
+    return parsed != null && parsed.host.isNotEmpty && (parsed.scheme == 'http' || parsed.scheme == 'ws') && !isLocalHost(parsed.host);
+  }
+
+  /// Only reachable from this network or tailnet, so unencrypted traffic
+  /// doesn't cross the open internet. Same rule as the desktop's checkHubUrl
+  /// (packages/app-desktop/src/main/phoneLinkCore.ts).
+  static bool isLocalHost(String hostname) {
+    final host = hostname.toLowerCase();
+    if (host.contains(':')) return host == '::1' || RegExp(r'^(f[cd]|fe[89ab])').hasMatch(host);
+    if (RegExp(r'^\d{1,3}(\.\d{1,3}){3}$').hasMatch(host)) {
+      final parts = host.split('.').map(int.parse).toList();
+      final a = parts[0], b = parts[1];
+      return a == 127 ||
+          a == 10 ||
+          (a == 192 && b == 168) ||
+          (a == 172 && b >= 16 && b <= 31) ||
+          (a == 169 && b == 254) ||
+          (a == 100 && b >= 64 && b <= 127);
+    }
+    return !host.contains('.') || RegExp(r'\.(localhost|local|lan|home\.arpa|ts\.net)$').hasMatch(host);
   }
 }
 
@@ -43,7 +78,7 @@ class HubStore {
   }
 
   /// The saved hub or, failing that, the active profile when it points at an
-  /// https gateway (the Railway one the user typed before the QR existed).
+  /// https gateway (the one the user typed before the QR existed).
   static Future<HubLink?> current() async {
     final saved = await HubStore.saved();
     if (saved != null) return saved;
@@ -56,7 +91,7 @@ class HubStore {
   }
 }
 
-/// Saves the hub and makes sure there is a profile for the Railway gateway
+/// Saves the hub and makes sure there is a profile for the link server
 /// itself (the assistant). Becomes the active profile only if nothing is active yet.
 Future<ConnectionProfile> applyHubLink(HubLink link) async {
   await HubStore.save(link);
@@ -67,7 +102,7 @@ Future<ConnectionProfile> applyHubLink(HubLink link) async {
   }
   profile ??= ConnectionProfile(
     id: 'hub-${DateTime.now().millisecondsSinceEpoch}',
-    name: 'Asistente (Railway)',
+    name: 'Asistente remoto',
     type: ConnectionProfileType.gateway,
     baseUrl: link.url,
   );

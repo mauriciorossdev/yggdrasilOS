@@ -1,0 +1,4 @@
+# Gets and renews a TLS certificate for $DOMAIN, and passes WebSocket through.
+{$DOMAIN} {
+	reverse_proxy gateway:8787
+}

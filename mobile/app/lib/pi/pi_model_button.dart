@@ -90,12 +90,12 @@ class _PiModelButtonState extends State<PiModelButton> {
           mainAxisSize: MainAxisSize.min,
           children: [
             if (_switching)
-              const SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: YggColors.accent))
+              SizedBox(width: 12, height: 12, child: CircularProgressIndicator(strokeWidth: 1.5, color: YggColors.accent))
             else
-              const Icon(Icons.auto_awesome, size: 14, color: YggColors.textMuted),
+              Icon(Icons.auto_awesome, size: 14, color: YggColors.textMuted),
             const SizedBox(width: 6),
-            Text(_label(_current), style: const TextStyle(fontSize: 13, color: YggColors.text)),
-            const Icon(Icons.arrow_drop_down, size: 18, color: YggColors.textMuted),
+            Text(_label(_current), style: TextStyle(fontSize: 13, color: YggColors.text)),
+            Icon(Icons.arrow_drop_down, size: 18, color: YggColors.textMuted),
           ],
         ),
       ),

@@ -24,7 +24,9 @@ import { readAgentFlow, writeAgentFlow, type AgentFlow } from "./agentFlow.js";
 import { readAgentTeams, saveAgentTeam, deleteAgentTeam, renameAgentTeam, type AgentTeam } from "./agentTeams.js";
 import { readDocumentTabs, writeDocumentTabs, type DocumentTabsLayout } from "./documentTabs.js";
 import { importExternalPaths } from "./fileImport.js";
-import { readClipboardFilePaths } from "./clipboardFiles.js";
+import { readClipboardFilePaths, writeClipboardFilePaths } from "./clipboardFiles.js";
+import { classifyPickedPaths } from "./pickedAttachments.js";
+import { MAX_ASSET_BYTES, isImageName, sanitizeAssetName, uniqueAssetName } from "./noteAssets.js";
 import { startPaneControlServer, type CreatePaneSpec, type PaneControlHandle } from "./paneControlServer.js";
 import {
   createWorkspaceBroker,
@@ -101,6 +103,8 @@ import {
   type IdeSettings,
 } from "./ideSettings.js";
 import { defaultThemeSettings, loadThemeSettings, saveThemeSettings, type ThemeSettings } from "./themeSettings.js";
+import { loadEditorSettings, saveEditorSettings, type EditorSettings } from "./editorSettings.js";
+import { installLspIpc } from "./lsp/ipc.js";
 import { loadSyncSettings, saveSyncSettings, type SyncSettings } from "./syncSettings.js";
 import { resourceKeyFor, type ResourceRef } from "./sharedResources.js";
 import {
@@ -120,6 +124,15 @@ import {
 } from "./syncEngine.js";
 import { notesAbsoluteDir, watchNotesDir } from "./notesWatcher.js";
 import { createBrowserTabView, type BrowserTabBounds, type BrowserTabHandle } from "./browserTabView.js";
+import { createBrowserCommentsHost, type CommentProvider } from "./browserCommentsHost.js";
+import { writeCaptureBundle } from "./browserCaptureStore.js";
+import {
+  addBrowserComment,
+  listBrowserComments,
+  removeBrowserComment,
+  setBrowserCommentsStatus,
+  updateBrowserComment,
+} from "./browserCommentsStore.js";
 import { scanLocalPorts } from "./localPorts.js";
 import {
   deletePlugin,
@@ -154,6 +167,7 @@ import {
 import { createSplash, type Splash } from "./splash.js";
 import { resolveShellPath } from "./resolveShellPath.js";
 import { installAboutMenu } from "./aboutPanel.js";
+import { mt, resolveMainLanguage, setMainLanguage } from "./i18n.js";
 import { installAutoUpdater } from "./autoUpdate.js";
 
 // Loads packages/app-desktop/.env (gitignored, `.env*` in the root
@@ -275,6 +289,8 @@ app.on("open-url", (event, url) => {
 
 type OpenProjectWindow = {
   window: BrowserWindow;
+  /** The project's folder. */
+  root: string;
   gateway: GatewayHandle;
   paneControl: PaneControlHandle;
   /** Lazily created on first use (browser_open, or the user switching to the Browser tab) — most projects never touch it. */
@@ -287,6 +303,9 @@ type OpenProjectWindow = {
 
 /** One dedicated gateway process + window per open project, keyed by project id. */
 const projectWindows = new Map<string, OpenProjectWindow>();
+
+/** Set when IPC is installed; language servers per project window. */
+let lspIpc: ReturnType<typeof installLspIpc> | undefined;
 
 /**
  * In-flight plugin tool calls (a `claude`/`agy` terminal session, via
@@ -436,6 +455,7 @@ function createProjectBrowserWindow(project: ProjectRecord, gatewayUrl: string, 
   const additionalArguments = [
     `--ygg-project-id=${project.id}`,
     `--ygg-project-name=${project.name}`,
+    `--ygg-project-path=${project.path}`,
     `--ygg-project-color=${project.color ?? ""}`,
     `--ygg-gateway-url=${gatewayUrl}`,
     `--ygg-gateway-lan-url=${gatewayLanUrl}`,
@@ -514,6 +534,7 @@ function createProjectBrowserWindow(project: ProjectRecord, gatewayUrl: string, 
       entry.pluginWatcher?.close();
       entry.notesWatcher?.close();
       disposeTerminalsForProject(project.id);
+      void lspIpc?.stopProject(project.id);
       projectWindows.delete(project.id);
       void unregisterOpenGateway(project.id).then(notifyPhoneLinkChanged);
       // getMemoryDb caches one open sqlite handle per project path (see
@@ -540,8 +561,52 @@ async function closeProjectWindow(projectId: string): Promise<void> {
 function resolveBrowserTab(projectId: string): BrowserTabHandle | undefined {
   const entry = projectWindows.get(projectId);
   if (!entry || entry.window.isDestroyed()) return undefined;
-  if (!entry.browserTab) entry.browserTab = createBrowserTabView(entry.window);
+  if (!entry.browserTab) entry.browserTab = createBrowserTabView(entry.window, createCommentsHost(projectId));
   return entry.browserTab;
+}
+
+/** Launchable CLIs per project, pushed by the renderer (it owns the enabled-CLIs setting) — the Browser comments "New agent" popover lists these. */
+const commentProviders = new Map<string, CommentProvider[]>();
+/** Pane titles per project as the renderer's Terminal tab shows them (paneControl lists a UI-created pane by its raw id). */
+const commentPaneTitles = new Map<string, Record<string, string>>();
+
+function createCommentsHost(projectId: string) {
+  const pc = () => projectWindows.get(projectId)?.paneControl;
+  const needPc = () => {
+    const handle = pc();
+    if (!handle) throw new Error("project window is not open");
+    return handle;
+  };
+  return createBrowserCommentsHost({
+    store: {
+      list: (pageUrl) => listBrowserComments(projectId, pageUrl),
+      add: (input) => addBrowserComment(projectId, input),
+      update: (pageUrl, id, text) => updateBrowserComment(projectId, pageUrl, id, text),
+      remove: (pageUrl, id) => removeBrowserComment(projectId, pageUrl, id),
+      setStatus: async (ids, status, sentTo) => {
+        const changed = await setBrowserCommentsStatus(projectId, ids, status, sentTo);
+        projectWindows.get(projectId)?.browserTab?.refreshComments();
+        return changed;
+      },
+    },
+    panes: {
+      list: async () => {
+        const titles = commentPaneTitles.get(projectId) ?? {};
+        return (await needPc().listPanes()).panes.map((p) => ({ id: p.id, title: titles[p.id] || p.title, command: p.command }));
+      },
+      create: (spec) => needPc().createPane(spec),
+      write: (id, text, pressEnter) => needPc().writePane(id, text, pressEnter),
+      read: (id, maxChars) => pc()?.readPane(id, maxChars),
+    },
+    captures: {
+      write: async (fileName, content) => {
+        const project = await getProject(projectId);
+        if (!project) throw new Error("project not found");
+        return writeCaptureBundle(project.path, fileName, content);
+      },
+    },
+    providers: () => commentProviders.get(projectId) ?? [],
+  });
 }
 
 /** Like resolveBrowserTab, for operations that can't proceed without a window. */
@@ -599,7 +664,7 @@ async function openProject(project: ProjectRecord): Promise<void> {
   } catch (err) {
     closeSplash();
     console.error(`[openProject] failed for ${project.path}:`, err);
-    dialog.showErrorBox("Could not open project", err instanceof Error ? (err.stack ?? err.message) : String(err));
+    dialog.showErrorBox(mt("project.openFailed"), err instanceof Error ? (err.stack ?? err.message) : String(err));
     throw err;
   }
 }
@@ -626,7 +691,14 @@ async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
     {
       navigate: (url) => resolveBrowserTab(project.id)?.navigate(url) ?? Promise.resolve(),
       startPick: (timeoutMs) => resolveBrowserTab(project.id)?.startPick(timeoutMs) ?? Promise.resolve(null),
+      commentDone: async (id) => {
+        const changed = await setBrowserCommentsStatus(project.id, [id], "done");
+        projectWindows.get(project.id)?.browserTab?.refreshComments();
+        return changed;
+      },
       readPage: (maxChars) => requireBrowserTab(project.id).readPage(maxChars),
+      extract: (opts) => requireBrowserTab(project.id).extract(opts),
+      fetchAsset: (input) => requireBrowserTab(project.id).fetchAsset(input),
       screenshot: () => requireBrowserTab(project.id).screenshot(),
       click: (selector) => requireBrowserTab(project.id).click(selector),
       type: (selector, text, submit) => requireBrowserTab(project.id).type(selector, text, submit),
@@ -721,7 +793,7 @@ async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
     if (!win.isDestroyed()) win.webContents.send("plugins:changed", { scope: "project", pluginId });
   });
   const notesWatcher = watchNotesDir(notesAbsoluteDir(project.path), project.id);
-  projectWindows.set(project.id, { window: win, gateway, paneControl, pluginWatcher, notesWatcher });
+  projectWindows.set(project.id, { window: win, root: project.path, gateway, paneControl, pluginWatcher, notesWatcher });
 }
 
 function registerIpc(): void {
@@ -802,6 +874,18 @@ function registerIpc(): void {
   ipcMain.handle("browserTab:hide", (_event, projectId: string) => {
     projectWindows.get(projectId)?.browserTab?.hide();
   });
+  // Still image of the active page, for the renderer to show in the viewport
+  // placeholder while the native view is temporarily hidden (a DOM flyout
+  // can't draw over a WebContentsView). null on any failure: the caller just
+  // falls back to hiding the view without a placeholder.
+  ipcMain.handle("browserTab:snapshot", async (_event, projectId: string) => {
+    try {
+      const shot = await projectWindows.get(projectId)?.browserTab?.screenshot();
+      return shot ? { base64: shot.base64, mimeType: shot.mimeType } : null;
+    } catch {
+      return null;
+    }
+  });
   ipcMain.handle("browserTab:getUrl", (_event, projectId: string) => projectWindows.get(projectId)?.browserTab?.getUrl() ?? "");
   // Blocks until the user clicks something in the loaded page (or Escape /
   // timeout) — see browserTabView.ts's startPick and
@@ -810,6 +894,27 @@ function registerIpc(): void {
   // agent-callable /browser/pick.
   ipcMain.handle("browserTab:startPick", async (_event, projectId: string, timeoutMs?: number) => {
     return (await resolveBrowserTab(projectId)?.startPick(timeoutMs)) ?? null;
+  });
+
+  // Toolbar 💬 toggle → the active page's comment mode (the page's own overlay
+  // handles the clicking); providers feed the in-page "New agent" popover.
+  ipcMain.handle("browserTab:comments:setMode", (_event, projectId: string, on: boolean) => {
+    projectWindows.get(projectId)?.browserTab?.setCommentMode(Boolean(on));
+  });
+  ipcMain.handle("browserTab:comments:setPaneTitles", (_event, projectId: string, titles: Record<string, string>) => {
+    const clean: Record<string, string> = {};
+    for (const [id, title] of Object.entries(titles ?? {})) if (typeof title === "string") clean[id] = title;
+    commentPaneTitles.set(projectId, clean);
+  });
+  ipcMain.handle("browserTab:comments:setProviders", (_event, projectId: string, providers: CommentProvider[]) => {
+    commentProviders.set(
+      projectId,
+      (Array.isArray(providers) ? providers : []).map((p) => ({
+        id: String(p.id),
+        label: String(p.label),
+        command: String(p.command),
+      })),
+    );
   });
 
   ipcMain.handle("projects:list", () => listProjects());
@@ -825,8 +930,8 @@ function registerIpc(): void {
 
   ipcMain.handle("projects:createNew", async () => {
     const result = await dialog.showSaveDialog({
-      title: "Create New Project",
-      buttonLabel: "Create Project",
+      title: mt("project.createTitle"),
+      buttonLabel: mt("project.createButton"),
     });
     if (result.canceled || !result.filePath) return null;
     const folderPath = result.filePath;
@@ -881,8 +986,8 @@ function registerIpc(): void {
     const project = await getProject(id);
     if (!project) throw new Error("Project not found.");
     const result = await dialog.showSaveDialog({
-      title: `Clone "${project.name}" to…`,
-      buttonLabel: "Clone Project",
+      title: mt("project.cloneTitle", { name: project.name }),
+      buttonLabel: mt("project.cloneButton"),
       defaultPath: join(dirname(project.path), `${basename(project.path)}-copy`),
     });
     if (result.canceled || !result.filePath) return null;
@@ -1157,6 +1262,63 @@ function registerIpc(): void {
 
   ipcMain.handle("clipboard:readFilePaths", () => readClipboardFilePaths());
 
+  // Absolute path of a project-relative one, confined to the project root: what
+  // "send to terminal" writes into a pane and what "copy file" puts on the clipboard.
+  const resolveInProject = async (projectId: string, relativePath: string): Promise<string> => {
+    const project = await getProject(projectId);
+    if (!project) throw new Error("Unknown project");
+    const root = resolve(project.path);
+    const target = resolve(root, relativePath);
+    const rel = relative(root, target);
+    if (rel.startsWith("..") || isAbsolute(rel)) throw new Error("relativePath escapes the project root");
+    return target;
+  };
+
+  ipcMain.handle("files:absolutePath", (_event, projectId: string, relativePath: string) =>
+    resolveInProject(projectId, relativePath),
+  );
+
+  // An image pasted, dropped or picked into a note: stored in an `assets` folder next to the note, under a safe
+  // name that doesn't collide with what is already there. Returns the address to write in the markdown
+  // (`assets/name.png`, relative to the note).
+  ipcMain.handle(
+    "files:saveAsset",
+    async (_event, projectId: string, noteRelativePath: string, fileName: string, data: Uint8Array) => {
+      const name = sanitizeAssetName(fileName);
+      if (!isImageName(name)) throw new Error("Solo se pueden guardar imágenes (png, jpg, gif, webp, svg, bmp, avif).");
+      if (data.byteLength > MAX_ASSET_BYTES) throw new Error("La imagen pesa más de 25 MB.");
+      const noteDir = noteRelativePath.includes("/") ? noteRelativePath.slice(0, noteRelativePath.lastIndexOf("/")) : "";
+      const assetsDir = await resolveInProject(projectId, noteDir ? `${noteDir}/assets` : "assets");
+      await mkdir(assetsDir, { recursive: true });
+      const unique = uniqueAssetName(name, await readdir(assetsDir));
+      await writeFile(resolve(assetsDir, unique), Buffer.from(data));
+      return { src: `assets/${unique}` };
+    },
+  );
+
+  ipcMain.handle("clipboard:writeFilePaths", async (_event, projectId: string, relativePaths: string[]) => {
+    const absolute = await Promise.all(relativePaths.map((p) => resolveInProject(projectId, p)));
+    return writeClipboardFilePaths(absolute);
+  });
+
+  // The chat's "attach" button: a native picker that opens on the project. Attachments are
+  // project-relative (the gateway reads them from there), so anything chosen outside it
+  // is reported back instead of being silently dropped.
+  ipcMain.handle("files:pickToAttach", async (_event, projectId: string) => {
+    const project = await getProject(projectId);
+    if (!project) throw new Error("Unknown project");
+    const root = resolve(project.path);
+    const result = await dialog.showOpenDialog({
+      defaultPath: root,
+      properties: ["openFile", "openDirectory", "multiSelections"],
+    });
+    if (result.canceled) return { attachments: [], rejected: [] };
+    return classifyPickedPaths(root, result.filePaths, async (path) => {
+      const info = await stat(path).catch(() => null);
+      return info ? (info.isDirectory() ? "directory" : "file") : null;
+    });
+  });
+
   // The reliable way to import files: a real OS picker always hands back
   // genuine absolute paths, no matter what quirks a given file has on the
   // clipboard (see clipboardFiles.ts's file-ID-URL doc comment) or whether
@@ -1200,7 +1362,7 @@ function registerIpc(): void {
 
   ipcMain.handle("whisper:pickBinary", async () => {
     const result = await dialog.showOpenDialog({
-      title: "Select whisper-server binary",
+      title: mt("whisper.pickBinary"),
       properties: ["openFile"],
     });
     if (result.canceled || result.filePaths.length === 0) return null;
@@ -1271,7 +1433,7 @@ function registerIpc(): void {
     "settings:export",
     async (_event, workspaceRoot: string | null, includeSecrets: boolean): Promise<{ path: string } | null> => {
       const result = await dialog.showSaveDialog({
-        title: "Export settings",
+        title: mt("settings.exportTitle"),
         defaultPath: "yggdrasil-settings.md",
         filters: [{ name: "Markdown", extensions: ["md"] }],
       });
@@ -1305,7 +1467,7 @@ function registerIpc(): void {
       warnings: string[];
     } | null> => {
       const result = await dialog.showOpenDialog({
-        title: "Import settings",
+        title: mt("settings.importTitle"),
         properties: ["openFile"],
         filters: [{ name: "Markdown", extensions: ["md"] }],
       });
@@ -1367,6 +1529,26 @@ function registerIpc(): void {
   ipcMain.handle("theme:set", (_event, settings: ThemeSettings) => applyTheme(settings));
   ipcMain.handle("theme:reset", () => applyTheme(defaultThemeSettings()));
 
+  lspIpc = installLspIpc({
+    userDataDir: app.getPath("userData"),
+    projectForSender: (sender) => {
+      for (const [id, entry] of projectWindows) {
+        if (entry.window.webContents === sender) return { id, root: entry.root, webContents: sender };
+      }
+      return undefined;
+    },
+  });
+
+  // Code editor preferences: same persist-and-broadcast shape as the theme.
+  ipcMain.handle("editorSettings:get", () => loadEditorSettings(app.getPath("userData")));
+  ipcMain.handle("editorSettings:set", async (_event, settings: EditorSettings) => {
+    const saved = await saveEditorSettings(app.getPath("userData"), settings);
+    for (const win of BrowserWindow.getAllWindows()) {
+      if (!win.isDestroyed()) win.webContents.send("editorSettings:changed", saved);
+    }
+    return saved;
+  });
+
   // Cross-project workspace: Settings -> Workspace reads/edits links and trust,
   // and the permission prompt answers come back through workspace:answer.
   ipcMain.handle("workspace:view", (_event, projectId: string) => requireWorkspaceBroker().view(projectId));
@@ -1386,9 +1568,13 @@ function registerIpc(): void {
     const settings = await loadOnboardingSettings(userData);
     return { settings, autoOpen: shouldAutoOpenOnboarding(settings, await hasExistingConfig(userData)) };
   });
-  ipcMain.handle("onboarding:save", async (_event, settings: OnboardingSettings) =>
-    saveOnboardingSettings(app.getPath("userData"), settings),
-  );
+  ipcMain.handle("onboarding:save", async (_event, settings: OnboardingSettings) => {
+    const saved = await saveOnboardingSettings(app.getPath("userData"), settings);
+    // Native dialogs and the app menu follow the UI language; rebuild the menu so it switches live.
+    setMainLanguage(resolveMainLanguage(saved.language, app.getLocale()));
+    installAboutMenu();
+    return saved;
+  });
   ipcMain.handle("onboarding:detectClis", () => detectClis());
   ipcMain.handle("onboarding:detectOllama", () => detectOllama());
   // Only the install links the wizard itself shows — not an open-any-URL channel.
@@ -1407,7 +1593,7 @@ function registerIpc(): void {
   // pickable as a single "file" here — showOpenDialog's default (not
   // treating them as navigable directories) already does the right thing.
   ipcMain.handle("ide:pickCustomPath", async () => {
-    const result = await dialog.showOpenDialog({ title: "Select IDE executable or app", properties: ["openFile"] });
+    const result = await dialog.showOpenDialog({ title: mt("ide.pickCustom"), properties: ["openFile"] });
     return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]!;
   });
 
@@ -1563,6 +1749,8 @@ app.whenReady().then(async () => {
   // (terminals.ts) exec CLIs directly with no shell in between, so they only
   // see whatever PATH this process has at spawn time.
   process.env.PATH = resolveShellPath();
+  const savedOnboarding = await loadOnboardingSettings(app.getPath("userData")).catch(() => null);
+  setMainLanguage(resolveMainLanguage(savedOnboarding?.language, app.getLocale()));
   installAboutMenu();
   installAutoUpdater();
   registerIpc();
@@ -1619,8 +1807,8 @@ app.whenReady().then(async () => {
     console.error("[main] failed to open default project", error);
     logCaughtError("openProject(default)", error);
     dialog.showErrorBox(
-      "Yggdrasil failed to start",
-      `${error instanceof Error ? error.message : String(error)}\n\nSee ${logPath()} for details.`,
+      mt("app.startFailed"),
+      `${error instanceof Error ? error.message : String(error)}\n\n${mt("app.seeLog", { path: logPath() })}`,
     );
     app.quit();
     return;
@@ -1648,5 +1836,5 @@ app.on("before-quit", (event) => {
     paneControl.shutdown();
   }
   stopWhisperServer();
-  void disposeAllTerminalsAndWait().finally(() => app.quit());
+  void Promise.allSettled([disposeAllTerminalsAndWait(), lspIpc?.stopAll()]).finally(() => app.quit());
 });

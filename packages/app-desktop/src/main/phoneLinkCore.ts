@@ -3,16 +3,16 @@ import WebSocket from "ws";
 
 /**
  * Phone link (notes/asistente-personal/enlace-escritorio.md, phase E2): the
- * desktop publishes its open project gateways to the user's Railway gateway
+ * desktop publishes its open project gateways to the user's link server
  * ("hub"), so the phone finds them without typing an IP, a port that changes
  * every launch, or a key. Electron-free on purpose so it can be unit-tested;
  * phoneLink.ts wires it to settings, projects and IPC.
  */
 
 export type PhoneLinkSettings = {
-  /** Railway gateway URL (https://… or wss://…). */
+  /** Link server URL (https://… or wss://…). */
   hubUrl?: string;
-  /** Railway gateway API key (YGGDRASIL_API_KEY there). */
+  /** Link server API key (YGGDRASIL_API_KEY there). */
   hubKey?: string;
   /** Publish this desktop to the hub (and require a key on its own gateways). */
   publish?: boolean;
@@ -31,7 +31,21 @@ export type PublishStatus = {
   lastError?: string;
 };
 
+/** The user's connection test, with one reason per way it can fail. */
+export type HubTestResult =
+  | { ok: true; desktops: number; insecure: boolean }
+  | {
+      ok: false;
+      code: "invalid-url" | "insecure" | "missing-key" | "unreachable" | "not-yggdrasil" | "bad-key" | "server-open" | "no-directory";
+      detail?: string;
+    };
+
 type NetIface = { address: string; family: string | number; internal: boolean };
+
+/** Hex, so it survives any shell, .env or YAML file it gets pasted into. */
+export function newHubKey(): string {
+  return randomBytes(32).toString("hex");
+}
 
 export function newDesktopId(): string {
   return `desk-${randomBytes(9).toString("base64url")}`;
@@ -41,25 +55,52 @@ export function newGatewayKey(): string {
   return `ygd_${randomBytes(24).toString("base64url")}`;
 }
 
+const IPV4 = /^\d{1,3}(\.\d{1,3}){3}$/;
+
 /** Tailscale hands out CGNAT addresses: 100.64.0.0/10. */
 export function isTailscaleIPv4(address: string): boolean {
+  if (!IPV4.test(address)) return false;
   const parts = address.split(".").map(Number);
-  return parts.length === 4 && parts[0] === 100 && parts[1]! >= 64 && parts[1]! <= 127;
+  return parts[0] === 100 && parts[1]! >= 64 && parts[1]! <= 127;
 }
 
-/** First non-internal IPv4 on the LAN and, separately, the Tailscale one (if any). */
+/** 169.254.0.0/16: what an adapter gives itself with no network behind it (an idle VPN, an unplugged cable). */
+function isLinkLocalIPv4(address: string): boolean {
+  return IPV4.test(address) && address.startsWith("169.254.");
+}
+
+function isPrivateIPv4(address: string): boolean {
+  if (!IPV4.test(address)) return false;
+  const [a, b] = address.split(".").map(Number);
+  return a === 10 || (a === 192 && b === 168) || (a === 172 && b! >= 16 && b! <= 31);
+}
+
+/** Adapters of VMs and containers (WSL, Hyper-V, Docker, ...): private addresses, but a phone can't reach them. */
+const VIRTUAL_IFACE = /vethernet|virtualbox|vboxnet|vmware|vmnet|hyper-v|wsl|docker|^veth|^br-|^virbr/i;
+
+/** Lower is better: a real private network, then any other address, then a virtual adapter. */
+function lanRank(name: string, address: string): number {
+  if (VIRTUAL_IFACE.test(name)) return 2;
+  return isPrivateIPv4(address) ? 0 : 1;
+}
+
+/** The best IPv4 for reaching this machine on the LAN and, separately, the Tailscale one (if any). */
 export function pickAddresses(ifaces: Record<string, NetIface[] | undefined>): { lan?: string; tailscale?: string } {
-  let lan: string | undefined;
+  let lan: { address: string; rank: number } | undefined;
   let tailscale: string | undefined;
-  for (const list of Object.values(ifaces)) {
+  for (const [name, list] of Object.entries(ifaces)) {
     for (const i of list ?? []) {
       const v4 = i.family === "IPv4" || i.family === 4;
-      if (!v4 || i.internal) continue;
-      if (isTailscaleIPv4(i.address)) tailscale ??= i.address;
-      else lan ??= i.address;
+      if (!v4 || i.internal || isLinkLocalIPv4(i.address)) continue;
+      if (isTailscaleIPv4(i.address)) {
+        tailscale ??= i.address;
+        continue;
+      }
+      const rank = lanRank(name, i.address);
+      if (!lan || rank < lan.rank) lan = { address: i.address, rank };
     }
   }
-  return { ...(lan ? { lan } : {}), ...(tailscale ? { tailscale } : {}) };
+  return { ...(lan ? { lan: lan.address } : {}), ...(tailscale ? { tailscale } : {}) };
 }
 
 /** https -> wss, http -> ws, bare host -> wss; no trailing slash. */
@@ -71,9 +112,57 @@ export function hubWsUrl(hubUrl: string): string {
   return `wss://${trimmed}`;
 }
 
+/** A host only reachable from this network or tailnet, where traffic doesn't cross the open internet. */
+function isLocalHost(hostname: string): boolean {
+  const host = hostname.toLowerCase().replace(/^\[|\]$/g, "");
+  if (host === "::1" || /^f[cd]/.test(host) || /^fe[89ab]/.test(host)) return host.includes(":");
+  if (IPV4.test(host)) return host.startsWith("127.") || isPrivateIPv4(host) || isLinkLocalIPv4(host) || isTailscaleIPv4(host);
+  return !host.includes(".") || /\.(localhost|local|lan|home\.arpa|ts\.net)$/.test(host);
+}
+
+export type HubUrlCheck = "empty" | "ok" | "insecure-local" | "insecure-public" | "invalid";
+
+/**
+ * Decides whether the hub key may travel to this URL. Unencrypted is only
+ * acceptable inside a local network or tailnet: on the open internet it would
+ * expose the hub key and, through desktops.list, every desktop's gateway key.
+ */
+export function checkHubUrl(hubUrl: string): HubUrlCheck {
+  const trimmed = hubUrl.trim();
+  if (!trimmed) return "empty";
+  if (/^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) && !/^(https?|wss?):\/\/[^/]/i.test(trimmed)) return "invalid";
+  let url: URL;
+  try {
+    url = new URL(hubWsUrl(trimmed));
+  } catch {
+    return "invalid";
+  }
+  if (!url.hostname) return "invalid";
+  if (url.protocol === "wss:") return "ok";
+  return isLocalHost(url.hostname) ? "insecure-local" : "insecure-public";
+}
+
+/**
+ * True when saving would send the saved key to a different server: a mistyped
+ * domain would otherwise receive it on the next publish. Clearing the URL is fine.
+ */
+export function savedKeyWouldMove(saved: { hubUrl?: string; hubKey?: string }, input: { hubUrl?: string; hubKey?: string }): boolean {
+  if (typeof input.hubUrl !== "string" || input.hubKey?.trim() || !saved.hubKey) return false;
+  const next = input.hubUrl.trim();
+  return !!next && next !== (saved.hubUrl ?? "").trim();
+}
+
+function isUsableHubUrl(hubUrl: string): boolean {
+  const check = checkHubUrl(hubUrl);
+  return check === "ok" || check === "insecure-local";
+}
+
 /** What the desktop's QR encodes; the app's yggdrasil://hub handler reads it. */
 export function hubQrPayload(hubUrl: string, hubKey: string): string {
-  return `yggdrasil://hub?url=${encodeURIComponent(hubUrl.trim())}&key=${encodeURIComponent(hubKey.trim())}`;
+  // A bare host works here (see hubWsUrl), but the app only accepts full URLs.
+  const trimmed = hubUrl.trim();
+  const url = /^[a-z][a-z0-9+.-]*:\/\//i.test(trimmed) ? trimmed : `https://${trimmed}`;
+  return `yggdrasil://hub?url=${encodeURIComponent(url)}&key=${encodeURIComponent(hubKey.trim())}`;
 }
 
 /** "Alexs-MacBook-Pro.local" -> "Alexs-MacBook-Pro". */
@@ -82,7 +171,7 @@ export function friendlyHostName(host: string): string {
 }
 
 export function isPublishable(s: PhoneLinkSettings): boolean {
-  return !!(s.publish && s.hubUrl?.trim() && s.hubKey?.trim() && s.desktopId && s.gatewayKey);
+  return !!(s.publish && s.hubUrl?.trim() && isUsableHubUrl(s.hubUrl) && s.hubKey?.trim() && s.desktopId && s.gatewayKey);
 }
 
 export function buildRegistration(
@@ -98,6 +187,17 @@ export function buildRegistration(
     endpoints: addresses,
     gatewayKey: s.gatewayKey,
   };
+}
+
+/** The hub answered with an error, at the auth step or at the call itself. */
+export class HubError extends Error {
+  constructor(
+    message: string,
+    readonly stage: "auth" | "call",
+    readonly code?: string,
+  ) {
+    super(message);
+  }
 }
 
 /** One authenticated JSON-RPC call to the hub over a short-lived WebSocket. */
@@ -127,23 +227,67 @@ export function hubCall(
     const timer = setTimeout(() => finish(new Error("hub did not answer in time")), options.timeoutMs ?? 10_000);
     ws.on("open", () => ws.send(JSON.stringify({ id: "auth", method: "auth", params: { apiKey: hubKey } })));
     ws.on("message", (raw: WebSocket.RawData) => {
-      let msg: { id?: string; result?: unknown; error?: { message?: string } };
+      let msg: { id?: string; result?: unknown; error?: { code?: string; message?: string } };
       try {
         msg = JSON.parse(String(raw));
       } catch {
         return;
       }
       if (msg.id === "auth") {
-        if (msg.error) return finish(new Error(`hub rejected the key: ${msg.error.message ?? "unauthorized"}`));
+        if (msg.error) return finish(new HubError(`hub rejected the key: ${msg.error.message ?? "unauthorized"}`, "auth", msg.error.code));
         ws.send(JSON.stringify({ id: "call", method, params }));
       } else if (msg.id === "call") {
-        if (msg.error) finish(new Error(msg.error.message ?? "hub error"));
+        if (msg.error) finish(new HubError(msg.error.message ?? "hub error", "call", msg.error.code));
         else finish(null, msg.result);
       }
     });
     ws.on("error", (e: Error) => finish(e));
     ws.on("close", () => finish(new Error("hub closed the connection")));
   });
+}
+
+/**
+ * Checks a link server end to end. Confirms over plain HTTP that it is a
+ * Yggdrasil gateway before sending it the key, so a mistyped URL never receives it.
+ */
+export async function testHubConnection(
+  hubUrl: string,
+  hubKey: string,
+  options: { fetchImpl?: typeof fetch; call?: typeof hubCall; timeoutMs?: number } = {},
+): Promise<HubTestResult> {
+  const check = checkHubUrl(hubUrl);
+  if (check === "empty" || check === "invalid") return { ok: false, code: "invalid-url" };
+  if (check === "insecure-public") return { ok: false, code: "insecure" };
+  if (!hubKey.trim()) return { ok: false, code: "missing-key" };
+
+  const timeoutMs = options.timeoutMs ?? 8_000;
+  const httpUrl = `${hubWsUrl(hubUrl).replace(/^ws/i, "http")}/`;
+  let body: string;
+  try {
+    const response = await (options.fetchImpl ?? fetch)(httpUrl, { signal: AbortSignal.timeout(timeoutMs) });
+    body = await response.text();
+  } catch (e) {
+    const cause = (e as { cause?: { code?: string; message?: string } }).cause;
+    return { ok: false, code: "unreachable", detail: cause?.code ?? cause?.message ?? (e instanceof Error ? e.message : String(e)) };
+  }
+  let service: unknown;
+  try {
+    service = (JSON.parse(body) as { service?: unknown }).service;
+  } catch {
+    service = undefined;
+  }
+  if (service !== "yggdrasil-gateway") return { ok: false, code: "not-yggdrasil" };
+
+  try {
+    const result = await (options.call ?? hubCall)(hubUrl, hubKey, "desktops.list", {}, { timeoutMs });
+    const desktops = (result as { desktops?: unknown[] } | null)?.desktops;
+    return { ok: true, desktops: Array.isArray(desktops) ? desktops.length : 0, insecure: check === "insecure-local" };
+  } catch (e) {
+    if (!(e instanceof HubError)) return { ok: false, code: "unreachable", detail: e instanceof Error ? e.message : String(e) };
+    if (e.stage === "call") return { ok: false, code: "no-directory", detail: e.message };
+    // Only a gateway with no key configured has no "auth" method to call.
+    return e.code === "METHOD_NOT_FOUND" ? { ok: false, code: "server-open" } : { ok: false, code: "bad-key" };
+  }
 }
 
 /**

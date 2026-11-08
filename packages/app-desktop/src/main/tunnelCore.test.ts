@@ -101,7 +101,7 @@ describe("TunnelClient", () => {
     client = new TunnelClient({ getSettings: settings("wrong"), getProjectPort: async () => localPort, retryDelaysMs: [60_000] });
     await client.start();
     await waitFor(() => client!.state === "error");
-    expect(client.lastError).toBe("Railway rechazó la clave");
+    expect(client.lastError).toBe("El servidor de enlace rechazó la clave");
 
     const off = new TunnelClient({
       getSettings: async () => ({ hubUrl, hubKey: "hub-key", publish: false, desktopId: "desk-unit-01", gatewayKey: "k" }),

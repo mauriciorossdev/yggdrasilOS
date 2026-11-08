@@ -2,12 +2,35 @@ import { mkdir, readFile, writeFile } from "node:fs/promises";
 import { dirname, join } from "node:path";
 
 export type AgentFlowHarness =
-  | { type: "yggdrasil"; agentId: string }
+  | {
+      type: "yggdrasil";
+      agentId: string;
+      /** Metadata only, like the other harnesses' initialPrompt: never auto-submitted (see main/terminals.ts). */
+      initialPrompt?: string;
+      /** `yggdrasil tui --model`: override for the agent's own model on every message. */
+      model?: string;
+      /** `yggdrasil tui --mode`: approval mode the session starts in. */
+      approvalMode?: "auto" | "plan" | "restrict" | "yolo";
+      /** Reopen this node's previous conversation instead of starting a new one (see buildFlowLeaves.ts). */
+      continueSession?: boolean;
+    }
   | {
       type: "claude";
       systemPromptAppend?: string;
       model?: string;
       effort?: "low" | "medium" | "high" | "xhigh" | "max";
+      /** --permission-mode (see buildLaunchCommand.ts). Unset = claude's own default. Ignored for cloud nodes. */
+      /** --continue: most recent conversation in the project folder. Ignored when resumeSession is set, and for cloud nodes. */
+      continueSession?: boolean;
+      /** --resume=<session id or name>. Ignored for cloud nodes. */
+      resumeSession?: string;
+      /** --name: display name for the session, which makes it resumable by that name later. */
+      sessionName?: string;
+      permissionMode?: "acceptEdits" | "auto" | "bypassPermissions" | "manual" | "dontAsk" | "plan";
+      /** --allowedTools: tool rules that run without asking, e.g. "Read", "Bash(git log:*)". Ignored for cloud nodes. */
+      allowedTools?: string[];
+      /** --disallowedTools: tool rules that are always refused. Ignored for cloud nodes. */
+      disallowedTools?: string[];
       addDirs?: string[];
       /** Bare positional arg (see buildLaunchCommand.ts) — opens claude interactively with this message already sent, same convention as omp's initialPrompt. */
       initialPrompt?: string;
@@ -50,6 +73,8 @@ export type AgentFlowNode = {
   communication?: string;
   /** Feature doc (project-relative, notes/features/x.md) this node was created with — create_pane's specPath. */
   specPath?: string;
+  /** Run this node's pane in its own git worktree (<repo>/.yggdrasil/worktrees/<name>) instead of the project folder. */
+  worktree?: boolean;
 };
 
 /**

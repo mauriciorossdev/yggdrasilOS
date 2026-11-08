@@ -11,9 +11,22 @@ type Props = {
   agentId: string | null;
   onSelect: (modelId: string) => void;
   onBack: () => void;
+  /** When set, `p` jumps to the provider list so the user can pick a model from another provider. */
+  onChangeProvider?: () => void;
+  /** Where esc leads, for the hint line ("back", "back to chat"). */
+  backLabel?: string;
 };
 
-export function ModelMenu({ provider, client: _client, config, agentId, onSelect, onBack }: Props): React.ReactElement {
+export function ModelMenu({
+  provider,
+  client: _client,
+  config,
+  agentId,
+  onSelect,
+  onBack,
+  onChangeProvider,
+  backLabel = "back",
+}: Props): React.ReactElement {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const models = provider?.models ?? [];
 
@@ -25,9 +38,13 @@ export function ModelMenu({ provider, client: _client, config, agentId, onSelect
       ? (currentAgent.model as string | undefined)
       : undefined;
 
-  useInput((_input, key) => {
+  useInput((input, key) => {
     if (key.escape) {
       onBack();
+      return;
+    }
+    if (input === "p" && onChangeProvider) {
+      onChangeProvider();
       return;
     }
     if (key.upArrow) {
@@ -46,7 +63,7 @@ export function ModelMenu({ provider, client: _client, config, agentId, onSelect
     return (
       <Box flexDirection="column">
         <Text color={theme.dim}>No provider selected</Text>
-        <Text color={theme.dim}>esc to go back</Text>
+        <Text color={theme.dim}>{onChangeProvider ? "p change provider · " : ""}esc {backLabel}</Text>
       </Box>
     );
   }
@@ -55,7 +72,7 @@ export function ModelMenu({ provider, client: _client, config, agentId, onSelect
     return (
       <Box flexDirection="column">
         <Text color={theme.dim}>No models for {provider.label || provider.id}</Text>
-        <Text color={theme.dim}>esc to go back</Text>
+        <Text color={theme.dim}>{onChangeProvider ? "p change provider · " : ""}esc {backLabel}</Text>
       </Box>
     );
   }
@@ -85,7 +102,9 @@ export function ModelMenu({ provider, client: _client, config, agentId, onSelect
         </Box>
       ))}
       <Box marginTop={1}>
-        <Text color={theme.dim}>↑↓ navigate · enter select · esc back</Text>
+        <Text color={theme.dim}>
+          ↑↓ navigate · enter select{onChangeProvider ? " · p change provider" : ""} · esc {backLabel}
+        </Text>
       </Box>
     </Box>
   );

@@ -225,17 +225,18 @@ describe("memory tools", () => {
   }
 
   it("memory_add stores a memory and memory_list returns it", async () => {
+    // memory_add only returns the new id; the content is read back through memory_list.
     const added = (await tools.get("memory_add")!.execute(ctxFor(), { content: "remember this" })) as {
       id: number;
     };
-    expect(added.id).toEqual(expect.any(Number));
+    expect(typeof added.id).toBe("number");
 
     const listed = (await tools.get("memory_list")!.execute(ctxFor(), {})) as {
       memories: Array<{ id: number; content: string }>;
     };
     expect(listed.memories).toHaveLength(1);
-    expect(listed.memories[0]!.content).toBe("remember this");
     expect(listed.memories[0]!.id).toBe(added.id);
+    expect(listed.memories[0]!.content).toBe("remember this");
   });
 
   it("memory_search finds memories by keyword", async () => {
