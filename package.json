@@ -37,7 +37,8 @@
       "node-pty"
     ],
     "overrides": {
-      "dompurify": "^3.4.17"
+      "dompurify": "^3.4.17",
+      "node-gyp": "^13.1.0"
     }
   },
   "devDependencies": {

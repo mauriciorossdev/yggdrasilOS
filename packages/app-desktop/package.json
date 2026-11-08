@@ -5,7 +5,10 @@
   "private": true,
   "type": "module",
   "description": "Desktop client (Windows/Mac/Linux) for the Yggdrasil gateway — agent picker, multi-session chat, tool-call approvals.",
-  "author": "Mauricio Ross",
+  "author": {
+    "name": "Mauricio Ross",
+    "email": "mauriciorossdev@users.noreply.github.com"
+  },
   "main": "./dist/main/index.js",
   "scripts": {
     "dev": "electron-vite dev",
