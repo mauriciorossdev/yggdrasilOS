@@ -15,7 +15,7 @@
     "build": "node --max-old-space-size=4096 node_modules/electron-vite/bin/electron-vite.js build",
     "typecheck": "tsc -p tsconfig.node.json --noEmit && tsc -p tsconfig.web.json --noEmit",
     "dist": "node --max-old-space-size=4096 node_modules/electron-vite/bin/electron-vite.js build && electron-builder",
-    "postinstall": "electron-rebuild --only better-sqlite3"
+    "postinstall": "install-electron && electron-rebuild --only better-sqlite3"
   },
   "dependencies": {
     "@fontsource-variable/inter": "^5.3.0",
