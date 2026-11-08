@@ -15,10 +15,7 @@
     "@yggdrasil/config": "workspace:*",
     "@yggdrasil/kernel": "workspace:*",
     "@yggdrasil/pipeline": "workspace:*",
-    "node-cron": "^3.0.3"
-  },
-  "devDependencies": {
-    "@types/node-cron": "^3.0.11"
+    "node-cron": "^4.6.0"
   },
   "files": [
     "dist",

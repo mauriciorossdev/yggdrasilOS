@@ -2,7 +2,7 @@ import { definePlugin } from "@yggdrasil/sdk";
 import type { YggdrasilConfig } from "@yggdrasil/config";
 import { getKernelContext } from "@yggdrasil/kernel";
 import { ingestInboundMessage, runChannelTurn } from "@yggdrasil/pipeline";
-import cron from "node-cron";
+import cron, { type ScheduledTask } from "node-cron";
 
 export type CronJob = {
   id: string;
@@ -17,7 +17,7 @@ type CronPluginConfig = {
   jobs?: CronJob[];
 };
 
-const tasks: cron.ScheduledTask[] = [];
+const tasks: ScheduledTask[] = [];
 
 const plugin = definePlugin({
   id: "service-cron",

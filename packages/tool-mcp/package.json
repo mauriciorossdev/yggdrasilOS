@@ -13,6 +13,7 @@
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.32.2",
+    "zod": "^4.6.7",
     "@yggdrasil/config": "workspace:*",
     "@yggdrasil/kernel": "workspace:*",
     "@yggdrasil/sdk": "workspace:*",
