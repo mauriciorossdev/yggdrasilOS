@@ -35,16 +35,14 @@ Publicar en orden de dependencias (el script `prepare-publish` no publica; hazlo
 
 ## CI
 
-El workflow `.github/workflows/publish.yml` publica en push de tags `v*`.
+El workflow `.github/workflows/publish.yml` solo se lanza a mano, desde **Actions → Publish npm → Run workflow**. Ninguna etiqueta lo dispara, porque una publicación en npm prácticamente no se puede retirar.
+
+- Sin marcar **publish**, hace un dry-run: compila, prueba y empaqueta, pero no sube nada.
+- Marcado, publica de verdad. Solo funciona desde `main`.
 
 **Secret requerido:** `NPM_TOKEN` con permiso de publish para la org `@yggdrasil`.
 
-## Tag de release
-
-```bash
-git tag v0.4.0
-git push origin v0.4.0
-```
+Los paquetes de ejemplo (`my-tool`, `echo-channel`, `tool-destructive-demo`) son `"private": true` y no se publican.
 
 ## Notas
 

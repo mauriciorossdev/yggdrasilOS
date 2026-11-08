@@ -58,6 +58,11 @@ import type {
 } from "./types.js";
 import type { ThemeSettings } from "./ui/theme/types.js";
 
+declare global {
+  /** packages/app-desktop/package.json's version, set by electron.vite.config.ts. */
+  const __APP_VERSION__: string;
+}
+
 // Adding the `import type` above makes this file a module, not an ambient
 // script — `declare global` is required for `interface Window` to actually
 // merge with the real global Window type instead of shadowing it locally.

@@ -1,13 +1,14 @@
 # Link server on a machine with a public IP and a domain, with automatic TLS.
 # Setup and usage: deploy/README.md
 #
-#   docker compose -f deploy/docker-compose.yml up -d --build
+#   docker compose -f deploy/docker-compose.yml up -d
+#
+# Pulls the published image; YGGDRASIL_VERSION in deploy/.env pins its version.
+# To build it from this checkout instead, see docker-compose.build.yml.
 
 services:
   gateway:
-    build:
-      context: ..
-    image: yggdrasil-gateway
+    image: ghcr.io/mauriciorossdev/yggdrasil-gateway:${YGGDRASIL_VERSION:-latest}
     restart: unless-stopped
     env_file: .env
     # No published ports: only Caddy reaches it, so nothing is exposed unencrypted.
