@@ -75,10 +75,46 @@ jobs:
             packages/app-desktop/release/latest*.yml
           if-no-files-found: ignore
 
-      # TODO: once the self-hosted storage for installers + latest*.yml
-      # manifests exists (see plan), replace the upload-artifact step above
-      # (or add alongside it) with a real deploy step here, e.g.:
-      #   - name: Upload to self-hosted storage
-      #     run: <rsync/scp/aws s3 cp/etc. to your own host>
-      #     env:
-      #       DEPLOY_TARGET: ${{ secrets.DESKTOP_RELEASE_UPLOAD_TARGET }}
+  # A tag push publishes the three builds as a GitHub release. It only runs
+  # when every platform built, so a release never ships with one missing.
+  # A manual run stops at the artifacts above.
+  release:
+    needs: build
+    if: github.event_name == 'push'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/download-artifact@v7
+        with:
+          pattern: yggdrasil-desktop-*
+          path: dist
+          merge-multiple: true
+
+      - name: Create the release
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.ref_name }}
+        run: |
+          version="${TAG#app-desktop-v}"
+          prerelease=""
+          case "$version" in *-*) prerelease="--prerelease" ;; esac
+          cat > notes.md <<EOF
+          Yggdrasil desktop $version.
+
+          | System | File |
+          |---|---|
+          | Windows | \`Yggdrasil-Setup-$version.exe\` |
+          | macOS (Apple silicon) | \`Yggdrasil-$version-arm64.dmg\` |
+          | Linux | \`Yggdrasil-$version.AppImage\` or \`yggdrasil-desktop_${version}_amd64.deb\` |
+
+          The installers aren't code signed yet. On Windows, SmartScreen asks for confirmation: **More info → Run anyway**. On macOS, right-click the app and choose **Open** the first time.
+
+          The link server image for this version is \`ghcr.io/mauriciorossdev/yggdrasil-gateway:$version\` (see \`deploy/README.md\`).
+          EOF
+          # GitHub turns spaces in asset names into dots; use the dashes latest.yml expects.
+          for f in dist/*; do
+            if [[ "$f" == *" "* ]]; then mv "$f" "${f// /-}"; fi
+          done
+          ls -la dist
+          gh release create "$TAG" dist/* --repo "$GITHUB_REPOSITORY" --title "Yggdrasil desktop $version" --notes-file notes.md --verify-tag $prerelease
