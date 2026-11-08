@@ -2,6 +2,7 @@ import { useEffect, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
 import { ChatView } from "./chat/ChatView.js";
 import { TitleBar } from "./components/TitleBar.js";
+import { UpdateBanner } from "./components/UpdateBanner.js";
 import { WorkspaceOverlay } from "./workspace/WorkspaceOverlay.js";
 import { OnboardingGate } from "./onboarding/OnboardingGate.js";
 import { useI18n } from "./i18n/index.js";
@@ -52,6 +53,7 @@ export function App() {
     <div className="app-shell">
       <TitleBar />
       {!ready && <div className="gateway-reconnect-banner">{t("app.reconnecting")}</div>}
+      <UpdateBanner />
       <ChatView />
       <WorkspaceOverlay />
       <OnboardingGate />

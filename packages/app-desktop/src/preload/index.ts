@@ -142,6 +142,19 @@ const api = {
       return () => ipcRenderer.removeListener("lsp:trustChanged", listener);
     },
   },
+  /** "New version available" notice (main/updateCheck.ts). */
+  update: {
+    get: (): Promise<{ version: string; url: string } | null> => ipcRenderer.invoke("update:get"),
+    openRelease: (): Promise<void> => ipcRenderer.invoke("update:openRelease"),
+    dismiss: (): Promise<void> => ipcRenderer.invoke("update:dismiss"),
+    /** Fires in every window when a newer version is found or the notice is dismissed (null). */
+    onChange: (handler: (update: { version: string; url: string } | null) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, payload: { version: string; url: string } | null) =>
+        handler(payload);
+      ipcRenderer.on("update:available", listener);
+      return () => ipcRenderer.removeListener("update:available", listener);
+    },
+  },
   editorSettings: {
     get: (): Promise<unknown> => ipcRenderer.invoke("editorSettings:get"),
     set: (settings: unknown): Promise<unknown> => ipcRenderer.invoke("editorSettings:set", settings),
