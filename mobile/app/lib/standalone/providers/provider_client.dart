@@ -1,4 +1,5 @@
 import '../local_message.dart';
+import '../token_usage.dart';
 
 /// Result of one non-streaming provider turn. v1 scope decision (Frontend):
 /// the design doc says "parsear el streaming de tool-calls del proveedor",
@@ -15,14 +16,23 @@ class ProviderChatResult {
   final String text;
   final List<LocalToolCall> toolCalls;
 
-  ProviderChatResult({required this.text, this.toolCalls = const []});
+  /// Null when the provider's response carries no usage, or its client doesn't
+  /// map it yet; the UI then simply has nothing to show for that reply.
+  final TokenUsage? usage;
+
+  ProviderChatResult({required this.text, this.toolCalls = const [], this.usage});
 }
 
 abstract class ProviderClient {
+  /// Model used when the profile doesn't pick one.
+  String get defaultModel;
+
   Future<ProviderChatResult> chat({
     required String apiKey,
     required String? model,
     required List<LocalMessage> history,
     required List<Map<String, dynamic>> toolSpecs,
+    // Behavior instructions for the whole conversation, null for none.
+    String? systemPrompt,
   });
 }

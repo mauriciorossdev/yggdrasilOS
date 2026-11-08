@@ -6,6 +6,8 @@
 // there); this one runs inside a loaded web page instead, so it gets DOM
 // typings via this directive alone rather than widening the whole project.
 import { ipcRenderer } from "electron";
+import { cssSelectorFor } from "./pageSelector.js";
+import { initPageComments } from "./pageComments.js";
 
 /**
  * Preload for the Browser tab's WebContentsView (main/browserTabView.ts) —
@@ -49,37 +51,6 @@ function ensureOverlay(): HTMLDivElement {
   style.boxSizing = "border-box";
   document.documentElement.appendChild(overlay);
   return overlay;
-}
-
-// Cheap, best-effort — not aiming for the shortest *unique* selector (that
-// needs `document.querySelectorAll` uniqueness-checking, more than this
-// picker needs), just a readable enough one, id if present or up to 5
-// tag(.class)[:nth-of-type] ancestor hops.
-function cssSelectorFor(el: Element): string {
-  if (el.id) return `#${CSS.escape(el.id)}`;
-  const parts: string[] = [];
-  let node: Element | null = el;
-  for (let depth = 0; node && depth < 5; depth++) {
-    let part = node.tagName.toLowerCase();
-    if (node.classList.length > 0) {
-      part += [...node.classList]
-        .slice(0, 2)
-        .map((c) => `.${CSS.escape(c)}`)
-        .join("");
-    }
-    const parent: Element | null = node.parentElement;
-    if (parent) {
-      const sameTagSiblings = [...parent.children].filter((c) => c.tagName === node!.tagName);
-      if (sameTagSiblings.length > 1) part += `:nth-of-type(${sameTagSiblings.indexOf(node) + 1})`;
-    }
-    parts.unshift(part);
-    if (node.id) {
-      parts[0] = `#${CSS.escape(node.id)}`;
-      break;
-    }
-    node = parent;
-  }
-  return parts.join(" > ");
 }
 
 function onMouseMove(e: MouseEvent): void {
@@ -148,3 +119,5 @@ function stopPicking(): void {
 
 ipcRenderer.on("browserTab:startPick", startPicking);
 ipcRenderer.on("browserTab:stopPick", stopPicking);
+
+initPageComments();

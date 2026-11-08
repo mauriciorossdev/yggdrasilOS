@@ -1,3 +1,4 @@
+import { t } from "../i18n/index.js";
 import type {
   AgentInfo,
   ApprovalMode,
@@ -186,7 +187,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
       // APPROVAL_TIMEOUT_MS in gateway/methods.ts) as well as on an explicit
       // click — without a message here, a timed-out approval just silently
       // vanishes with no indication anything happened.
-      const label = action.payload.approved ? "Approved" : "Denied";
+      const text = t(action.payload.approved ? "chat.reducer.approved" : "chat.reducer.denied", { tool: action.payload.toolName });
       return {
         ...state,
         pendingApproval: null,
@@ -195,7 +196,7 @@ export function chatReducer(state: ChatState, action: ChatAction): ChatState {
           {
             id: nextMessageId(),
             role: "system",
-            text: `${label}: ${action.payload.toolName}`,
+            text,
             timestamp: Date.now(),
           },
         ],

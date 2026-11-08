@@ -4,6 +4,7 @@ import { useProjects } from "../projects/useProjects.js";
 import { StudioCreateForm } from "./StudioCreateForm.js";
 import { StudioWorkspace } from "./StudioWorkspace.js";
 import type { PluginRecord } from "../types.js";
+import { useI18n } from "../i18n/index.js";
 
 /**
  * "Estudio" main tab — a workshop for building complementos: describe one
@@ -17,6 +18,7 @@ import type { PluginRecord } from "../types.js";
  * this component's own state already survives switching away and back.
  */
 export function StudioView() {
+  const { t } = useI18n();
   const { plugins } = usePlugins();
   const { projects } = useProjects();
   const projectPath = projects.find((p) => p.id === window.yggdrasil.projectId)?.path ?? null;
@@ -46,7 +48,7 @@ export function StudioView() {
             setSelectedKey(null);
           }}
         >
-          + Nuevo
+          {t("studio.view.new")}
         </button>
         <ul className="studio-rail-list">
           {plugins.map((p) => (
@@ -61,13 +63,13 @@ export function StudioView() {
                   {p.manifest.icon && !p.manifest.icon.includes(".") ? p.manifest.icon : "🧩"}
                 </span>
                 {p.manifest.name}
-                {p.manifest.status === "draft" && <span className="scope-tag plugin-draft-tag">borrador</span>}
-                {p.scope === "global" && <span className="scope-tag">global</span>}
-                {p.error && <span className="scope-tag plugin-error-tag">error</span>}
+                {p.manifest.status === "draft" && <span className="scope-tag plugin-draft-tag">{t("studio.tag.draft")}</span>}
+                {p.scope === "global" && <span className="scope-tag">{t("studio.tag.global")}</span>}
+                {p.error && <span className="scope-tag plugin-error-tag">{t("studio.tag.error")}</span>}
               </button>
             </li>
           ))}
-          {plugins.length === 0 && <li className="muted">Sin complementos todavía</li>}
+          {plugins.length === 0 && <li className="muted">{t("studio.view.none")}</li>}
         </ul>
       </aside>
       <div className="studio-main">
@@ -84,7 +86,7 @@ export function StudioView() {
         )}
         {!showCreateForm && !selected && (
           <div className="studio-empty">
-            <p className="muted">Elegí un complemento de la lista o creá uno nuevo con «+ Nuevo».</p>
+            <p className="muted">{t("studio.view.empty")}</p>
           </div>
         )}
       </div>

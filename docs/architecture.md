@@ -171,7 +171,9 @@ const myTool = defineTool({
 1. Send messages + tool definitions to LLM
 2. If LLM returns `tool_calls`: execute each tool, append results, loop
 3. If LLM returns text: done
-4. Max iterations: `config.harness.maxToolIterations` (default 8)
+4. Max iterations: `config.harness.maxToolIterations` (default 8) — at the limit the model is asked for a summary instead of the turn ending in a bare error
+5. Loop guards (`config.harness.loopGuards`, default on): retry an empty reply (up to 10 times, without using tool iterations), push a model that announces an action without calling the tool, refuse the 4th identical call in a row. Each emits `loop.guard`. Details in `packages/harness-llm/README.md`
+6. Cancellation: `chat.cancel` aborts the turn in flight (no new model/tool call starts; the streamed text is kept, ending in `(cancelled)`)
 
 **Approval flow** for destructive tools:
 - LLM requests tool → check `riskLevel` / `requiresApproval`
@@ -399,6 +401,7 @@ All configuration lives in `yggdrasil.config.json` at the workspace root.
     "pinnedId": "llm",
     "streaming": true,
     "maxToolIterations": 8,
+    "loopGuards": true,
     "compactBeforeTurn": true,
     "toolApproval": "destructive-only",
     "parallelToolCalls": true

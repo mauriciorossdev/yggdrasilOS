@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { McpServerConfig } from "@yggdrasil/config";
 import type { AgentToolDefinition } from "@yggdrasil/tools-sdk";
 import type { McpConnection } from "./client.js";
-import { createMcpManager, type McpServers } from "./manager.js";
+import { createMcpManager, parseMcpTestServer, resolveTestConfig, type McpServers } from "./manager.js";
 
 const stdio = (command: string, extra: Partial<McpServerConfig> = {}): McpServerConfig =>
   ({ transport: "stdio", command, ...extra }) as McpServerConfig;
@@ -175,5 +175,67 @@ describe("mcp manager", () => {
     await manager.stop();
     expect(registered.size).toBe(0);
     expect(connections.every((c) => c.close.mock.calls.length === 1)).toBe(true);
+  });
+});
+
+describe("mcp manager test()", () => {
+  it("connects, lists tools without the namespace prefix, and hangs up without registering anything", async () => {
+    const { manager, registered, connections } = setup();
+    const result = await manager.test(stdio("npx"));
+    expect(result).toMatchObject({ ok: true, toolCount: 2, tools: ["a", "b"] });
+    expect(connections).toHaveLength(1);
+    expect(connections[0]!.close).toHaveBeenCalledTimes(1);
+    expect(registered.size).toBe(0);
+    expect(manager.status({})).toEqual([]);
+  });
+
+  it("reports a failed connection instead of throwing", async () => {
+    const { manager, failing } = setup();
+    failing.add("connection-test");
+    const result = await manager.test(stdio("nope"));
+    expect(result).toMatchObject({ ok: false, toolCount: 0, error: "boom connection-test" });
+  });
+
+  it("leaves a running server alone", async () => {
+    const { manager } = setup();
+    const servers: McpServers = { real: stdio("a") };
+    await manager.reconnect("real", servers);
+    await manager.test(stdio("other"));
+    expect(manager.status(servers)[0]).toMatchObject({ state: "connected", toolCount: 2 });
+  });
+});
+
+describe("parseMcpTestServer", () => {
+  it("accepts stdio and http configs and drops unknown fields", () => {
+    expect(parseMcpTestServer({ transport: "stdio", command: " uvx ", args: ["blender-mcp"], env: { A: 1 }, junk: true })).toEqual({
+      transport: "stdio",
+      command: "uvx",
+      args: ["blender-mcp"],
+      env: { A: "1" },
+    });
+    expect(parseMcpTestServer({ transport: "http", url: "https://x.test" })).toEqual({ transport: "http", url: "https://x.test" });
+  });
+
+  it("rejects incomplete or unknown configs", () => {
+    expect(() => parseMcpTestServer(null)).toThrow(/object/);
+    expect(() => parseMcpTestServer({ transport: "stdio", command: "  " })).toThrow(/command/);
+    expect(() => parseMcpTestServer({ transport: "http" })).toThrow(/url/);
+    expect(() => parseMcpTestServer({ transport: "ws", url: "x" })).toThrow(/transport/);
+  });
+});
+
+describe("resolveTestConfig", () => {
+  it("fills blank env/headers from the saved server of the same transport", () => {
+    const saved = { transport: "stdio", command: "a", env: { TOKEN: "s" } } as McpServerConfig;
+    expect(resolveTestConfig(stdio("b"), saved)).toMatchObject({ command: "b", env: { TOKEN: "s" } });
+    expect(resolveTestConfig(stdio("b", { env: { OTHER: "x" } } as Partial<McpServerConfig>), saved)).toMatchObject({ env: { OTHER: "x" } });
+    const savedHttp = { transport: "http", url: "u", headers: { Authorization: "Bearer s" } } as McpServerConfig;
+    expect(resolveTestConfig({ transport: "http", url: "v" }, savedHttp)).toMatchObject({ url: "v", headers: { Authorization: "Bearer s" } });
+  });
+
+  it("does not borrow secrets across transports or when nothing is saved", () => {
+    const savedHttp = { transport: "http", url: "u", headers: { A: "b" } } as McpServerConfig;
+    expect(resolveTestConfig(stdio("x"), savedHttp)).toEqual(stdio("x"));
+    expect(resolveTestConfig(stdio("x"), undefined)).toEqual(stdio("x"));
   });
 });

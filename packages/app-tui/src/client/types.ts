@@ -57,7 +57,7 @@ export type TurnStartPayload = {
 export type TurnEndPayload = {
   sessionKey: string;
   harnessId: string;
-  classification: "ok" | "error" | "retry" | "fallback";
+  classification: "ok" | "error" | "retry" | "fallback" | "cancelled";
   durationMs: number;
 };
 
@@ -83,6 +83,15 @@ export type ToolApprovalResolvedPayload = {
   sessionKey: string;
   toolName: string;
   approved: boolean;
+};
+
+export type ProviderRetryPayload = {
+  sessionKey: string;
+  /** 1 for the first retry. */
+  attempt: number;
+  delayMs: number;
+  /** e.g. "HTTP 500" or the connection error. */
+  reason: string;
 };
 
 export type ApprovalMode = "auto" | "plan" | "restrict" | "yolo";
@@ -137,6 +146,23 @@ export type SessionInfo = {
   updatedAt: number;
   agentId?: string;
   metadata?: Record<string, unknown>;
+};
+
+export type ToolInfo = {
+  name: string;
+  description: string;
+  parameters?: { properties?: Record<string, unknown> };
+  kind?: string;
+  riskLevel?: "safe" | "moderate" | "destructive";
+};
+
+export type TurnLogEntry = {
+  sessionKey: string;
+  harnessId?: string;
+  agentId?: string;
+  classification?: string;
+  durationMs?: number;
+  timestamp: number;
 };
 
 export type HealthResult = {

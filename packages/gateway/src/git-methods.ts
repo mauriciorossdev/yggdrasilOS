@@ -1,6 +1,7 @@
 import { execFile } from "node:child_process";
 import { readFile, readdir } from "node:fs/promises";
 import { basename, isAbsolute, join, relative, resolve, sep } from "node:path";
+import { APP_WORKTREES_DIR, createAppWorktree } from "@yggdrasil/git-worktrees";
 import type { GatewayMethodHandler } from "./methods.js";
 
 // Repository tab (RepositoryView.tsx) backend. Unlike git.status/git.diff
@@ -24,6 +25,8 @@ const REMOTE_TIMEOUT_MS = 120_000;
 const MAX_DIFF_CHARS = 2_000_000;
 
 const SCAN_MAX_DEPTH = 3;
+/** Where worktrees are kept (project-relative); scanning them would list each as its own repo. */
+const SCAN_SKIP_PATHS = new Set([APP_WORKTREES_DIR, ".claude/worktrees"]);
 const SCAN_MAX_REPOS = 50;
 const SCAN_SKIP_DIRS = new Set([
   ".git",
@@ -269,6 +272,123 @@ export function parseNameStatus(output: string): GitCommitFile[] {
   return files;
 }
 
+export type GitWorktreeEntry = {
+  path: string;
+  head: string;
+  /** Short branch name; undefined when detached or bare. */
+  branch?: string;
+  detached: boolean;
+  bare: boolean;
+  locked: boolean;
+  lockReason?: string;
+  prunable: boolean;
+  /** The repo's own checkout (always the first entry of `git worktree list`). */
+  main: boolean;
+};
+
+// `git worktree list --porcelain`: blank-line separated blocks of
+// "worktree <path>", "HEAD <sha>", "branch refs/heads/<name>" | "detached" |
+// "bare", and optionally "locked [reason]" / "prunable [reason]".
+export function parseWorktrees(output: string): GitWorktreeEntry[] {
+  const entries: GitWorktreeEntry[] = [];
+  for (const block of output.split(/\n\s*\n/)) {
+    const lines = block.split("\n").filter(Boolean);
+    const first = lines.find((l) => l.startsWith("worktree "));
+    if (!first) continue;
+    const entry: GitWorktreeEntry = {
+      path: first.slice("worktree ".length),
+      head: "",
+      detached: false,
+      bare: false,
+      locked: false,
+      prunable: false,
+      main: entries.length === 0,
+    };
+    for (const line of lines) {
+      if (line.startsWith("HEAD ")) entry.head = line.slice(5);
+      else if (line.startsWith("branch ")) entry.branch = line.slice(7).replace(/^refs\/heads\//, "");
+      else if (line === "detached") entry.detached = true;
+      else if (line === "bare") entry.bare = true;
+      else if (line === "locked" || line.startsWith("locked ")) {
+        entry.locked = true;
+        entry.lockReason = line.slice(6).trim() || undefined;
+      } else if (line === "prunable" || line.startsWith("prunable ")) entry.prunable = true;
+    }
+    entries.push(entry);
+  }
+  return entries;
+}
+
+export type GitWorktreeOrigin = "main" | "app" | "claude" | "manual";
+
+/**
+ * Who made a worktree, judged by where it lives relative to the repo's own
+ * checkout. Plain string work on purpose: git prints Windows paths as
+ * `C:/Users/...` while Node says `C:\Users\...`, with the drive letter in
+ * either case, and Windows paths are case-insensitive.
+ */
+export function classifyWorktreeOrigin(path: string, mainPath: string): GitWorktreeOrigin {
+  const clean = (p: string): string => p.replace(/\\/g, "/").replace(/\/+$/, "");
+  const main = clean(mainPath);
+  const windows = /^[A-Za-z]:\//.test(main) || main.startsWith("//");
+  const fold = (p: string): string => (windows ? p.toLowerCase() : p);
+  const target = clean(path);
+  if (fold(target) === fold(main)) return "main";
+  if (!fold(target).startsWith(`${fold(main)}/`)) return "manual";
+  const rel = fold(target.slice(main.length + 1));
+  if (rel.startsWith(`${APP_WORKTREES_DIR}/`)) return "app";
+  if (rel.startsWith(".claude/worktrees/")) return "claude";
+  return "manual";
+}
+
+/** Claude Code locks the worktree it is running in: "claude session <name> (pid N start …)". */
+export function parseClaudeLock(reason: string | undefined): { name: string; pid: number } | undefined {
+  const m = /^claude session (.+?) \(pid (\d+)/.exec(reason ?? "");
+  return m ? { name: m[1], pid: Number(m[2]) } : undefined;
+}
+
+function pidAlive(pid: number): boolean {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (err) {
+    // EPERM = exists but not ours; only ESRCH means gone.
+    return (err as NodeJS.ErrnoException).code === "EPERM";
+  }
+}
+
+/** Same folder, however git (`C:/x`) or Node (`C:\\x`) spells it; Windows paths ignore case. */
+export function samePath(a: string, b: string): boolean {
+  const clean = (p: string): string => p.replace(/\\/g, "/").replace(/\/+$/, "");
+  const [x, y] = [clean(a), clean(b)];
+  const windows = /^[A-Za-z]:\//.test(x) || x.startsWith("//");
+  return windows ? x.toLowerCase() === y.toLowerCase() : x === y;
+}
+
+/** The GitHub "open a pull request" page for a branch, from an origin URL; undefined for other hosts. */
+export function githubCompareUrl(remoteUrl: string, base: string, branch: string): string | undefined {
+  const m = /github\.com[:/]+([^/\s]+)\/([^/\s]+?)(?:\.git)?\/?$/.exec(remoteUrl.trim());
+  if (!m) return undefined;
+  const enc = (ref: string): string => ref.split("/").map(encodeURIComponent).join("/");
+  return `https://github.com/${m[1]}/${m[2]}/compare/${enc(base)}...${enc(branch)}?expand=1`;
+}
+
+/** Runs the GitHub CLI; `missing` when it isn't installed. */
+function execGh(cwd: string, args: string[]): Promise<GitResult & { missing: boolean }> {
+  return new Promise((resolvePromise) => {
+    execFile(
+      "gh",
+      args,
+      { cwd, maxBuffer: MAX_BUFFER, timeout: REMOTE_TIMEOUT_MS, env: { ...process.env, GH_PROMPT_DISABLED: "1" } },
+      (error, stdout, stderr) => {
+        const missing = (error as NodeJS.ErrnoException | null)?.code === "ENOENT";
+        const code = error ? (typeof error.code === "number" ? error.code : 1) : 0;
+        resolvePromise({ stdout, stderr, code, missing });
+      },
+    );
+  });
+}
+
 // ---------- registration ----------
 
 export function registerGitMethods(deps: GitMethodsDeps): void {
@@ -353,6 +473,8 @@ export function registerGitMethods(deps: GitMethodsDeps): void {
       for (const entry of entries) {
         if (!entry.isDirectory() || SCAN_SKIP_DIRS.has(entry.name)) continue;
         const abs = join(dir, entry.name);
+        // Linked worktrees are the Worktrees tab's business, not separate repositories.
+        if (SCAN_SKIP_PATHS.has(toPosix(relative(root, abs)))) continue;
         let isRepo = false;
         try {
           await readFile(join(abs, ".git", "HEAD"), "utf8");
@@ -408,6 +530,130 @@ export function registerGitMethods(deps: GitMethodsDeps): void {
     const merge = await execGitRaw(repo, ["rev-parse", "-q", "--verify", "MERGE_HEAD"], { readOnly: true });
     status.merging = merge.code === 0;
     return status;
+  });
+
+  define("git.worktrees", async (_params, repo) => {
+    const res = await execGitRaw(repo, ["worktree", "list", "--porcelain"], { readOnly: true });
+    if (res.code !== 0) fail("git.worktrees", res, "git worktree list failed");
+    const entries = parseWorktrees(res.stdout);
+    const main = entries.find((e) => e.main);
+    const base = main?.branch;
+    const worktrees = await Promise.all(
+      entries.map(async (entry) => {
+        const origin = main ? classifyWorktreeOrigin(entry.path, main.path) : "manual";
+        const claude = parseClaudeLock(entry.lockReason);
+        const info = {
+          ...entry,
+          origin,
+          claudeSession: claude ? { ...claude, alive: pidAlive(claude.pid) } : undefined,
+          changes: 0,
+          ahead: 0,
+          missing: false,
+        };
+        if (entry.bare || entry.prunable) return { ...info, missing: entry.prunable };
+        const status = await execGitRaw(entry.path, ["status", "--porcelain=v2", "-z", "--untracked-files=all"], {
+          readOnly: true,
+        });
+        if (status.code !== 0) return { ...info, missing: true };
+        info.changes = parseStatusV2(status.stdout).changes.length;
+        if (!entry.main && base && entry.branch !== base) {
+          const count = await execGitRaw(entry.path, ["rev-list", "--count", `${base}..HEAD`], { readOnly: true });
+          if (count.code === 0) info.ahead = Number(count.stdout.trim()) || 0;
+        }
+        return info;
+      }),
+    );
+    return { base, worktrees };
+  });
+
+  // Just where each checkout of the repo is and which branch it holds. git.worktrees also runs a
+  // `git status` per worktree; this is the cheap one to poll (the terminals show it in their header).
+  define("git.checkouts", async (_params, repo) => {
+    const res = await execGitRaw(repo, ["worktree", "list", "--porcelain"], { readOnly: true });
+    if (res.code !== 0) fail("git.checkouts", res, "git worktree list failed");
+    const checkouts = parseWorktrees(res.stdout)
+      .filter((e) => !e.bare && !e.prunable)
+      .map((e) => ({ path: e.path, branch: e.branch, detached: e.detached }));
+    return { checkouts };
+  });
+
+  // Creates <repo>/.yggdrasil/worktrees/<name> on a new branch ygg/<name>; the
+  // rules live in @yggdrasil/git-worktrees, shared with the desktop's create_pane.
+  define("git.worktreeAdd", async (params, repo) => {
+    const base = params.base ? assertRef("git.worktreeAdd", params.base, "base") : undefined;
+    return createAppWorktree(repo, { name: String(params.name ?? ""), base }, "git.worktreeAdd");
+  });
+
+  // Removes a linked worktree and, if asked, its branch. Refuses the main checkout, a worktree a
+  // Claude session is still running in, and (unless `force`) one with uncommitted work; a stale
+  // Claude lock is released first. `repo` must be the main checkout, not the worktree itself.
+  define("git.worktreeRemove", async (params, repo) => {
+    const target = String(params.path ?? "");
+    if (!target) throw new Error("git.worktreeRemove: path is required");
+    const listed = await execGitRaw(repo, ["worktree", "list", "--porcelain"], { readOnly: true });
+    if (listed.code !== 0) fail("git.worktreeRemove", listed, "git worktree list failed");
+    const entry = parseWorktrees(listed.stdout).find((e) => samePath(e.path, target));
+    if (!entry) throw new Error("git.worktreeRemove: not a worktree of this repository");
+    if (entry.main || entry.bare) throw new Error("git.worktreeRemove: the main checkout can't be removed");
+    const claude = parseClaudeLock(entry.lockReason);
+    if (claude && pidAlive(claude.pid)) {
+      throw new Error(`git.worktreeRemove: a Claude session (pid ${claude.pid}) is still running in this worktree`);
+    }
+    if (entry.locked && !claude) {
+      throw new Error(`git.worktreeRemove: this worktree is locked${entry.lockReason ? ` (${entry.lockReason})` : ""}`);
+    }
+    const force = params.force === true;
+    if (!entry.prunable && !force) {
+      const status = await execGitRaw(entry.path, ["status", "--porcelain=v2", "-z", "--untracked-files=all"], {
+        readOnly: true,
+      });
+      if (status.code === 0 && parseStatusV2(status.stdout).changes.length > 0) {
+        throw new Error("git.worktreeRemove: this worktree has uncommitted changes");
+      }
+    }
+    if (entry.locked) {
+      const unlock = await execGitRaw(repo, ["worktree", "unlock", entry.path]);
+      if (unlock.code !== 0) fail("git.worktreeRemove", unlock, "git worktree unlock failed");
+    }
+    const removal = entry.prunable
+      ? await execGitRaw(repo, ["worktree", "prune"])
+      : await execGitRaw(repo, ["worktree", "remove", ...(force ? ["--force"] : []), "--", entry.path]);
+    if (removal.code !== 0) fail("git.worktreeRemove", removal, "git worktree remove failed");
+
+    let branchDeleted = false;
+    let branchError: string | undefined;
+    if (params.deleteBranch === true && entry.branch) {
+      // -d only deletes a merged branch; -D (force) is what "discard" asks for.
+      const del = await execGitRaw(repo, ["branch", force ? "-D" : "-d", "--", entry.branch]);
+      branchDeleted = del.code === 0;
+      if (!branchDeleted) branchError = (del.stderr || del.stdout).trim();
+    }
+    return { ok: true, branchDeleted, branchError };
+  });
+
+  // Opens a pull request for `branch` with the GitHub CLI. The branch must already be pushed
+  // (git.push is a separate, confirmed step). Without `gh`, or off GitHub, it says so and hands
+  // back the compare page when it can build one.
+  define("git.pullRequest", async (params, repo) => {
+    const branch = assertRef("git.pullRequest", params.branch, "branch");
+    const base = assertRef("git.pullRequest", params.base, "base");
+    const title = String(params.title ?? "").trim();
+    if (!title) throw new Error("git.pullRequest: title is required");
+    const remote = await execGitRaw(repo, ["remote", "get-url", "origin"], { readOnly: true });
+    const compareUrl = remote.code === 0 ? githubCompareUrl(remote.stdout, base, branch) : undefined;
+    const res = await execGh(repo, [
+      "pr", "create", "--head", branch, "--base", base, "--title", title, "--body", String(params.body ?? ""),
+    ]);
+    if (res.missing) return { created: false, reason: "gh-missing", compareUrl };
+    if (res.code !== 0) {
+      const text = (res.stderr || res.stdout).trim();
+      // The branch already has an open PR: gh prints its URL, which is what the caller wants.
+      const existing = /https:\/\/\S+\/pull\/\d+/.exec(text)?.[0];
+      if (/already exists/i.test(text) && existing) return { created: false, reason: "exists", url: existing, compareUrl };
+      throw new Error(`git.pullRequest: ${text || "gh pr create failed"}`);
+    }
+    const url = /https:\/\/\S+/.exec(res.stdout)?.[0];
+    return { created: true, url, compareUrl };
   });
 
   define("git.branches", async (_params, repo) => {

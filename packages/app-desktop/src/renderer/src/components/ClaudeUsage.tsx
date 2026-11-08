@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import type { RateLimitsPayload } from "../types.js";
+import { useI18n } from "../i18n/index.js";
 
 function formatResetTime(resetsAt: number): string {
   return new Date(resetsAt * 1000).toLocaleString(undefined, {
@@ -30,6 +31,7 @@ function Meter({ label, percent }: { label: string; percent: number }) {
  * owns its own IPC subscription rather than being threaded through as a prop.
  */
 export function ClaudeUsage() {
+  const { t } = useI18n();
   const [rateLimits, setRateLimits] = useState<RateLimitsPayload | undefined>();
 
   useEffect(() => {
@@ -47,8 +49,8 @@ export function ClaudeUsage() {
   if (!rateLimits?.fiveHour && !rateLimits?.sevenDay) return null;
 
   const title = [
-    rateLimits.fiveHour && `Session resets ${formatResetTime(rateLimits.fiveHour.resetsAt)}`,
-    rateLimits.sevenDay && `Week resets ${formatResetTime(rateLimits.sevenDay.resetsAt)}`,
+    rateLimits.fiveHour && t("claudeUsage.session", { time: formatResetTime(rateLimits.fiveHour.resetsAt) }),
+    rateLimits.sevenDay && t("claudeUsage.week", { time: formatResetTime(rateLimits.sevenDay.resetsAt) }),
   ]
     .filter(Boolean)
     .join(" · ");

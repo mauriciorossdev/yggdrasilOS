@@ -56,7 +56,7 @@ class _UsageSheetState extends State<_UsageSheet> {
         padding: const EdgeInsets.only(top: 18, bottom: 6),
         child: Text(
           AppStrings.t(key).toUpperCase(),
-          style: const TextStyle(fontSize: 11.5, letterSpacing: 1.6, color: YggColors.textMuted),
+          style: TextStyle(fontSize: 11.5, letterSpacing: 1.6, color: YggColors.textMuted),
         ),
       );
 
@@ -76,12 +76,12 @@ class _UsageSheetState extends State<_UsageSheet> {
               crossAxisAlignment: CrossAxisAlignment.start,
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(AppStrings.t('usage.sheetTitle'), style: const TextStyle(fontSize: 17, color: YggColors.text)),
+                Text(AppStrings.t('usage.sheetTitle'), style: TextStyle(fontSize: 17, color: YggColors.text)),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.psychology_alt_outlined, color: YggColors.accent),
-                  title: Text(AppStrings.t('memory.open'), style: const TextStyle(color: YggColors.text)),
-                  trailing: const Icon(Icons.chevron_right, color: YggColors.textMuted),
+                  leading: Icon(Icons.psychology_alt_outlined, color: YggColors.accent),
+                  title: Text(AppStrings.t('memory.open'), style: TextStyle(color: YggColors.text)),
+                  trailing: Icon(Icons.chevron_right, color: YggColors.textMuted),
                   onTap: () {
                     final nav = Navigator.of(context);
                     nav.pop();
@@ -90,9 +90,9 @@ class _UsageSheetState extends State<_UsageSheet> {
                 ),
                 ListTile(
                   contentPadding: EdgeInsets.zero,
-                  leading: const Icon(Icons.folder_open_outlined, color: YggColors.accent),
-                  title: Text(AppStrings.t('documents.open'), style: const TextStyle(color: YggColors.text)),
-                  trailing: const Icon(Icons.chevron_right, color: YggColors.textMuted),
+                  leading: Icon(Icons.folder_open_outlined, color: YggColors.accent),
+                  title: Text(AppStrings.t('documents.open'), style: TextStyle(color: YggColors.text)),
+                  trailing: Icon(Icons.chevron_right, color: YggColors.textMuted),
                   onTap: () {
                     final nav = Navigator.of(context);
                     nav.pop();
@@ -111,7 +111,7 @@ class _UsageSheetState extends State<_UsageSheet> {
                         contentPadding: EdgeInsets.zero,
                         activeColor: YggColors.accent,
                         value: null,
-                        title: Text(AppStrings.t('usage.modelDefault'), style: const TextStyle(color: YggColors.text)),
+                        title: Text(AppStrings.t('usage.modelDefault'), style: TextStyle(color: YggColors.text)),
                       ),
                       for (final model in assistantModels)
                         RadioListTile<String?>(
@@ -119,7 +119,7 @@ class _UsageSheetState extends State<_UsageSheet> {
                           contentPadding: EdgeInsets.zero,
                           activeColor: YggColors.accent,
                           value: model.id,
-                          title: Text(model.label, style: const TextStyle(color: YggColors.text)),
+                          title: Text(model.label, style: TextStyle(color: YggColors.text)),
                         ),
                     ],
                   ),
@@ -134,30 +134,30 @@ class _UsageSheetState extends State<_UsageSheet> {
                 const SizedBox(height: 6),
                 Text(
                   '${AppStrings.tp('usage.contextLeft', {'left': formatTokens(_usage.contextRemaining), 'total': formatTokens(m.contextWindow)})}  (${AppStrings.t('usage.estimate')})',
-                  style: const TextStyle(color: YggColors.textMuted, fontSize: 13),
+                  style: TextStyle(color: YggColors.textMuted, fontSize: 13),
                 ),
                 _label('usage.total'),
                 Text(
                   AppStrings.tp('usage.tokens', {'inTokens': formatTokens(_usage.totalIn), 'outTokens': formatTokens(_usage.totalOut)}),
-                  style: const TextStyle(color: YggColors.text, fontSize: 14),
+                  style: TextStyle(color: YggColors.text, fontSize: 14),
                 ),
                 if (_usage.totalCacheRead > 0)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
                     child: Text(
                       AppStrings.tp('usage.cached', {'n': formatTokens(_usage.totalCacheRead)}),
-                      style: const TextStyle(color: YggColors.textMuted, fontSize: 13),
+                      style: TextStyle(color: YggColors.textMuted, fontSize: 13),
                     ),
                   ),
                 const SizedBox(height: 4),
                 Text(
                   '${AppStrings.t('usage.spent')}: ${formatUsd(_usage.totalUsd)}',
-                  style: const TextStyle(color: YggColors.text, fontSize: 14),
+                  style: TextStyle(color: YggColors.text, fontSize: 14),
                 ),
                 if (_usage.unpricedUsage || !m.hasPrice)
                   Padding(
                     padding: const EdgeInsets.only(top: 4),
-                    child: Text(AppStrings.t('usage.noPrice'), style: const TextStyle(color: YggColors.textMuted, fontSize: 12)),
+                    child: Text(AppStrings.t('usage.noPrice'), style: TextStyle(color: YggColors.textMuted, fontSize: 12)),
                   ),
                 _label('usage.budget'),
                 Row(
@@ -166,10 +166,10 @@ class _UsageSheetState extends State<_UsageSheet> {
                       child: TextField(
                         controller: _budget,
                         keyboardType: const TextInputType.numberWithOptions(decimal: true),
-                        style: const TextStyle(color: YggColors.text),
+                        style: TextStyle(color: YggColors.text),
                         decoration: InputDecoration(
                           hintText: AppStrings.t('usage.budgetHint'),
-                          hintStyle: const TextStyle(color: YggColors.textFaint),
+                          hintStyle: TextStyle(color: YggColors.textFaint),
                           isDense: true,
                         ),
                         onSubmitted: (_) => _saveBudget(),
@@ -189,7 +189,7 @@ class _UsageSheetState extends State<_UsageSheet> {
                   ),
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text(AppStrings.t('usage.budgetNote'), style: const TextStyle(color: YggColors.textMuted, fontSize: 12)),
+                  child: Text(AppStrings.t('usage.budgetNote'), style: TextStyle(color: YggColors.textMuted, fontSize: 12)),
                 ),
                 _label('tts.section'),
                 AnimatedBuilder(
@@ -200,27 +200,27 @@ class _UsageSheetState extends State<_UsageSheet> {
                     activeThumbColor: YggColors.accent,
                     value: _tts.enabled,
                     onChanged: _tts.setEnabled,
-                    title: Text(AppStrings.t('tts.enable'), style: const TextStyle(color: YggColors.text)),
+                    title: Text(AppStrings.t('tts.enable'), style: TextStyle(color: YggColors.text)),
                   ),
                 ),
                 TextField(
                   controller: _voice,
-                  style: const TextStyle(color: YggColors.text),
+                  style: TextStyle(color: YggColors.text),
                   decoration: InputDecoration(
                     hintText: AppStrings.t('tts.voiceHint'),
-                    hintStyle: const TextStyle(color: YggColors.textFaint),
+                    hintStyle: TextStyle(color: YggColors.textFaint),
                     isDense: true,
                   ),
                   onChanged: _tts.setVoiceId,
                 ),
                 Padding(
                   padding: const EdgeInsets.only(top: 4),
-                  child: Text(AppStrings.t('tts.note'), style: const TextStyle(color: YggColors.textMuted, fontSize: 12)),
+                  child: Text(AppStrings.t('tts.note'), style: TextStyle(color: YggColors.textMuted, fontSize: 12)),
                 ),
                 const SizedBox(height: 10),
                 TextButton(
                   onPressed: _usage.resetTotals,
-                  child: Text(AppStrings.t('usage.reset'), style: const TextStyle(color: YggColors.textMuted)),
+                  child: Text(AppStrings.t('usage.reset'), style: TextStyle(color: YggColors.textMuted)),
                 ),
               ],
             ),

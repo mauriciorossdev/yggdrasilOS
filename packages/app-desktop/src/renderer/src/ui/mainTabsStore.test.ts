@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { t } from "../i18n/index.js";
 import { MAIN_TAB_LABELS, resolveActiveTab, viewLabel } from "./mainTabsStore.js";
 
 describe("resolveActiveTab", () => {
@@ -19,8 +20,8 @@ describe("resolveActiveTab", () => {
 
 describe("viewLabel", () => {
   it("labels builtin and complemento tabs", () => {
-    expect(viewLabel("repository", [])).toBe(MAIN_TAB_LABELS.repository);
+    expect(viewLabel("repository", [])).toBe(t(MAIN_TAB_LABELS.repository));
     expect(viewLabel("plugin:global:x", [{ id: "plugin:global:x", label: "Kanban", onClose: () => {} }])).toBe("Kanban");
-    expect(viewLabel("plugin:global:gone", [])).toBe("Complemento");
+    expect(viewLabel("plugin:global:gone", [])).toBe(t("chat.mainNav.plugin"));
   });
 });

@@ -60,6 +60,8 @@ export type HarnessAttemptParams = {
   events?: EventBus;
   /** Per-session tool-approval mode override — see ToolLoopOptions in @yggdrasil/harness-llm. */
   approvalMode?: ApprovalMode;
+  /** Aborted when the user cancels the turn (gateway chat.cancel). Harnesses should stop as soon as practical and return classification "cancelled". */
+  signal?: AbortSignal;
 };
 
 export type HarnessAttemptResult = {
@@ -88,7 +90,7 @@ export type HarnessResetParams = {
   reason?: "new" | "reset" | "idle" | "unknown";
 };
 
-export type HarnessResultClassification = "ok" | "error" | "retry" | "fallback";
+export type HarnessResultClassification = "ok" | "error" | "retry" | "fallback" | "cancelled";
 
 export type AgentHarness = {
   id: string;

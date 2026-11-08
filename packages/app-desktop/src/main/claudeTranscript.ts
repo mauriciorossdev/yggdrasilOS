@@ -24,7 +24,7 @@ export type TranscriptMessage =
  * Claude Code names a project's transcript directory after the absolute cwd
  * with every non-alphanumeric character (path separators, underscores,
  * dots, ...) collapsed to "-" — confirmed empirically against this app's own
- * ~/.claude/projects entries, e.g. "/Users/x/harness_pp" -> "-Users-x-harness-pp".
+ * ~/.claude/projects entries, e.g. "/Users/x/my_app" -> "-Users-x-my-app".
  */
 export function claudeProjectSlug(absCwd: string): string {
   return absCwd.replace(/[^a-zA-Z0-9]/g, "-");

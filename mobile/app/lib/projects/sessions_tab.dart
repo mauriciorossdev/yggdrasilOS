@@ -5,6 +5,7 @@ import '../chat/session_transcript_screen.dart';
 import '../l10n/app_strings.dart';
 import '../services/yggdrasil_client.dart';
 import '../theme/ygg_theme.dart';
+import '../ui/ui.dart';
 
 /// Mirrors packages/sessions/src/types.ts SessionSummary, as returned by
 /// projects.sessions.list (same shape sessions.list already uses — see
@@ -57,6 +58,7 @@ class _SessionsTabState extends State<SessionsTab> {
   List<ProjectSessionSummary> _sessions = [];
   bool _loading = true;
   String? _error;
+  String _query = '';
 
   @override
   void initState() {
@@ -93,81 +95,78 @@ class _SessionsTabState extends State<SessionsTab> {
     }
   }
 
+  bool _matches(ProjectSessionSummary s) {
+    if (_query.isEmpty) return true;
+    final q = _query.toLowerCase();
+    return (s.title ?? '').toLowerCase().contains(q) || (s.lastMessagePreview ?? '').toLowerCase().contains(q);
+  }
+
+  Widget _row(ProjectSessionSummary s) {
+    final hasTitle = s.title?.isNotEmpty ?? false;
+    final meta = [
+      yggCount(s.messageCount, oneKey: 'sessions.messagesOne', manyKey: 'sessions.messagesMany'),
+      yggTimeAgo(s.updatedAt),
+    ].join(' · ');
+    return YggListRow(
+      title: hasTitle ? s.title! : AppStrings.t('sessions.untitled'),
+      subtitle: s.lastMessagePreview,
+      subtitleLines: 2,
+      meta: meta,
+      onTap: () => Navigator.push(
+        context,
+        MaterialPageRoute(
+          builder: (_) => SessionTranscriptScreen(
+            client: widget.client,
+            project: widget.project,
+            sessionKey: s.sessionKey,
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
-    if (_loading)
-      return const Center(
-        child: CircularProgressIndicator(color: YggColors.accent),
-      );
+    if (_loading) {
+      return Center(child: CircularProgressIndicator(color: YggColors.accent));
+    }
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(
-          '${AppStrings.t('common.errorPrefix')}: $_error',
-          style: const TextStyle(color: YggColors.textMuted),
-        ),
+      return YggEmptyState(
+        icon: Icons.error_outline,
+        message: '${AppStrings.t('common.errorPrefix')}: $_error',
+        action: OutlinedButton(onPressed: _load, child: Text(AppStrings.t('common.retry'))),
       );
     }
     if (_sessions.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            AppStrings.t('projects.noSessions'),
-            style: const TextStyle(color: YggColors.textFaint),
-          ),
-        ),
-      );
+      return YggEmptyState(icon: Icons.forum_outlined, message: AppStrings.t('projects.noSessions'));
     }
+
+    final sorted = _sessions.where(_matches).toList()..sort((a, b) => b.updatedAt.compareTo(a.updatedAt));
+    // Insertion-ordered: today first, then yesterday... because the list is newest-first.
+    final groups = <String, List<ProjectSessionSummary>>{};
+    for (final s in sorted) {
+      groups.putIfAbsent(yggDateBucketKey(s.updatedAt), () => []).add(s);
+    }
+
     return RefreshIndicator(
       onRefresh: _load,
-      child: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
-        itemCount: _sessions.length,
-        itemBuilder: (_, i) {
-          final s = _sessions[i];
-          return GestureDetector(
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => SessionTranscriptScreen(
-                  client: widget.client,
-                  project: widget.project,
-                  sessionKey: s.sessionKey,
-                ),
-              ),
+      color: YggColors.accent,
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+        children: [
+          YggSearchField(hint: AppStrings.t('sessions.searchHint'), onChanged: (v) => setState(() => _query = v.trim())),
+          const SizedBox(height: 18),
+          if (sorted.isEmpty)
+            Padding(
+              padding: const EdgeInsets.only(top: 40),
+              child: YggEmptyState(icon: Icons.search_off, message: AppStrings.t('projects.noMatches')),
             ),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 11, horizontal: 12),
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    (s.title?.isNotEmpty ?? false) ? s.title! : s.sessionKey,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(
-                      fontSize: 14.5,
-                      color: YggColors.text,
-                    ),
-                  ),
-                  if (s.lastMessagePreview != null) ...[
-                    const SizedBox(height: 3),
-                    Text(
-                      s.lastMessagePreview!,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(
-                        fontSize: 12.5,
-                        color: YggColors.textFaint,
-                      ),
-                    ),
-                  ],
-                ],
-              ),
-            ),
-          );
-        },
+          for (final entry in groups.entries) ...[
+            YggSectionLabel(AppStrings.t(entry.key)),
+            YggListGroup(children: [for (final s in entry.value) _row(s)]),
+            const SizedBox(height: 20),
+          ],
+        ],
       ),
     );
   }

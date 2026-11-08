@@ -1,9 +1,10 @@
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowLeftIcon, ArrowTopRightOnSquareIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import { onRequestOpenDocument } from "../chat/documentsBridge.js";
 import { FileTree } from "../files/FileTree.js";
-import { TextEditor } from "../files/TextEditor.js";
+import { TextEditor, type RevealTarget } from "../files/TextEditor.js";
+import type { OpenTarget } from "../files/FileSearchResults.js";
 import { FileViewer } from "../files/FileViewer.js";
 import { previewKind } from "../files/filePreviewKind.js";
 import { DocumentsTabContextMenu } from "./DocumentsTabContextMenu.js";
@@ -11,6 +12,12 @@ import { reconcileExternalChange } from "./reconcileExternalChange.js";
 import { buildFeatureDoc, FEATURES_DIR, featureDocPath } from "./featureDoc.js";
 import { FeatureProgress } from "./FeatureProgress.js";
 import { DiskConflictBar } from "./DiskConflictBar.js";
+import { AUTOSAVE_DELAY_MS, saveStatus, shouldAutosave } from "./autosave.js";
+import { SaveIndicator } from "./SaveIndicator.js";
+import { useNotesIndex } from "./useNotesIndex.js";
+import { buildBacklinks, wikiItems } from "./notesIndex.js";
+import { useI18n } from "../i18n/index.js";
+import { releaseModel } from "../files/lsp/service.js";
 import type { FsListResult, FsReadResult } from "../types.js";
 
 const NOTES_ROOT = "notes";
@@ -26,6 +33,9 @@ type TabState = {
   totalLength?: number;
   /** The file changed on disk while this tab had unsaved edits — holds the disk version until the user picks a side. */
   diskConflict?: string;
+  /** Last write attempt. A failed save keeps the edits on screen (unlike `error`, which replaces the editor). */
+  saveState?: "saving" | "saved" | "error";
+  saveError?: string;
 };
 
 type DriveShareState = {
@@ -39,7 +49,24 @@ function basename(path: string): string {
   return idx === -1 ? path : path.slice(idx + 1);
 }
 
+/** The open note's location, `notes / folder / file.md`, with the file name stressed. */
+function Breadcrumb({ path }: { path: string }) {
+  const { t } = useI18n();
+  const parts = path.split("/");
+  return (
+    <nav className="documents-crumb" aria-label={t("docs.crumb.label")} title={path}>
+      {parts.map((part, i) => (
+        <span key={`${i}:${part}`} className={i === parts.length - 1 ? "current" : ""}>
+          {i > 0 && <span className="sep">/</span>}
+          {part}
+        </span>
+      ))}
+    </nav>
+  );
+}
+
 export function DocumentsView() {
+  const { t } = useI18n();
   const { call, onEvent } = useGateway();
   const [ready, setReady] = useState(false);
   const [openPaths, setOpenPaths] = useState<string[]>([]);
@@ -47,6 +74,8 @@ export function DocumentsView() {
   const [tabs, setTabs] = useState<Record<string, TabState>>({});
   const [driveShares, setDriveShares] = useState<Record<string, DriveShareState>>({});
   const hydratedRef = useRef(false);
+  // Titles and links between notes: what the `[[` picker offers and the Backlinks tab lists.
+  const notesIndex = useNotesIndex(NOTES_ROOT, ready);
 
   // Back-navigation stack: every time activePath changes to a genuinely
   // different path, the path it moved *away from* is pushed here — a plain
@@ -223,7 +252,7 @@ export function DocumentsView() {
     const title = (newDocTitle ?? "").trim();
     const path = featureDocPath(title);
     if (!path) {
-      setNewDocError("Give it a title (letters or numbers).");
+      setNewDocError(t("docs.view.titleRequired"));
       return;
     }
     try {
@@ -243,9 +272,12 @@ export function DocumentsView() {
     }
   };
 
-  const openFile = (path: string) => {
+  // A note opened from a search hit also remembers what to show once it is on screen.
+  const [reveal, setReveal] = useState<(RevealTarget & { path: string }) | null>(null);
+  const openFile = (path: string, target?: OpenTarget) => {
     setOpenPaths((prev) => (prev.includes(path) ? prev : [...prev, path]));
     setActivePath(path);
+    if (target) setReveal({ path, query: target.query, line: target.line, nonce: Date.now() });
   };
 
   // A file-path link clicked in a terminal pane (TerminalPane's
@@ -254,26 +286,70 @@ export function DocumentsView() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   useEffect(() => onRequestOpenDocument(openFile), []);
 
+  // Reads the tab from the ref, not from a render's closure: autosave fires from timers and
+  // blur handlers that would otherwise hold an older copy of what the user typed.
   const save = useCallback(
     async (path: string) => {
-      const tab = tabs[path];
+      const tab = tabsRef.current[path];
       // A truncated read is a partial file — writing it back would silently
       // drop the rest on disk, so this never saves one (the editor below is
       // also readOnly whenever truncated, but this is the backstop that
       // actually prevents data loss if that ever stops being true).
       if (!tab || tab.content === tab.savedContent || previewKind(path) !== "text" || tab.truncated) return;
+      const written = tab.content;
+      setTabs((prev) => (prev[path] ? { ...prev, [path]: { ...prev[path]!, saveState: "saving", saveError: undefined } } : prev));
       try {
-        await call("fs.write", { relativePath: path, content: tab.content });
-        setTabs((prev) => ({ ...prev, [path]: { ...prev[path]!, savedContent: tab.content, diskConflict: undefined } }));
+        await call("fs.write", { relativePath: path, content: written });
+        setTabs((prev) =>
+          prev[path]
+            ? { ...prev, [path]: { ...prev[path]!, savedContent: written, diskConflict: undefined, saveState: "saved", saveError: undefined } }
+            : prev,
+        );
       } catch (err) {
-        setTabs((prev) => ({
-          ...prev,
-          [path]: { ...prev[path]!, error: err instanceof Error ? err.message : String(err) },
-        }));
+        setTabs((prev) =>
+          prev[path]
+            ? {
+                ...prev,
+                [path]: { ...prev[path]!, saveState: "error", saveError: err instanceof Error ? err.message : String(err) },
+              }
+            : prev,
+        );
       }
     },
-    [call, tabs],
+    [call],
   );
+
+  // Autosave: a moment after the last keystroke the active note is written. The timer restarts
+  // on every edit, so a note is only saved while the user pauses.
+  const activeContent = activePath ? tabs[activePath]?.content : undefined;
+  useEffect(() => {
+    if (!activePath || !shouldAutosave(tabsRef.current[activePath])) return;
+    const timer = setTimeout(() => void save(activePath), AUTOSAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+  }, [activePath, activeContent, save]);
+
+  // Leaving a note (another tab, or the app losing focus) writes pending edits right away
+  // instead of waiting out the delay.
+  const flushedPathRef = useRef<string | null>(null);
+  useEffect(() => {
+    const prev = flushedPathRef.current;
+    flushedPathRef.current = activePath;
+    if (prev && prev !== activePath && shouldAutosave(tabsRef.current[prev])) void save(prev);
+  }, [activePath, save]);
+  useEffect(() => {
+    const flush = () => {
+      if (activePath && shouldAutosave(tabsRef.current[activePath])) void save(activePath);
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("blur", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("blur", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+  }, [activePath, save]);
 
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
@@ -288,9 +364,13 @@ export function DocumentsView() {
 
   const closeTab = (path: string) => {
     const tab = tabs[path];
-    if (tab && tab.content !== tab.savedContent && !window.confirm(`Discard unsaved changes to "${basename(path)}"?`)) {
-      return;
+    if (tab && tab.content !== tab.savedContent) {
+      // Pending edits are written on the way out; only a note that can't be saved (a conflict
+      // with the disk, a failed write) still asks before throwing them away.
+      if (shouldAutosave(tab)) void save(path);
+      else if (!window.confirm(t("doc.discardConfirmFile", { name: basename(path) }))) return;
     }
+    releaseModel(path);
     setOpenPaths((prev) => {
       const next = prev.filter((p) => p !== path);
       if (activePath === path) setActivePath(next.length > 0 ? next[next.length - 1]! : null);
@@ -329,6 +409,9 @@ export function DocumentsView() {
     [call],
   );
 
+  const notesIndexItems = useMemo(() => wikiItems(notesIndex, activePath ?? undefined), [notesIndex, activePath]);
+  const activeBacklinks = useMemo(() => (activePath ? buildBacklinks(notesIndex, activePath) : []), [notesIndex, activePath]);
+
   const activeTab = activePath ? tabs[activePath] : undefined;
   const activeKind = activePath ? previewKind(activePath) : null;
 
@@ -341,17 +424,17 @@ export function DocumentsView() {
               <button
                 type="button"
                 className="feature-doc-new-btn"
-                title="Create a feature doc to hand work to other agents by path"
+                title={t("docs.view.newFeatureDocTitle")}
                 onClick={() => setNewDocTitle("")}
               >
-                + New feature doc
+                {t("docs.view.newFeatureDoc")}
               </button>
             ) : (
               <>
                 <input
                   autoFocus
                   value={newDocTitle}
-                  placeholder="Feature title"
+                  placeholder={t("docs.view.featureTitlePlaceholder")}
                   onChange={(e) => {
                     setNewDocTitle(e.target.value);
                     setNewDocError(null);
@@ -373,9 +456,17 @@ export function DocumentsView() {
           </div>
         )}
         {ready ? (
-          <FileTree rootRelativePath={NOTES_ROOT} onOpenFile={openFile} activePath={activePath} />
+          <FileTree
+            rootRelativePath={NOTES_ROOT}
+            onOpenFile={openFile}
+            activePath={activePath}
+            searchable
+            searchContent
+            searchPlaceholder={t("docs.view.searchNotes")}
+            shortcutPriority={1}
+          />
         ) : (
-          <p className="muted">Loading…</p>
+          <p className="muted">{t("doc.loading")}</p>
         )}
       </div>
       <div className="documents-main">
@@ -400,7 +491,7 @@ export function DocumentsView() {
                   <button
                     type="button"
                     className="documents-tab-close"
-                    title="Close"
+                    title={t("doc.close")}
                     onClick={() => closeTab(path)}
                   >
                     <XMarkIcon className="hero-icon" />
@@ -415,12 +506,14 @@ export function DocumentsView() {
             <button
               type="button"
               className="icon-btn documents-back-btn"
-              title="Back to previous document"
+              title={t("docs.view.back")}
               disabled={backStack.length === 0}
               onClick={goBack}
             >
               <ArrowLeftIcon className="hero-icon" />
             </button>
+            {activePath && <Breadcrumb path={activePath} />}
+            <span className="documents-toolbar-spacer" />
             {activePath && (
               <>
                 <button
@@ -429,7 +522,7 @@ export function DocumentsView() {
                   disabled={driveShares[activePath]?.loading}
                   onClick={() => void shareToDrive(activePath)}
                 >
-                  {driveShares[activePath]?.loading ? "Compartiendo…" : "Compartir a Drive"}
+                  {driveShares[activePath]?.loading ? t("docs.view.sharing") : t("docs.view.shareDrive")}
                 </button>
                 {driveShares[activePath]?.webViewLink && (
                   <a
@@ -438,7 +531,7 @@ export function DocumentsView() {
                     target="_blank"
                     rel="noreferrer"
                   >
-                    Abrir en Drive <ArrowTopRightOnSquareIcon className="hero-icon" />
+                    {t("docs.view.openDrive")} <ArrowTopRightOnSquareIcon className="hero-icon" />
                   </a>
                 )}
                 {driveShares[activePath]?.error && (
@@ -458,18 +551,20 @@ export function DocumentsView() {
           <FeatureProgress content={activeTab.content} />
         )}
         <div className="documents-editor">
-          {!activePath && <p className="muted documents-empty">Select a note to start editing.</p>}
+          {!activePath && <p className="muted documents-empty">{t("docs.view.selectNote")}</p>}
           {activePath && activeKind && activeKind !== "text" && <FileViewer relativePath={activePath} kind={activeKind} />}
           {activePath && activeKind === "text" && activeTab?.loading && (
-            <p className="muted documents-empty">Loading…</p>
+            <p className="muted documents-empty">{t("doc.loading")}</p>
           )}
           {activePath && activeKind === "text" && activeTab?.error && (
             <p className="error documents-empty">{activeTab.error}</p>
           )}
           {activePath && activeKind === "text" && activeTab?.truncated && (
             <p className="muted documents-empty">
-              Truncated — showing {activeTab.content.length.toLocaleString()} of{" "}
-              {activeTab.totalLength?.toLocaleString()} characters. Too large to edit here.
+              {t("docs.view.truncated", {
+                shown: activeTab.content.length.toLocaleString(),
+                total: activeTab.totalLength?.toLocaleString() ?? "",
+              })}
             </p>
           )}
           {activePath && activeKind === "text" && activeTab && !activeTab.loading && !activeTab.error && (
@@ -477,6 +572,11 @@ export function DocumentsView() {
               path={activePath}
               value={activeTab.content}
               readOnly={activeTab.truncated}
+              status={<SaveIndicator status={saveStatus(activeTab)} onRetry={() => void save(activePath)} />}
+              reveal={reveal && reveal.path === activePath ? reveal : undefined}
+              wikiItems={notesIndexItems}
+              backlinks={activeBacklinks}
+              onOpenBacklink={(b) => openFile(b.path)}
               onChange={(value) =>
                 setTabs((prev) => ({ ...prev, [activePath]: { ...prev[activePath]!, content: value } }))
               }

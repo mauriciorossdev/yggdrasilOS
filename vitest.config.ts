@@ -8,6 +8,7 @@ const alias = {
   "@yggdrasil/harness-runtime": resolve(__dirname, "packages/harness-runtime/src/index.ts"),
   "@yggdrasil/harness-llm": resolve(__dirname, "packages/harness-llm/src/index.ts"),
   "@yggdrasil/pipeline": resolve(__dirname, "packages/pipeline/src/index.ts"),
+  "@yggdrasil/git-worktrees": resolve(__dirname, "packages/git-worktrees/src/index.ts"),
   "@yggdrasil/gateway": resolve(__dirname, "packages/gateway/src/index.ts"),
   "@yggdrasil/sessions": resolve(__dirname, "packages/sessions/src/index.ts"),
   "@yggdrasil/channel-tui": resolve(__dirname, "packages/channel-tui/src/index.ts"),

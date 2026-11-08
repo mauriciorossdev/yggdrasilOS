@@ -1,5 +1,6 @@
 import { useRef, useState } from "react";
 import { ChevronDownIcon, TrashIcon } from "@heroicons/react/20/solid";
+import { useI18n } from "../i18n/index.js";
 import type { AgentTeam } from "../types.js";
 import { useDismiss } from "../ui/useDismiss.js";
 
@@ -22,6 +23,7 @@ type Props = {
  * layout already has content).
  */
 export function TeamsMenu({ teams, label, title, onLoad, onDeleted }: Props) {
+  const { t } = useI18n();
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -30,7 +32,7 @@ export function TeamsMenu({ teams, label, title, onLoad, onDeleted }: Props) {
   if (teams.length === 0) return null;
 
   const deleteTeam = (team: AgentTeam) => {
-    if (!window.confirm(`Delete team "${team.name}"? This can't be undone.`)) return;
+    if (!window.confirm(t("term.teams.deleteConfirm", { name: team.name }))) return;
     void window.yggdrasil.agentTeams.delete(team.id).then(onDeleted);
   };
 
@@ -54,7 +56,7 @@ export function TeamsMenu({ teams, label, title, onLoad, onDeleted }: Props) {
               >
                 {team.name}
               </button>
-              <button type="button" className="icon-btn" title="Delete team" onClick={() => deleteTeam(team)}>
+              <button type="button" className="icon-btn" title={t("term.teams.deleteTitle")} onClick={() => deleteTeam(team)}>
                 <TrashIcon className="hero-icon" />
               </button>
             </div>

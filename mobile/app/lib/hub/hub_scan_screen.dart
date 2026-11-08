@@ -5,7 +5,7 @@ import '../l10n/app_strings.dart';
 import 'hub_link.dart';
 
 /// Scans the QR the desktop shows in Ajustes → Teléfono (yggdrasil://hub?...)
-/// and stores the Railway gateway URL + key. Pops with true once linked.
+/// and stores the link server's URL + key. Pops with true once linked.
 class HubScanScreen extends StatefulWidget {
   const HubScanScreen({super.key});
 
@@ -29,7 +29,8 @@ class _HubScanScreenState extends State<HubScanScreen> {
     for (final code in capture.barcodes) {
       final link = HubLink.parse(code.rawValue ?? '');
       if (link == null) {
-        if (mounted) setState(() => _hint = AppStrings.t('hub.notOurQr'));
+        final insecure = HubLink.isInsecurePayload(code.rawValue ?? '');
+        if (mounted) setState(() => _hint = AppStrings.t(insecure ? 'hub.insecureQr' : 'hub.notOurQr'));
         continue;
       }
       _handled = true;

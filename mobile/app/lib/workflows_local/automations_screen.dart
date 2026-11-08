@@ -101,12 +101,12 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
         label: Text(AppStrings.t('auto.new')),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: YggColors.accent))
+          ? Center(child: CircularProgressIndicator(color: YggColors.accent))
           : _automations.isEmpty
               ? Center(
                   child: Padding(
                     padding: const EdgeInsets.all(32),
-                    child: Text(AppStrings.t('auto.empty'), textAlign: TextAlign.center, style: const TextStyle(color: YggColors.textMuted)),
+                    child: Text(AppStrings.t('auto.empty'), textAlign: TextAlign.center, style: TextStyle(color: YggColors.textMuted)),
                   ),
                 )
               : ListView.separated(
@@ -120,7 +120,7 @@ class _AutomationsScreenState extends State<AutomationsScreen> {
                       title: Text(a.name, style: const TextStyle(fontWeight: FontWeight.w500)),
                       subtitle: Text(
                         '${AppStrings.tp('auto.stepCount', {'n': '${a.steps.length}'})} · ${last == null ? AppStrings.t('auto.neverRun') : (last.status == 'ok' ? AppStrings.t('auto.lastOk') : AppStrings.t('auto.lastFailed'))}',
-                        style: const TextStyle(fontSize: 12, color: YggColors.textFainter),
+                        style: TextStyle(fontSize: 12, color: YggColors.textFainter),
                       ),
                       onTap: () => _openEditor(a),
                       trailing: Row(
@@ -195,9 +195,9 @@ class _AutomationHistoryScreenState extends State<AutomationHistoryScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(AppStrings.t('auto.historyTitle'))),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: YggColors.accent))
+          ? Center(child: CircularProgressIndicator(color: YggColors.accent))
           : _runs.isEmpty
-              ? Center(child: Text(AppStrings.t('auto.noRuns'), style: const TextStyle(color: YggColors.textMuted)))
+              ? Center(child: Text(AppStrings.t('auto.noRuns'), style: TextStyle(color: YggColors.textMuted)))
               : ListView(
                   children: [
                     for (final run in _runs)
@@ -213,7 +213,7 @@ class _AutomationHistoryScreenState extends State<AutomationHistoryScreen> {
                               title: Text(l.label),
                               subtitle: Text(
                                 [l.status, if (l.output != null) l.output!, if (l.error != null) l.error!].join(' · '),
-                                style: const TextStyle(fontSize: 12, color: YggColors.textFainter),
+                                style: TextStyle(fontSize: 12, color: YggColors.textFainter),
                               ),
                             ),
                         ],

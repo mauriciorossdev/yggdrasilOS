@@ -2,7 +2,7 @@
 
 Documento maestro para planificar y ejecutar el desarrollo por fases. Cada iteración futura debe convertirse en un **plan formal** (con todos, archivos clave y criterios de éxito) antes de implementarse.
 
-**Estado del repo:** `harness_pp` (pendiente renombrar a `yggdrasil`)  
+**Estado del repo:** `yggdrasil`  
 **Scope npm:** `@yggdrasil/*`  
 **CLI:** `yggdrasil`  
 **Config:** `yggdrasil.config.json`  
@@ -53,7 +53,7 @@ flowchart TB
 ## Iteración 1 — Spine ✅
 
 **Estado:** Completada  
-**Plan de referencia:** `harness_pp_spine`
+**Plan de referencia:** plan interno de la columna vertebral
 
 ### Objetivo
 
@@ -204,7 +204,7 @@ Items pequeños que conviene resolver en la próxima iteración o como “iterac
 | `tools.list` en gateway | No existe | Validar tools solo vía chat o script | ✅ Iter 4 |
 | `health.version` | `0.2.0` fijo | `packages/gateway/src/methods.ts` | ✅ Iter 4 |
 | README raíz | Desactualizado | No menciona tools, `create-plugin` | ✅ Iter 4 |
-| Renombrar repo | Pendiente | `harness_pp` → `yggdrasil` | — |
+| Renombrar repo | Hecho | Nombre anterior → `yggdrasil` | — |
 | Historial con tool messages | Parcial | Sesión guarda user/assistant; tool turns no persisten en disco | ✅ Iter 4 |
 | Convención nombres tools | Sin doc | Preferir `snake_case` sin guiones para compatibilidad LLM | ✅ Iter 4 |
 | `pluginApi` en manifiestos core | `>=0.1.0` | Unificar a `>=0.3.0` | ✅ Iter 4 |
@@ -366,7 +366,7 @@ Instalar Yggdrasil y plugins **sin clonar el monorepo**: paquetes publicados, CL
 |------|-----|-----|
 | Distribución | Monorepo local | Paquetes no publicados en npm |
 | Discovery | `node_modules/@yggdrasil/*` | Sin flujo `pnpm add` documentado end-to-end |
-| Repo | `harness_pp` | Nombre no alineado con marca |
+| Repo | Nombre anterior | Nombre no alineado con marca |
 | CLI | `create-plugin` | Sin `plugin install` / `plugin enable` |
 
 ### Entregables propuestos
@@ -376,7 +376,7 @@ Instalar Yggdrasil y plugins **sin clonar el monorepo**: paquetes publicados, CL
 | 6.1 | Publicar paquetes core | `sdk`, `kernel`, `cli`, `tools-sdk`, etc. |
 | 6.2 | `yggdrasil plugin install <pkg>` | Instala npm + habilita en config |
 | 6.3 | Plugin de ejemplo publicado | `@yggdrasil/tool-weather` o similar |
-| 6.4 | Renombrar repo | `harness_pp` → `yggdrasil` |
+| 6.4 | Renombrar repo | Nombre anterior → `yggdrasil` |
 | 6.5 | README + branding | Quick start desde npm global |
 | 6.6 | CI publish | GitHub Actions en tag |
 

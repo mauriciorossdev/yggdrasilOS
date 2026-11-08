@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 
 import '../l10n/app_strings.dart';
 import '../theme/ygg_theme.dart';
+import '../ui/ui.dart';
 import 'voice_mic_button.dart';
 
 /// Shared composer — pill input + trailing button that toggles between the
@@ -101,36 +102,41 @@ class _ComposerBarState extends State<ComposerBar> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Container(
-            padding: const EdgeInsets.fromLTRB(16, 7, 7, 7),
+            padding: const EdgeInsets.fromLTRB(7, 7, 7, 7),
             decoration: BoxDecoration(
-              color: YggColors.cardFillHigh,
-              borderRadius: BorderRadius.circular(28),
-              border: Border.all(color: YggColors.hairlineStrong),
+              color: YggColors.surface,
+              borderRadius: BorderRadius.circular(YggRadius.pill),
+              border: Border.all(color: YggColors.borderStrong),
             ),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.end,
               children: [
                 if (widget.onAttach != null) ...[
-                  _RoundButton(
-                    onTap: widget.enabled && !_attaching ? _attach : null,
-                    bg: YggColors.cardFillHighest,
-                    child: _attaching
-                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: YggColors.accent))
-                        : const Icon(Icons.attach_file, color: YggColors.text, size: 18),
-                  ),
+                  _attaching
+                      ? SizedBox(width: 40, height: 40, child: Center(child: SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: YggColors.accent))))
+                      : YggIconButton(
+                          icon: Icons.attach_file,
+                          size: 40,
+                          iconSize: 18,
+                          circle: true,
+                          style: YggIconButtonStyle.tint,
+                          tooltip: AppStrings.t('composer.attach'),
+                          onTap: widget.enabled ? _attach : null,
+                        ),
                   const SizedBox(width: 6),
-                ],
+                ] else
+                  const SizedBox(width: 10),
                 Expanded(
                   child: TextField(
                     controller: _controller,
                     enabled: widget.enabled,
                     minLines: 1,
                     maxLines: 4,
-                    style: const TextStyle(color: YggColors.text, fontSize: 15.5),
+                    style: TextStyle(color: YggColors.text, fontSize: 15.5),
                     cursorColor: YggColors.accent,
                     decoration: InputDecoration(
                       hintText: widget.enabled ? (widget.hint ?? AppStrings.t('composer.hint')) : AppStrings.t('composer.waitingHint'),
-                      hintStyle: const TextStyle(color: YggColors.textFaint),
+                      hintStyle: TextStyle(color: YggColors.textFaint),
                       border: InputBorder.none,
                       isDense: true,
                       contentPadding: const EdgeInsets.symmetric(vertical: 9),
@@ -140,10 +146,14 @@ class _ComposerBarState extends State<ComposerBar> {
                 ),
                 const SizedBox(width: 6),
                 if (_hasInput)
-                  _RoundButton(
+                  YggIconButton(
+                    icon: Icons.arrow_upward,
+                    size: 40,
+                    iconSize: 18,
+                    circle: true,
+                    style: YggIconButtonStyle.accent,
+                    tooltip: AppStrings.t('composer.send'),
                     onTap: widget.enabled ? _submit : null,
-                    bg: YggColors.accent,
-                    child: const Icon(Icons.arrow_upward, color: YggColors.surface, size: 18),
                   )
                 else
                   VoiceMicButton(
@@ -156,33 +166,12 @@ class _ComposerBarState extends State<ComposerBar> {
           ),
           if (widget.showCaption) ...[
             const SizedBox(height: 10),
-            const Text(
+            Text(
               'YGGDRASIL 2 · ROOTED MODEL',
-              style: TextStyle(fontFamily: 'monospace', fontSize: 10.5, letterSpacing: 1.2, color: Color.fromRGBO(244, 239, 230, 0.32)),
+              style: TextStyle(fontFamily: YggFonts.mono, fontSize: 10.5, letterSpacing: 1.2, color: YggColors.textFainter),
             ),
           ],
         ],
-      ),
-    );
-  }
-}
-
-class _RoundButton extends StatelessWidget {
-  final VoidCallback? onTap;
-  final Color bg;
-  final Widget child;
-
-  const _RoundButton({required this.onTap, required this.bg, required this.child});
-
-  @override
-  Widget build(BuildContext context) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: BoxDecoration(color: bg, shape: BoxShape.circle),
-        child: Center(child: child),
       ),
     );
   }

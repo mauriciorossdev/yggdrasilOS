@@ -7,8 +7,8 @@ function line(obj: unknown): string {
 
 describe("claudeProjectSlug", () => {
   it("replaces every non-alphanumeric character with a dash", () => {
-    expect(claudeProjectSlug("/Users/dev/projects/harness_pp")).toBe(
-      "-Users-dev-projects-harness-pp",
+    expect(claudeProjectSlug("/Users/me/Desktop/my_code/my_app")).toBe(
+      "-Users-me-Desktop-my-code-my-app",
     );
   });
 });

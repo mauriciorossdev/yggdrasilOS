@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
+import { useI18n } from "../i18n/index.js";
 import type { Grant } from "./types.js";
 
 type Props = {
@@ -18,6 +19,7 @@ type Preview = { graphHash: string; riskyNodes: { nodeId: string; tool: string; 
  */
 export function GrantDialog({ workflowId, onGranted, onCancel }: Props) {
   const { call } = useGateway();
+  const { t } = useI18n();
   const [preview, setPreview] = useState<Preview | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [granting, setGranting] = useState(false);
@@ -54,15 +56,12 @@ export function GrantDialog({ workflowId, onGranted, onCancel }: Props) {
     <div className="modal-overlay" onClick={onCancel}>
       <div className="modal" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
-          <h2>Grant this workflow</h2>
+          <h2>{t("wf.grant.title")}</h2>
         </div>
-        <p>
-          This workflow has node(s) that need explicit approval before they can run — granting covers the exact
-          version below. Editing any node's params later invalidates this grant.
-        </p>
+        <p>{t("wf.grant.intro")}</p>
 
         {error && <p className="error">{error}</p>}
-        {!preview && !error && <p className="muted">Loading…</p>}
+        {!preview && !error && <p className="muted">{t("wf.common.loading")}</p>}
 
         {preview && (
           <ul className="flow-connections-list">
@@ -70,22 +69,22 @@ export function GrantDialog({ workflowId, onGranted, onCancel }: Props) {
               <li key={n.nodeId} className={`approval-bar risk-${n.riskLevel}`}>
                 <div className="approval-info">
                   <strong className="approval-warning-label">
-                    {n.tool} <span className="risk-tag">{n.riskLevel}</span>
+                    {n.tool} <span className="risk-tag">{t(n.riskLevel === "destructive" ? "wf.risk.destructive" : "wf.risk.moderate")}</span>
                   </strong>
-                  <span className="muted">node "{n.nodeId}"</span>
+                  <span className="muted">{t("wf.grant.node", { nodeId: n.nodeId })}</span>
                 </div>
               </li>
             ))}
-            {preview.riskyNodes.length === 0 && <li className="muted">No risky nodes — nothing to grant.</li>}
+            {preview.riskyNodes.length === 0 && <li className="muted">{t("wf.grant.noRisky")}</li>}
           </ul>
         )}
 
         <div className="agent-form-actions">
           <button type="button" onClick={onCancel} disabled={granting}>
-            Cancel
+            {t("wf.common.cancel")}
           </button>
           <button type="button" onClick={() => void grant()} disabled={!preview || granting}>
-            {granting ? "Granting…" : "Grant and run"}
+            {granting ? t("wf.grant.granting") : t("wf.grant.confirm")}
           </button>
         </div>
       </div>

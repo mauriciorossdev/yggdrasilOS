@@ -109,7 +109,7 @@ class ScrollToBottomButton extends StatelessWidget {
                   curve: Curves.easeOut,
                 );
               },
-              child: const Padding(
+              child: Padding(
                 padding: EdgeInsets.all(10),
                 child: Icon(
                   Icons.arrow_downward,

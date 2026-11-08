@@ -5,6 +5,7 @@ import { CollapsibleSection } from "../components/CollapsibleSection.js";
 import { PluginContextMenu } from "./PluginContextMenu.js";
 import { ShareDialog } from "../sync/ShareDialog.js";
 import type { ResourceRef } from "../types.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = {
   plugins: PluginRecord[];
@@ -17,6 +18,7 @@ type Props = {
 type MenuState = { plugin: PluginRecord; x: number; y: number };
 
 export function PluginsSection({ plugins, onOpen, onOpenTab, onOpenPanel, onReload }: Props) {
+  const { t } = useI18n();
   const [menu, setMenu] = useState<MenuState | null>(null);
   const [shareTarget, setShareTarget] = useState<{ ref: ResourceRef; label: string } | null>(null);
 
@@ -37,44 +39,48 @@ export function PluginsSection({ plugins, onOpen, onOpenTab, onOpenPanel, onRelo
     };
   };
 
+  // Drafts (Estudio) are hidden here on purpose — they're only visible/manageable in the Estudio tab until "Publicar" flips their status.
+  const visible = plugins.filter((p) => p.manifest.status !== "draft");
+
   return (
     <CollapsibleSection
-      title="Complementos"
+      title={t("plugins.section.title")}
+      id="plugins"
+      count={visible.length}
       defaultOpen
       actions={
-        <button type="button" className="icon-btn" title="Recargar complementos" onClick={onReload}>
+        <button type="button" className="icon-btn" title={t("plugins.section.reload")} onClick={onReload}>
           <ArrowPathIcon className="hero-icon" />
         </button>
       }
     >
-      <ul>
-        {/* Drafts (Estudio) are hidden here on purpose — they're only visible/manageable in the Estudio tab until "Publicar" flips their status. */}
-        {plugins.filter((p) => p.manifest.status !== "draft").map((p) => (
-          <li key={p.key}>
-            <button
-              type="button"
-              className="session-item"
-              onClick={() => onOpen(p.key)}
-              onContextMenu={(e) => {
-                e.preventDefault();
-                setMenu({ plugin: p, x: e.clientX, y: e.clientY });
-              }}
-              disabled={!!p.error}
-              title={p.error ?? `v${p.manifest.version} — ${p.dir}`}
-            >
-              <span className="plugin-icon">
+      {visible.length > 0 ? (
+        <div className="plugin-strip">
+          {visible.map((p) => {
+            const name = p.manifest.name;
+            const detail = p.error ?? `v${p.manifest.version} — ${p.dir}`;
+            return (
+              <button
+                key={p.key}
+                type="button"
+                className={`plugin-strip-btn${p.error ? " error" : p.scope === "project" ? " project" : ""}`}
+                onClick={() => onOpen(p.key)}
+                onContextMenu={(e) => {
+                  e.preventDefault();
+                  setMenu({ plugin: p, x: e.clientX, y: e.clientY });
+                }}
+                disabled={!!p.error}
+                aria-label={name}
+                title={`${name}${p.scope === "project" ? t("plugins.section.projectSuffix") : ""}\n${detail}`}
+              >
                 {p.manifest.icon && !p.manifest.icon.includes(".") ? p.manifest.icon : "🧩"}
-              </span>
-              {p.manifest.name}
-              {p.scope === "global" && <span className="scope-tag">global</span>}
-              {p.error && <span className="scope-tag plugin-error-tag">error</span>}
-            </button>
-          </li>
-        ))}
-        {plugins.filter((p) => p.manifest.status !== "draft").length === 0 && (
-          <li className="muted">Sin complementos — pide a un agente: «crea un complemento para…»</li>
-        )}
-      </ul>
+              </button>
+            );
+          })}
+        </div>
+      ) : (
+        <p className="muted plugin-empty">{t("plugins.section.empty")}</p>
+      )}
 
       {menu && (
         <PluginContextMenu
@@ -97,7 +103,7 @@ export function PluginsSection({ plugins, onOpen, onOpenTab, onOpenPanel, onRelo
       {shareTarget && (
         <ShareDialog
           resourceRef={shareTarget.ref}
-          title={`Compartir "${shareTarget.label}"`}
+          title={t("plugins.section.shareTitle", { label: shareTarget.label })}
           onClose={() => setShareTarget(null)}
         />
       )}

@@ -3,12 +3,15 @@ import type {
   ApprovalMode,
   ChatDeltaPayload,
   ChatFinalPayload,
+  ProviderRetryPayload,
   ProviderInfo,
   SessionInfo,
   ToolApprovalRequestedPayload,
   ToolApprovalResolvedPayload,
   ToolExecutePayload,
+  ToolInfo,
   TurnEndPayload,
+  TurnLogEntry,
   TurnStartPayload,
 } from "../client/types.js";
 
@@ -31,16 +34,25 @@ export type PendingApproval = {
   riskLevel?: "destructive" | "moderate" | "safe";
 };
 
-export type ViewMode = "chat" | "config" | "sessions" | "agents" | "command-palette";
+export type ViewMode = "chat" | "config" | "sessions" | "agents" | "tools" | "turns" | "command-palette";
 
 export type TuiState = {
   connected: boolean;
   connectionError: string | null;
   sessionKey: string | null;
+  /** Title of the current session, once it has one (set by /rename or when loaded from the session list). */
+  sessionTitle: string | null;
+  workspaceRoot: string | null;
+  tools: ToolInfo[];
+  turns: TurnLogEntry[];
   messages: ChatMessage[];
   streamingText: string;
   isStreaming: boolean;
   isTurnActive: boolean;
+  /** The user asked to cancel and the gateway has not finished the turn yet. */
+  isCancelling: boolean;
+  /** The provider is waiting to retry a failed request; cleared as soon as anything arrives or the turn ends. */
+  retryNotice: { attempt: number; delayMs: number; reason: string } | null;
   turnDurationMs: number | null;
 
   agents: AgentInfo[];
@@ -71,10 +83,16 @@ export function initialState(): TuiState {
     connected: false,
     connectionError: null,
     sessionKey: null,
+    sessionTitle: null,
+    workspaceRoot: null,
+    tools: [],
+    turns: [],
     messages: [],
     streamingText: "",
     isStreaming: false,
     isTurnActive: false,
+    isCancelling: false,
+    retryNotice: null,
     turnDurationMs: null,
     agents: [],
     activeAgentId: null,
@@ -120,8 +138,17 @@ export type TuiAction =
   | { type: "PUSH_INPUT_HISTORY"; text: string }
   | { type: "SET_HISTORY_INDEX"; index: number }
   | { type: "SET_CONFIG"; config: Record<string, unknown>; configPath: string | null }
-  | { type: "LOAD_SESSION"; sessionKey: string; messages: ChatMessage[] }
-  | { type: "SET_MODE"; mode: ApprovalMode };
+  | { type: "LOAD_SESSION"; sessionKey: string; messages: ChatMessage[]; title?: string | null }
+  | { type: "SET_SESSION_TITLE"; title: string | null }
+  | { type: "SET_WORKSPACE"; workspaceRoot: string | null }
+  | { type: "SET_TOOLS"; tools: ToolInfo[] }
+  | { type: "SET_TURNS"; turns: TurnLogEntry[] }
+  | { type: "LOAD_INPUT_HISTORY"; entries: string[] }
+  | { type: "SET_MODE"; mode: ApprovalMode }
+  | { type: "PROVIDER_RETRY"; payload: ProviderRetryPayload }
+  | { type: "CANCEL_REQUESTED" }
+  | { type: "CANCEL_SETTLED" }
+  | { type: "RESYNC_SESSION"; messages: ChatMessage[]; notice: string };
 
 let messageCounter = 0;
 function nextMessageId(): string {
@@ -137,7 +164,7 @@ export function tuiReducer(state: TuiState, action: TuiAction): TuiState {
       return { ...state, connected: false, connectionError: action.error };
 
     case "SET_SESSION_KEY":
-      return { ...state, sessionKey: action.sessionKey };
+      return { ...state, sessionKey: action.sessionKey, sessionTitle: null };
 
     case "ADD_USER_MESSAGE":
       return {
@@ -174,6 +201,7 @@ export function tuiReducer(state: TuiState, action: TuiAction): TuiState {
         ...state,
         streamingText: state.streamingText + action.payload.text,
         isStreaming: true,
+        retryNotice: null,
       };
 
     case "CHAT_FINAL":
@@ -190,23 +218,54 @@ export function tuiReducer(state: TuiState, action: TuiAction): TuiState {
         ],
         streamingText: "",
         isStreaming: false,
+        isCancelling: false,
+        retryNotice: null,
         scrollOffset: 0,
         lastUsage: action.payload.usage ?? state.lastUsage,
       };
 
     case "TURN_START":
-      return { ...state, isTurnActive: true, turnDurationMs: null };
+      return { ...state, isTurnActive: true, isCancelling: false, retryNotice: null, turnDurationMs: null };
 
     case "TURN_END":
       return {
         ...state,
         isTurnActive: false,
+        isCancelling: false,
+        retryNotice: null,
+        // A turn that ended can't still be waiting on an approval (e.g. it was cancelled while the prompt was open).
+        pendingApproval: null,
         turnDurationMs: action.payload.durationMs,
+      };
+
+    case "PROVIDER_RETRY":
+      return { ...state, retryNotice: { attempt: action.payload.attempt, delayMs: action.payload.delayMs, reason: action.payload.reason } };
+
+    case "CANCEL_REQUESTED":
+      return state.isTurnActive || state.isStreaming ? { ...state, isCancelling: true } : state;
+
+    case "CANCEL_SETTLED":
+      return { ...state, isCancelling: false };
+
+    case "RESYNC_SESSION":
+      return {
+        ...state,
+        messages: [
+          ...action.messages,
+          { id: nextMessageId(), role: "system", text: action.notice, timestamp: Date.now() },
+        ],
+        streamingText: "",
+        isStreaming: false,
+        isTurnActive: false,
+        isCancelling: false,
+        pendingApproval: null,
+        scrollOffset: 0,
       };
 
     case "TOOL_EXECUTE": {
       const toolCalls = new Map(state.toolCalls);
       const key = `${action.payload.toolName}-${Date.now()}`;
+      state = { ...state, retryNotice: null };
       toolCalls.set(key, action.payload);
 
       if (action.payload.status === "ok" || action.payload.status === "error") {
@@ -315,10 +374,27 @@ export function tuiReducer(state: TuiState, action: TuiAction): TuiState {
         configPath: action.configPath,
       };
 
+    case "SET_SESSION_TITLE":
+      return { ...state, sessionTitle: action.title };
+
+    case "SET_WORKSPACE":
+      return { ...state, workspaceRoot: action.workspaceRoot };
+
+    case "SET_TOOLS":
+      return { ...state, tools: action.tools };
+
+    case "SET_TURNS":
+      return { ...state, turns: action.turns };
+
+    case "LOAD_INPUT_HISTORY":
+      // Anything typed before the file finished loading stays newest.
+      return { ...state, inputHistory: [...action.entries, ...state.inputHistory].slice(-500) };
+
     case "LOAD_SESSION":
       return {
         ...state,
         sessionKey: action.sessionKey,
+        sessionTitle: action.title ?? null,
         messages: action.messages,
         streamingText: "",
         isStreaming: false,

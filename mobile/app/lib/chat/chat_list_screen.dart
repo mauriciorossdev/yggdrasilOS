@@ -9,6 +9,7 @@ import '../standalone/direct_chat_screen.dart';
 import '../standalone/local_chat.dart';
 import '../standalone/local_chat_store.dart';
 import '../theme/ygg_theme.dart';
+import '../ui/ui.dart';
 import '../workflows_local/automations_screen.dart';
 import '../gateway/gateway_connection.dart';
 import '../gateway/gateway_settings.dart';
@@ -18,7 +19,6 @@ import '../local_projects/local_companion_settings_screen.dart';
 import '../local_projects/local_projects_list_screen.dart';
 import '../pi/pi_chat_screen.dart';
 import '../pi/pi_settings.dart';
-import '../pi/pi_settings_screen.dart';
 import 'chat_screen.dart';
 import 'composer_bar.dart';
 import 'projects_screen.dart';
@@ -126,6 +126,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
   String _searchQuery = '';
   String? _userNamePref;
   bool _gatewayReady = false;
+  // The chat button only exists while a host is configured (Ajustes > Host).
+  PiSettings? _host;
   LocalCompanionSettings? _localCompanionSettings;
   bool get _localCompanionReady => _localCompanionSettings?.isReady ?? false;
 
@@ -170,9 +172,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
     // Same reasoning as gatewaySettings above — Proyectos Locales runs
     // entirely on-device (Termux), independent of chat's ConnectionProfile.
     final localCompanionSettings = await LocalCompanionSettingsStore.load();
+    final host = await PiSettingsStore.load();
     if (mounted) {
       setState(() {
         _userNamePref = userName;
+        _host = host.isReady ? host : null;
         _gatewayReady = gatewaySettings.isReady;
         _localCompanionSettings = localCompanionSettings;
       });
@@ -262,19 +266,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
     return _openChat(_newSessionKey(), null, initialMessage: initialMessage);
   }
 
-  // The Pi chat has its own settings (Ajustes > Raspberry Pi), independent
-  // of both the chat profile and the Gateway — the Pi is a separate machine.
-  Future<void> _openPiChat() async {
-    var settings = await PiSettingsStore.load();
-    if (!mounted) return;
-    if (!settings.isReady) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.t('pi.notConfigured'))));
-      final saved = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => const PiSettingsScreen()));
-      if (saved != true || !mounted) return;
-      settings = await PiSettingsStore.load();
-      if (!settings.isReady || !mounted) return;
-    }
-    await Navigator.push(context, MaterialPageRoute(builder: (_) => PiChatScreen(settings: settings)));
+  // The host chat has its own settings (Ajustes > Host), independent of both
+  // the chat profile and the Gateway — the host is a separate machine. The
+  // button is only shown while one is configured, so there's nothing to set up
+  // here.
+  Future<void> _openHostChat() async {
+    final host = _host;
+    if (host == null) return;
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => PiChatScreen(settings: host)));
   }
 
   Future<void> _openProjects() async {
@@ -435,11 +434,11 @@ class _ChatListScreenState extends State<ChatListScreen> {
     return Container(
       width: size,
       height: size,
-      decoration: const BoxDecoration(color: YggColors.accent, shape: BoxShape.circle),
+      decoration: BoxDecoration(color: YggColors.accent, shape: BoxShape.circle),
       child: Center(
         child: _hasUserName
-            ? Text(_userName.substring(0, 1).toUpperCase(), style: TextStyle(color: YggColors.surface, fontWeight: FontWeight.w500, fontSize: fontSize))
-            : Icon(Icons.person_outline, color: YggColors.surface, size: size * 0.55),
+            ? Text(_userName.substring(0, 1).toUpperCase(), style: TextStyle(color: YggColors.onAccent, fontWeight: FontWeight.w500, fontSize: fontSize))
+            : Icon(Icons.person_outline, color: YggColors.onAccent, size: size * 0.5),
       ),
     );
   }
@@ -477,9 +476,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
               child: Container(
                 width: 520,
                 height: 420,
-                decoration: const BoxDecoration(
+                decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  gradient: RadialGradient(colors: [Color.fromRGBO(201, 165, 78, 0.20), Color.fromRGBO(0, 56, 51, 0)]),
+                  gradient: RadialGradient(colors: [YggColors.accent.withValues(alpha: 0.14), YggColors.accent.withValues(alpha: 0)]),
                 ),
               ),
             ),
@@ -499,28 +498,19 @@ class _ChatListScreenState extends State<ChatListScreen> {
   }
 
   Widget _buildHomeHeader(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 14, 18, 10),
-      child: Row(
-        children: [
-          GestureDetector(
-            onTap: () => _scaffoldKey.currentState?.openDrawer(),
-            child: Container(
-              width: 40,
-              height: 40,
-              decoration: const BoxDecoration(color: YggColors.cardFillHigh, shape: BoxShape.circle),
-              child: const Icon(Icons.menu, color: YggColors.text, size: 18),
-            ),
-          ),
-          const Expanded(
-            child: Padding(
-              padding: EdgeInsets.only(left: 12),
-              child: Text('YGGDRASIL', style: TextStyle(fontSize: 13, letterSpacing: 2.2, color: YggColors.textMuted, fontWeight: FontWeight.w500)),
-            ),
-          ),
-          _avatar(36),
-        ],
+    return YggHeader(
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 10),
+      leading: YggIconButton(
+        icon: Icons.menu,
+        tooltip: AppStrings.t('drawer.open'),
+        onTap: () => _scaffoldKey.currentState?.openDrawer(),
       ),
+      title: 'Yggdrasil',
+      wordmark: true,
+      trailing: [
+        if (_gatewayReady) YggChip(AppStrings.t('home.connected'), tone: YggChipTone.ready, dot: true),
+        _avatar(44),
+      ],
     );
   }
 
@@ -531,19 +521,19 @@ class _ChatListScreenState extends State<ChatListScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisAlignment: MainAxisAlignment.end,
         children: [
-          const RootRing(size: 26, opacity: 0.7),
+          const RootRing(size: 28, opacity: 0.8),
           const SizedBox(height: 14),
-          Text('$_greeting,', style: const TextStyle(fontSize: 38, height: 1.05, fontFamily: 'serif', color: YggColors.text)),
+          Text('$_greeting,', style: TextStyle(fontSize: 40, height: 1.08, letterSpacing: -0.4, fontFamily: YggFonts.serif, color: YggColors.text)),
           Text(
             _userName,
-            style: const TextStyle(fontSize: 38, height: 1.05, fontFamily: 'serif', fontStyle: FontStyle.italic, color: YggColors.accent),
+            style: TextStyle(fontSize: 40, height: 1.08, letterSpacing: -0.4, fontFamily: YggFonts.serif, fontStyle: FontStyle.italic, color: YggColors.accent),
           ),
           const SizedBox(height: 10),
           Padding(
             padding: const EdgeInsets.only(bottom: 22),
             child: Text(
               AppStrings.t('home.subtitle'),
-              style: const TextStyle(fontWeight: FontWeight.w300, fontSize: 15, height: 1.5, color: YggColors.textMuted),
+              style: TextStyle(fontSize: 15, height: 1.5, color: YggColors.textMuted),
             ),
           ),
           SizedBox(
@@ -554,22 +544,20 @@ class _ChatListScreenState extends State<ChatListScreen> {
               separatorBuilder: (_, _) => const SizedBox(width: 10),
               itemBuilder: (context, i) {
                 final (tag, text) = _suggestions[i];
-                return GestureDetector(
-                  onTap: () => _startNewChat(initialMessage: text),
-                  child: Container(
-                    width: 158,
-                    padding: const EdgeInsets.all(14),
-                    decoration: BoxDecoration(color: YggColors.cardFill, borderRadius: BorderRadius.circular(18), border: Border.all(color: YggColors.hairline)),
+                return SizedBox(
+                  width: 168,
+                  child: YggCard(
+                    onTap: () => _startNewChat(initialMessage: text),
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
-                        Text(tag.toUpperCase(), style: const TextStyle(fontFamily: 'monospace', fontSize: 10, letterSpacing: 1.3, color: YggColors.accent)),
+                        YggSectionLabel(tag, accent: true, padding: EdgeInsets.zero),
                         const Spacer(),
                         Text(
                           text,
                           maxLines: 3,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(fontSize: 14, height: 1.3, color: Color.fromRGBO(244, 239, 230, 0.92)),
+                          style: TextStyle(fontSize: 15, height: 1.3, color: YggColors.text),
                         ),
                       ],
                     ),
@@ -629,166 +617,95 @@ class _ChatListScreenState extends State<ChatListScreen> {
                 children: [
                   Row(
                     children: [
-                      const Expanded(
-                        child: Text('Yggdrasil', style: TextStyle(fontSize: 22, fontFamily: 'serif', color: YggColors.text)),
+                      Expanded(
+                        child: Text('Yggdrasil', style: TextStyle(fontSize: 24, fontFamily: YggFonts.serif, color: YggColors.text)),
                       ),
-                      GestureDetector(
+                      YggIconButton(
+                        icon: Icons.auto_mode_outlined,
+                        size: 40,
+                        iconSize: 18,
+                        circle: true,
+                        style: YggIconButtonStyle.tint,
+                        tooltip: AppStrings.t('settings.automations'),
                         onTap: () {
                           Navigator.pop(context);
                           Navigator.push(context, MaterialPageRoute(builder: (_) => const AutomationsScreen()));
                         },
-                        child: Container(
-                          width: 34,
-                          height: 34,
-                          decoration: const BoxDecoration(color: YggColors.cardFillHigh, shape: BoxShape.circle),
-                          child: const Icon(Icons.auto_mode_outlined, color: YggColors.text, size: 16),
-                        ),
                       ),
                       const SizedBox(width: 8),
-                      GestureDetector(
+                      YggIconButton(
+                        icon: Icons.settings_outlined,
+                        size: 40,
+                        iconSize: 18,
+                        circle: true,
+                        style: YggIconButtonStyle.tint,
+                        tooltip: AppStrings.t('settings.title'),
                         onTap: _openSettings,
-                        child: Container(
-                          width: 34,
-                          height: 34,
-                          decoration: const BoxDecoration(color: YggColors.cardFillHigh, shape: BoxShape.circle),
-                          child: const Icon(Icons.settings_outlined, color: YggColors.text, size: 16),
-                        ),
                       ),
                     ],
                   ),
                   const SizedBox(height: 16),
-                  Container(
-                    height: 40,
-                    padding: const EdgeInsets.symmetric(horizontal: 14),
-                    decoration: BoxDecoration(color: YggColors.cardFillHigh, borderRadius: BorderRadius.circular(999)),
-                    child: TextField(
-                      onChanged: (v) => setState(() => _searchQuery = v.trim().toLowerCase()),
-                      style: const TextStyle(color: YggColors.text, fontSize: 14),
-                      decoration: InputDecoration(
-                        hintText: AppStrings.t('drawer.searchHint'),
-                        hintStyle: const TextStyle(color: Color.fromRGBO(244, 239, 230, 0.42)),
-                        border: InputBorder.none,
-                        isDense: true,
-                        prefixIcon: const Icon(Icons.search, color: Color.fromRGBO(244, 239, 230, 0.45), size: 18),
-                      ),
-                    ),
+                  YggSearchField(
+                    hint: AppStrings.t('drawer.searchHint'),
+                    onChanged: (v) => setState(() => _searchQuery = v.trim().toLowerCase()),
                   ),
                   const SizedBox(height: 12),
-                  GestureDetector(
+                  YggNavButton(
+                    primary: true,
+                    icon: Icons.add,
+                    label: AppStrings.t('common.newChat'),
                     onTap: () {
                       Navigator.pop(context);
                       _startNewChat();
                     },
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 15),
-                      decoration: BoxDecoration(color: YggColors.accent, borderRadius: BorderRadius.circular(14)),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.add, color: YggColors.surface, size: 18),
-                          const SizedBox(width: 8),
-                          Text(AppStrings.t('common.newChat'), style: const TextStyle(color: YggColors.surface, fontWeight: FontWeight.w500, fontSize: 14.5)),
-                        ],
-                      ),
-                    ),
                   ),
-                  const SizedBox(height: 8),
-                  GestureDetector(
-                    onTap: () {
-                      Navigator.pop(context);
-                      _openPiChat();
-                    },
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 15),
-                      decoration: BoxDecoration(
-                        color: YggColors.cardFillHigh,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: YggColors.hairline),
-                      ),
-                      child: Row(
-                        children: [
-                          const Icon(Icons.terminal, color: YggColors.text, size: 18),
-                          const SizedBox(width: 8),
-                          Text(AppStrings.t('common.chat'), style: const TextStyle(color: YggColors.text, fontWeight: FontWeight.w500, fontSize: 14.5)),
-                        ],
-                      ),
+                  if (_host != null) ...[
+                    const SizedBox(height: 8),
+                    YggNavButton(
+                      icon: Icons.terminal,
+                      label: _host!.displayName,
+                      onTap: () {
+                        Navigator.pop(context);
+                        _openHostChat();
+                      },
                     ),
-                  ),
+                  ],
                   const SizedBox(height: 8),
-                  GestureDetector(
+                  YggNavButton(
+                    icon: Icons.folder_outlined,
+                    label: AppStrings.t('common.projects'),
+                    dimmed: !_gatewayReady,
                     onTap: () {
                       Navigator.pop(context);
                       _openProjects();
                     },
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 15),
-                      decoration: BoxDecoration(
-                        color: YggColors.cardFillHigh,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: YggColors.hairline),
-                      ),
-                      child: Opacity(
-                        opacity: _gatewayReady ? 1 : 0.5,
-                        child: Row(
-                          children: [
-                            const Icon(Icons.folder_outlined, color: YggColors.text, size: 18),
-                            const SizedBox(width: 8),
-                            Text(AppStrings.t('common.projects'), style: const TextStyle(color: YggColors.text, fontWeight: FontWeight.w500, fontSize: 14.5)),
-                          ],
-                        ),
-                      ),
-                    ),
                   ),
                   const SizedBox(height: 8),
-                  GestureDetector(
+                  YggNavButton(
+                    icon: Icons.terminal,
+                    label: AppStrings.t('localProjects.title'),
+                    dimmed: !_localCompanionReady,
                     onTap: () {
                       Navigator.pop(context);
                       _openLocalProjects();
                     },
-                    child: Container(
-                      height: 44,
-                      padding: const EdgeInsets.symmetric(horizontal: 15),
-                      decoration: BoxDecoration(
-                        color: YggColors.cardFillHigh,
-                        borderRadius: BorderRadius.circular(14),
-                        border: Border.all(color: YggColors.hairline),
-                      ),
-                      child: Opacity(
-                        opacity: _localCompanionReady ? 1 : 0.5,
-                        child: Row(
-                          children: [
-                            const Icon(Icons.terminal, color: YggColors.text, size: 18),
-                            const SizedBox(width: 8),
-                            Text(AppStrings.t('localProjects.title'), style: const TextStyle(color: YggColors.text, fontWeight: FontWeight.w500, fontSize: 14.5)),
-                          ],
-                        ),
-                      ),
-                    ),
                   ),
                 ],
               ),
             ),
             Expanded(
               child: _loading
-                  ? const Center(child: CircularProgressIndicator(color: YggColors.accent))
+                  ? Center(child: CircularProgressIndicator(color: YggColors.accent))
                   : _error != null
                       ? Padding(
                           padding: const EdgeInsets.all(24),
-                          child: Text('${AppStrings.t('common.errorPrefix')}: $_error', style: const TextStyle(color: YggColors.textMuted)),
+                          child: Text('${AppStrings.t('common.errorPrefix')}: $_error', style: TextStyle(color: YggColors.textMuted)),
                         )
                       : ListView(
                           padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
                           children: [
                             for (final entry in grouped.entries) ...[
-                              Padding(
-                                padding: const EdgeInsets.fromLTRB(8, 16, 8, 7),
-                                child: Text(
-                                  entry.key.toUpperCase(),
-                                  style: const TextStyle(fontFamily: 'monospace', fontSize: 10, letterSpacing: 1.4, color: YggColors.textFainter),
-                                ),
-                              ),
+                              YggSectionLabel(entry.key, padding: const EdgeInsets.fromLTRB(8, 16, 8, 7)),
                               for (final row in entry.value.where((r) =>
                                   _searchQuery.isEmpty || r.title.toLowerCase().contains(_searchQuery) || r.subtitle.toLowerCase().contains(_searchQuery)))
                                 Dismissible(
@@ -798,7 +715,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                     color: YggColors.errorRed,
                                     alignment: Alignment.centerRight,
                                     padding: const EdgeInsets.only(right: 20),
-                                    child: const Icon(Icons.delete, color: YggColors.text),
+                                    child: Icon(Icons.delete, color: YggColors.text),
                                   ),
                                   onDismissed: (_) => row.onDismissed(),
                                   child: GestureDetector(
@@ -815,14 +732,14 @@ class _ChatListScreenState extends State<ChatListScreen> {
                                           Row(
                                             children: [
                                               Expanded(
-                                                child: Text(row.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 14.5, color: YggColors.text)),
+                                                child: Text(row.title, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 14.5, color: YggColors.text)),
                                               ),
                                               if (row.pending)
-                                                Container(width: 8, height: 8, margin: const EdgeInsets.only(left: 6), decoration: const BoxDecoration(color: YggColors.accent, shape: BoxShape.circle)),
+                                                Container(width: 8, height: 8, margin: const EdgeInsets.only(left: 6), decoration: BoxDecoration(color: YggColors.accent, shape: BoxShape.circle)),
                                             ],
                                           ),
                                           const SizedBox(height: 3),
-                                          Text(row.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: const TextStyle(fontSize: 12.5, color: YggColors.textFaint)),
+                                          Text(row.subtitle, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 12.5, color: YggColors.textMuted)),
                                         ],
                                       ),
                                     ),
@@ -839,7 +756,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
               },
               child: Container(
                 padding: const EdgeInsets.fromLTRB(20, 12, 20, 20),
-                decoration: const BoxDecoration(border: Border(top: BorderSide(color: YggColors.hairline))),
+                decoration: BoxDecoration(border: Border(top: BorderSide(color: YggColors.hairline))),
                 child: Row(
                   children: [
                     _avatar(32, fontSize: 13),
@@ -847,7 +764,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
                     Expanded(
                       child: Text(
                         _hasUserName ? _userName : AppStrings.t('settings.addYourName'),
-                        style: const TextStyle(fontSize: 14, color: Color.fromRGBO(244, 239, 230, 0.8)),
+                        style: TextStyle(fontSize: 14, color: YggColors.text.withValues(alpha: 0.8)),
                       ),
                     ),
                   ],

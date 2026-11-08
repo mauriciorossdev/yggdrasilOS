@@ -38,6 +38,8 @@ Usage:
     --continue                             Resume most recent TUI session for this path
     --connect <ws-url>                      Connect as client to an existing gateway
     --agent <id>                            Start pinned to a specific agent id
+    --api-key <key>                         Gateway API key (default: $YGGDRASIL_API_KEY)
+    --no-alt-screen                         Render in the normal terminal buffer instead of the alternate screen
   yggdrasil voice                          Start gateway + realtime voice app (auto-connects if gateway already running)
     --port <n>                             Voice app HTTP port (default: 7860)
     --connect <ws-url>                      Connect as client to an existing gateway
@@ -337,6 +339,8 @@ async function probeGateway(host: string, port: number): Promise<boolean> {
   }
 }
 
+const TUI_MODES = ["auto", "plan", "restrict", "yolo"] as const;
+
 async function cmdTui(args: string[]): Promise<void> {
   if (args.includes("--legacy")) {
     return cmdTuiLegacy();
@@ -350,6 +354,18 @@ async function cmdTui(args: string[]): Promise<void> {
   const sessionIdx = args.indexOf("--session");
   const sessionKey = sessionIdx >= 0 ? args[sessionIdx + 1] : undefined;
   const readOnly = args.includes("--readonly");
+  const modeIdx = args.indexOf("--mode");
+  const modeArg = modeIdx >= 0 ? args[modeIdx + 1] : undefined;
+  if (modeArg !== undefined && !TUI_MODES.includes(modeArg as (typeof TUI_MODES)[number])) {
+    console.error(`Invalid --mode "${modeArg}". Use one of: ${TUI_MODES.join(", ")}.`);
+    process.exit(1);
+  }
+  const initialMode = modeArg as (typeof TUI_MODES)[number] | undefined;
+  const modelIdx = args.indexOf("--model");
+  const model = modelIdx >= 0 ? args[modelIdx + 1] : undefined;
+  const alternateScreen = args.includes("--no-alt-screen") ? false : undefined;
+  const apiKeyIdx = args.indexOf("--api-key");
+  const apiKey = apiKeyIdx >= 0 ? args[apiKeyIdx + 1] : undefined;
 
   const workspaceRoot = await resolveWorkspaceRoot();
   const senderIdPrefix = workspaceSenderPrefix(workspaceRoot);
@@ -364,7 +380,7 @@ async function cmdTui(args: string[]): Promise<void> {
 
   if (connectUrl) {
     const { launchTui } = await import("@yggdrasil/app-tui");
-    await launchTui({ gatewayUrl: connectUrl, senderIdPrefix, continueSession, agentId, sessionKey, readOnly });
+    await launchTui({ gatewayUrl: connectUrl, senderIdPrefix, continueSession, agentId, sessionKey, readOnly, initialMode, model, apiKey, alternateScreen });
     return;
   }
 
@@ -376,7 +392,7 @@ async function cmdTui(args: string[]): Promise<void> {
   if (await isPortInUse(host, port)) {
     if (await isYggdrasilGateway(host, port)) {
       const { launchTui } = await import("@yggdrasil/app-tui");
-      await launchTui({ gatewayUrl: `ws://${host}:${port}`, senderIdPrefix, continueSession, agentId, sessionKey, readOnly });
+      await launchTui({ gatewayUrl: `ws://${host}:${port}`, senderIdPrefix, continueSession, agentId, sessionKey, readOnly, initialMode, model, apiKey, alternateScreen });
       return;
     }
     // Port in use but not our gateway — fall through to start fresh (EADDRINUSE → clear error)
@@ -394,7 +410,7 @@ async function cmdTui(args: string[]): Promise<void> {
   const gatewayUrl = `ws://${host}:${server.port}`;
 
   const { launchTui } = await import("@yggdrasil/app-tui");
-  const cleanup = await launchTui({ gatewayUrl, senderIdPrefix, continueSession, agentId, sessionKey, readOnly });
+  const cleanup = await launchTui({ gatewayUrl, senderIdPrefix, continueSession, agentId, sessionKey, readOnly, initialMode, model, apiKey, alternateScreen });
 
   const shutdown = async () => {
     if (cleanup) cleanup();

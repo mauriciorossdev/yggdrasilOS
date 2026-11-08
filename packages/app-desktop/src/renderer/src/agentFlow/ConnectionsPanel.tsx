@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { XMarkIcon } from "@heroicons/react/20/solid";
+import { useI18n } from "../i18n/index.js";
 import type { AgentFlowEdge, AgentFlowNode } from "../types.js";
 
 type Props = {
@@ -16,6 +17,7 @@ type Props = {
  * claude/antigravity node stay display-only.
  */
 export function ConnectionsPanel({ edges, nodes, onChange }: Props) {
+  const { t } = useI18n();
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
   const [label, setLabel] = useState("");
@@ -32,9 +34,9 @@ export function ConnectionsPanel({ edges, nodes, onChange }: Props) {
 
   return (
     <div className="flow-connections">
-      <h3>Connections</h3>
+      <h3>{t("flow.connections.title")}</h3>
       <p className="muted flow-supervisor-note">
-        Yggdrasil-to-yggdrasil edges scope "Run Flow" delegation; claude/antigravity edges are display-only.
+        {t("flow.connections.note")}
       </p>
       <ul className="flow-connections-list">
         {edges.map((edge) => (
@@ -48,12 +50,12 @@ export function ConnectionsPanel({ edges, nodes, onChange }: Props) {
             </button>
           </li>
         ))}
-        {edges.length === 0 && <li className="muted">No connections</li>}
+        {edges.length === 0 && <li className="muted">{t("flow.connections.empty")}</li>}
       </ul>
       {nodes.length >= 2 && (
         <div className="flow-connection-form">
           <select value={from} onChange={(e) => setFrom(e.target.value)}>
-            <option value="">from…</option>
+            <option value="">{t("flow.connections.from")}</option>
             {nodes.map((n) => (
               <option key={n.id} value={n.id}>
                 {n.name}
@@ -61,16 +63,16 @@ export function ConnectionsPanel({ edges, nodes, onChange }: Props) {
             ))}
           </select>
           <select value={to} onChange={(e) => setTo(e.target.value)}>
-            <option value="">to…</option>
+            <option value="">{t("flow.connections.to")}</option>
             {nodes.map((n) => (
               <option key={n.id} value={n.id}>
                 {n.name}
               </option>
             ))}
           </select>
-          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder="label (optional)" />
+          <input value={label} onChange={(e) => setLabel(e.target.value)} placeholder={t("flow.connections.labelPlaceholder")} />
           <button type="button" onClick={add} disabled={!from || !to || from === to}>
-            + Add
+            {t("flow.connections.add")}
           </button>
         </div>
       )}

@@ -61,6 +61,30 @@ export type CommitDetail = {
   files: CommitFile[];
 };
 
+export type WorktreeOrigin = "main" | "app" | "claude" | "manual";
+
+/** One entry of git.worktrees — a linked worktree (or the repo's own checkout) plus what git says about it. */
+export type WorktreeInfo = {
+  path: string;
+  head: string;
+  branch?: string;
+  detached: boolean;
+  bare: boolean;
+  locked: boolean;
+  lockReason?: string;
+  prunable: boolean;
+  main: boolean;
+  origin: WorktreeOrigin;
+  /** The Claude Code session that locked this worktree, and whether its process is still running. */
+  claudeSession?: { name: string; pid: number; alive: boolean };
+  /** Changed + untracked files. */
+  changes: number;
+  /** Commits ahead of the main checkout's branch. */
+  ahead: number;
+  /** The folder is gone or git can't read it (prunable). */
+  missing: boolean;
+};
+
 export type RemoteInfo = { name: string; url: string };
 
 export type StashInfo = { index: number; subject: string; date: string };

@@ -113,7 +113,7 @@ class _LocalTerminalScreenState extends State<LocalTerminalScreen> {
           minimumSize: const Size(44, 40),
           padding: const EdgeInsets.symmetric(horizontal: 10),
           foregroundColor: YggColors.text,
-          side: const BorderSide(color: YggColors.hairlineStrong),
+          side: BorderSide(color: YggColors.hairlineStrong),
         ),
         child: Text(label, style: const TextStyle(fontSize: 13)),
       ),
@@ -158,7 +158,7 @@ class _LocalTerminalScreenState extends State<LocalTerminalScreen> {
             child: Stack(
               children: [
                 WebViewWidget(controller: _controller),
-                if (_loading) const Center(child: CircularProgressIndicator(color: YggColors.accent)),
+                if (_loading) Center(child: CircularProgressIndicator(color: YggColors.accent)),
                 if (_error != null)
                   Container(
                     color: YggColors.surface,
@@ -170,7 +170,7 @@ class _LocalTerminalScreenState extends State<LocalTerminalScreen> {
                         children: [
                           Text(
                             AppStrings.t('localProjects.terminalConnectError'),
-                            style: const TextStyle(color: YggColors.textMuted),
+                            style: TextStyle(color: YggColors.textMuted),
                             textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 12),

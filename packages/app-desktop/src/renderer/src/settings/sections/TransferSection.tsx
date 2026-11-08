@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
+import { useI18n } from "../../i18n/index.js";
 import type { ConfigGetResult } from "../../types.js";
 
 /**
@@ -8,6 +9,7 @@ import type { ConfigGetResult } from "../../types.js";
  * config.patch so it hot-reloads and merges per provider/agent.
  */
 export function TransferSection() {
+  const { t } = useI18n();
   const { call } = useGateway();
   const [includeSecrets, setIncludeSecrets] = useState(false);
   const [busy, setBusy] = useState(false);
@@ -31,7 +33,7 @@ export function TransferSection() {
     run(async () => {
       const cfg = await call<ConfigGetResult>("config.get");
       const res = await window.yggdrasil.settingsTransfer.exportSettings(cfg.workspaceRoot, includeSecrets);
-      return res ? `Exportado en ${res.path}` : null;
+      return res ? t("set.transfer.exported", { path: res.path }) : null;
     });
 
   const importSettings = () =>
@@ -44,33 +46,32 @@ export function TransferSection() {
         gatewayKeys = Object.keys(res.gateway);
       }
       const parts = [
-        res.desktopKeys.length ? `escritorio: ${res.desktopKeys.join(", ")}` : null,
-        gatewayKeys.length ? `gateway: ${gatewayKeys.join(", ")}` : null,
+        res.desktopKeys.length ? t("set.transfer.desktop", { keys: res.desktopKeys.join(", ") }) : null,
+        gatewayKeys.length ? t("set.transfer.gateway", { keys: gatewayKeys.join(", ") }) : null,
       ].filter(Boolean);
-      const applied = parts.length ? `Importado (${parts.join(" · ")}). Cierra y reabre Settings para ver los cambios.` : "No se importó nada.";
-      return res.warnings.length ? `${applied}\nAvisos: ${res.warnings.join("; ")}` : applied;
+      const applied = parts.length ? t("set.transfer.imported", { parts: parts.join(" · ") }) : t("set.transfer.nothing");
+      return res.warnings.length ? t("set.transfer.warnings", { applied, warnings: res.warnings.join("; ") }) : applied;
     });
 
   return (
     <section className="settings-section">
-      <h3>Exportar / Importar</h3>
+      <h3>{t("set.transfer.title")}</h3>
       <p className="muted">
-        Guarda la configuración de este equipo (providers, URLs, STT/TTS, IDE, automation…) en un archivo .md para
-        cargarla en otro computador. El gateway exporta el proyecto abierto.
+        {t("set.transfer.intro")}
       </p>
 
-      <label>
+      <label className="settings-check">
         <input type="checkbox" checked={includeSecrets} disabled={busy} onChange={(e) => setIncludeSecrets(e.target.checked)} />
-        Incluir API keys y tokens (en texto plano)
+        {t("set.transfer.secrets")}
       </label>
-      {includeSecrets && <p className="error">El archivo contendrá credenciales: no lo subas a git ni lo compartas.</p>}
+      {includeSecrets && <p className="error">{t("set.transfer.secretsWarn")}</p>}
 
       <div className="agent-form-actions">
         <button type="button" disabled={busy} onClick={() => void exportSettings()}>
-          Exportar a .md
+          {t("set.transfer.export")}
         </button>
         <button type="button" disabled={busy} onClick={() => void importSettings()}>
-          Importar desde .md
+          {t("set.transfer.import")}
         </button>
       </div>
 

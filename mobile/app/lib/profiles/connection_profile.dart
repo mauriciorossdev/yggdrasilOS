@@ -44,7 +44,7 @@ class ConnectionProfile {
   final int createdAt;
   int? lastUsedAt;
 
-  /// Set when the profile came from the Railway hub's desktop directory
+  /// Set when the profile came from the link server's desktop directory
   /// (hub/desktop_discovery.dart): lets the app re-find that desktop project
   /// on its own when its port changes after a restart.
   String? hubDesktopId;

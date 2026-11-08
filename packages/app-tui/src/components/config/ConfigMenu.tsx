@@ -30,7 +30,10 @@ type Props = {
   agentId: string | null;
   onClose: () => void;
   onConfigChanged: () => void;
+  /** Opens straight on a screen (e.g. /model). Esc then leaves the menu instead of walking up through Provider and Configuration. */
   initialView?: { view: ConfigView; providerId?: string };
+  /** Message for the chat transcript; used instead of the menu's own status line when the menu closes by itself after a change. */
+  onNotice?: (text: string) => void;
 };
 
 export function ConfigMenu({
@@ -41,8 +44,27 @@ export function ConfigMenu({
   onClose,
   onConfigChanged,
   initialView,
+  onNotice,
 }: Props): React.ReactElement {
-  const [view, setView] = useState<ConfigView>(initialView?.view ?? "root");
+  // Screens the user walked through, newest last. Esc pops one; with nothing left to pop the menu closes.
+  // A menu opened on a specific screen starts with only that screen, so Esc there goes back to the chat.
+  const [stack, setStack] = useState<ConfigView[]>([initialView?.view ?? "root"]);
+  const view = stack[stack.length - 1]!;
+  const deepLinked = initialView !== undefined;
+  const push = (next: ConfigView) => setStack((s) => [...s, next]);
+  const pop = () => setStack((s) => (s.length > 1 ? s.slice(0, -1) : s));
+  const goBack = () => (stack.length > 1 ? pop() : onClose());
+  const backLabel = stack.length > 1 ? "back" : "back to chat";
+  /** Ends a flow with a message: back to the chat for a deep link, otherwise to this menu's root. */
+  const finish = (message: string) => {
+    if (deepLinked) {
+      onNotice?.(message);
+      onClose();
+    } else {
+      setStatusMessage(message);
+      setStack(["root"]);
+    }
+  };
   const [selectedIndex, setSelectedIndex] = useState(0);
   const [selectedProvider, setSelectedProvider] = useState<string | null>(
     initialView?.providerId ?? null,
@@ -53,7 +75,7 @@ export function ConfigMenu({
     if (view !== "root") return;
 
     if (key.escape) {
-      onClose();
+      goBack();
       return;
     }
     if (key.upArrow) {
@@ -64,7 +86,7 @@ export function ConfigMenu({
     }
     if (key.return) {
       const item = menuItems[selectedIndex];
-      if (item) setView(item.id);
+      if (item) push(item.id);
     }
   });
 
@@ -102,9 +124,12 @@ export function ConfigMenu({
           agentId={agentId}
           onSelect={(providerId) => {
             setSelectedProvider(providerId);
-            setView("model");
+            // Reached from the model list ("p"): return to it, now showing this provider's models.
+            if (stack[stack.length - 2] === "model") pop();
+            else push("model");
           }}
-          onBack={() => setView("root")}
+          onBack={goBack}
+          backLabel={backLabel}
         />
       </Box>
     );
@@ -122,8 +147,7 @@ export function ConfigMenu({
           agentId={agentId}
           onSelect={async (modelId) => {
             if (!agentId) {
-              setStatusMessage("✗ No active agent to set a model for");
-              setView("root");
+              finish("✗ No active agent to set a model for");
               return;
             }
             try {
@@ -139,18 +163,18 @@ export function ConfigMenu({
                 agents: [{ ...existing, id: agentId, provider: selectedProvider, model: modelId }],
               });
               onConfigChanged();
-              if (result.requiresRestart) {
-                setStatusMessage("⚠ Restart required for changes to take effect");
-              } else {
-                setStatusMessage(`✓ Model set to ${modelId}`);
-              }
-              setView("root");
+              finish(
+                result.requiresRestart
+                  ? "⚠ Restart required for changes to take effect"
+                  : `✓ Model set to ${modelId}`,
+              );
             } catch (err) {
-              setStatusMessage(`✗ ${err instanceof Error ? err.message : String(err)}`);
-              setView("root");
+              finish(`✗ ${err instanceof Error ? err.message : String(err)}`);
             }
           }}
-          onBack={() => setView("provider")}
+          onBack={goBack}
+          onChangeProvider={() => push("provider")}
+          backLabel={backLabel}
         />
       </Box>
     );
@@ -165,11 +189,10 @@ export function ConfigMenu({
           client={client}
           config={config}
           onSaved={(msg) => {
-            setStatusMessage(msg);
             onConfigChanged();
-            setView("root");
+            finish(msg);
           }}
-          onBack={() => setView("root")}
+          onBack={goBack}
         />
       </Box>
     );
@@ -203,7 +226,7 @@ export function ConfigMenu({
         ))}
       </Box>
       <Box marginTop={1}>
-        <Text color={theme.dim}>↑↓ navigate · enter select · esc back</Text>
+        <Text color={theme.dim}>↑↓ navigate · enter select · esc {backLabel}</Text>
       </Box>
     </Box>
   );

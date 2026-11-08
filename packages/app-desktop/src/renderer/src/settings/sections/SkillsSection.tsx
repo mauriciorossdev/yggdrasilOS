@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
+import { useI18n } from "../../i18n/index.js";
 import type { SkillInfo } from "../../types.js";
 
 /**
@@ -8,6 +9,7 @@ import type { SkillInfo } from "../../types.js";
  * from disk by main/skills.ts each time the section mounts or refreshes.
  */
 export function SkillsSection() {
+  const { t } = useI18n();
   const [skills, setSkills] = useState<SkillInfo[] | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [query, setQuery] = useState("");
@@ -37,15 +39,19 @@ export function SkillsSection() {
     const byTitle = new Map<string, SkillInfo[]>();
     for (const skill of visible) {
       const title =
-        skill.scope === "project" ? "This project" : skill.scope === "user" ? "Your skills" : `Plugin · ${skill.plugin}`;
+        skill.scope === "project"
+          ? t("set.skills.scopeProject")
+          : skill.scope === "user"
+            ? t("set.skills.scopeUser")
+            : t("set.skills.scopePlugin", { plugin: skill.plugin ?? "" });
       byTitle.set(title, [...(byTitle.get(title) ?? []), skill]);
     }
     return [...byTitle.entries()];
-  }, [skills, query]);
+  }, [skills, query, t]);
 
   const open = async (skill: SkillInfo, reveal: boolean) => {
     const res = await window.yggdrasil.skills.open(skill.path, reveal);
-    setMessage(res.opened ? null : (res.error ?? "Could not open the skill."));
+    setMessage(res.opened ? null : (res.error ?? t("set.skills.openFail")));
   };
 
   const create = async () => {
@@ -66,24 +72,23 @@ export function SkillsSection() {
     <section className="settings-section">
       <h3>Skills</h3>
       <p className="muted">
-        Skills Claude Code can use in this project. Plugin skills are read-only; create your own below, or add folders
-        to <code>~/.claude/skills</code>.
+        {t("set.skills.intro")} <code>~/.claude/skills</code>.
       </p>
 
       <div className="input-with-button">
-        <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder="Filter skills…" />
+        <input type="text" value={query} onChange={(e) => setQuery(e.target.value)} placeholder={t("set.skills.filterPh")} />
         <button type="button" onClick={() => void reload()}>
-          Refresh
+          {t("set.skills.refresh")}
         </button>
         <button type="button" onClick={() => setCreating((c) => !c)}>
-          New skill
+          {t("set.skills.new")}
         </button>
       </div>
 
       {creating && (
         <div className="skill-new">
           <label>
-            Name
+            {t("set.skills.name")}
             <input
               type="text"
               autoFocus
@@ -93,24 +98,24 @@ export function SkillsSection() {
             />
           </label>
           <label>
-            Description
+            {t("set.skills.desc")}
             <input
               type="text"
               value={newDescription}
               onChange={(e) => setNewDescription(e.target.value)}
-              placeholder="What it does and when Claude should use it"
+              placeholder={t("set.skills.descPh")}
             />
           </label>
           <button type="button" onClick={() => void create()} disabled={!newName.trim()}>
-            Create in .claude/skills
+            {t("set.skills.create")}
           </button>
         </div>
       )}
 
       {message && <p className="error">{message}</p>}
       {error && <p className="error">{error}</p>}
-      {skills === null && !error && <p className="muted">Reading skills…</p>}
-      {skills !== null && groups.length === 0 && <p className="muted">No skills match.</p>}
+      {skills === null && !error && <p className="muted">{t("set.skills.reading")}</p>}
+      {skills !== null && groups.length === 0 && <p className="muted">{t("set.skills.noMatch")}</p>}
 
       {groups.map(([title, items]) => (
         <div key={title} className="skill-group">
@@ -119,17 +124,17 @@ export function SkillsSection() {
             <div key={skill.path} className="skill-row">
               <div className="skill-row-main">
                 <strong>{skill.name}</strong>
-                <span className="muted skill-row-desc">{skill.description || "No description."}</span>
+                <span className="muted skill-row-desc">{skill.description || t("set.skills.noDesc")}</span>
                 <span className="muted skill-row-path" title={skill.path}>
                   {skill.path}
                 </span>
               </div>
               <div className="skill-row-actions">
                 <button type="button" onClick={() => void open(skill, false)}>
-                  Open
+                  {t("set.skills.open")}
                 </button>
                 <button type="button" onClick={() => void open(skill, true)}>
-                  Reveal
+                  {t("set.skills.reveal")}
                 </button>
               </div>
             </div>

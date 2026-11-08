@@ -29,13 +29,33 @@ node packages/cli/dist/index.js tui
 
 ### Comandos en el input
 
+Los comandos viven en un registro (`packages/app-tui/src/commands/`); `/help`, la paleta (`Ctrl+K`) y el autocompletado salen de él. Un comando desconocido avisa en vez de ignorarse, y las skills del proyecto también se pueden escribir como `/skill argumentos` (el texto se inserta en `{{args}}`).
+
 | Comando | Acción |
 |---------|--------|
 | `/reset` | Limpia la sesión actual |
+| `/new` | Nueva sesión aislada |
+| `/sessions` | Lista sesiones (`r` renombra la seleccionada) |
+| `/rename <título>` | Renombra la sesión actual |
+| `/agents` | Ver, cambiar y crear agentes |
 | `/agent <id>` | Cambia el agente activo |
-| `↑` / `↓` | Navega historial de mensajes enviados |
+| `/model`, `/config` | Selector de modelo / menú de configuración |
+| `/tools` | Tools disponibles, con tipo, riesgo y parámetros |
+| `/turns` | Turnos recientes del gateway |
+| `/compact`, `/export` | Compacta la sesión / exporta a markdown |
+| `/status`, `/help`, `/exit` | Estado, ayuda, salir |
+
+| Tecla | Acción |
+|-------|--------|
+| `↑` / `↓` | Historial de mensajes enviados (se guarda en `~/.yggdrasil/tui-history.json`) |
 | `Shift+Enter` | Nueva línea (multiline) |
-| `Ctrl+C` | Salir |
+| `Esc` / `Ctrl+C` | Cancela el turno en curso (`chat.cancel`); sin turno, `Ctrl+C` sale |
+| `Shift+Tab` | Cambia el modo de aprobación |
+| `Ctrl+K` | Paleta de comandos |
+
+### Opciones
+
+`yggdrasil tui [--continue] [--agent <id>] [--connect <ws-url>] [--api-key <key>]`. Si el gateway exige clave, usa `--api-key` o `YGGDRASIL_API_KEY`. Si se cae la conexión, el TUI reconecta solo y recarga la sesión desde el gateway. Si el proveedor de modelos falla de forma transitoria (429, 5xx, conexión cortada), reintenta solo y la barra de estado lo muestra: `↻ retrying in 4s (HTTP 500, attempt 2)`; `Esc` cancela la espera.
 
 ### Renderizado markdown
 

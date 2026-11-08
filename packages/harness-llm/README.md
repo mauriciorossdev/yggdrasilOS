@@ -31,6 +31,17 @@ Given `messages`, `tools` (already OpenAI-shaped), and a `provider`, it:
 5. `usage` is accumulated across iterations (`inputTokens`/`outputTokens` summed per call), not just the last call's usage.
 6. Optional observability hooks: `onToolExecute(event)` fires after every tool call (success or failure) with timing; `onProviderLatency(event)` fires after every provider call with `{ model, durationMs, iteration }`.
 
+### Loop guards and cancellation
+
+Small local models stall in a few recurring ways, so `runToolLoop` carries safety nets (`src/loop-guards.ts`, on by default, `harness.loopGuards: false` turns them off). Each one steers the model with an **ephemeral** message — used during the turn, never saved to the session — and reports through `onGuard` (the harness emits it as the `loop.guard` event):
+
+- **Empty reply** → retried up to 10 times ("your last reply was empty…"). With Ollama thinking models (e.g. qwen3.5) this is often the whole answer sitting in `message.thinking`. `providers.ollama.think: false` removes those empties, but measured on qwen3.5:9b it made the agent much less autonomous (5/15 scenario runs passed vs 14/15 with thinking on: it gave up or asked the user instead of looking around), so leave thinking on and let this guard absorb the empties.
+- **Announced but not done** — a reply without tool calls that says "I will run X:" / "voy a ejecutar X:" (or shows the command in a code block) → pushed to call the tool, at most twice. The detector (`looksUnfinished`) is deliberately conservative: it only looks at the closing stretch, and a reply that reports something finished never triggers it.
+- **Repeated calls** — the 4th identical call (same name and arguments) in a row is not run; the model gets an error explaining why. If it keeps insisting, the loop stops.
+- **Iteration limit / stuck** → one last call with no tools asking for a summary; the result is `classification: "error"` with the summary plus a note, instead of a bare "Tool loop exceeded maximum iterations".
+
+`signal` (an `AbortSignal`) cancels a turn: no new model or tool call starts, waits on the provider and on an approval prompt are abandoned (an open approval counts as denied), and the text streamed so far is returned ending in `(cancelled)` with `classification: "cancelled"`. A tool call already executing runs to completion.
+
 ## Depends on
 
 - `@yggdrasil/kernel` — `getProvider` to resolve the `ProviderPlugin` for `params.provider` (both in `supports()` and `runAttempt()`).

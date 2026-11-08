@@ -77,7 +77,7 @@ Plugins en `extensions/` del monorepo o del proyecto también se descubren si ex
 
 ```bash
 git clone <repo>
-cd yggdrasil   # antes harness_pp
+cd yggdrasil
 pnpm install
 pnpm build
 pnpm test

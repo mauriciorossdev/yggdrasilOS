@@ -2,6 +2,7 @@ import { useCallback, useState } from "react";
 import { ExclamationTriangleIcon, MicrophoneIcon } from "@heroicons/react/20/solid";
 import { useRecorder } from "../mic/useRecorder.js";
 import { transcribeWithConfiguredStt } from "../mic/transcribeWithConfiguredStt.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = {
   disabled?: boolean;
@@ -15,6 +16,7 @@ type Props = {
 // change takes effect on the very next press without this component needing
 // to know it changed.
 export function MicButton({ disabled, onTranscript }: Props) {
+  const { t } = useI18n();
   const recorder = useRecorder();
   const [error, setError] = useState<string | null>(null);
 
@@ -27,7 +29,7 @@ export function MicButton({ disabled, onTranscript }: Props) {
   const onUp = useCallback(async () => {
     const wav = await recorder.stop();
     if (!wav) {
-      if (recorder.status !== "idle") setError("No audio captured — held for too short. Try again.");
+      if (recorder.status !== "idle") setError(t("doc.mic.tooShort"));
       return;
     }
     try {
@@ -36,7 +38,7 @@ export function MicButton({ disabled, onTranscript }: Props) {
         setError(null);
         onTranscript(transcript);
       } else {
-        setError("Heard silence — no speech detected.");
+        setError(t("doc.mic.silence"));
       }
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));

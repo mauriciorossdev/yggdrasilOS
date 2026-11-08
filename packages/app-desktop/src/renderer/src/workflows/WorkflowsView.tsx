@@ -6,6 +6,7 @@ import { TriggersPanel } from "./TriggersPanel.js";
 import { RunHistoryPanel } from "./RunHistoryPanel.js";
 import { GrantDialog } from "./GrantDialog.js";
 import { useWorkflowRunEvents } from "./useWorkflowRunEvents.js";
+import { useI18n, t as tStatic } from "../i18n/index.js";
 import { DEFAULT_SETTINGS, type NodeTypeInfo, type WfEdge, type WfNode, type Workflow, type WorkflowSummary } from "./types.js";
 
 const GRID_COLS = 3;
@@ -15,7 +16,7 @@ const GRID_STEP_Y = 200;
 function newWorkflow(): Workflow {
   return {
     id: crypto.randomUUID(),
-    name: "New workflow",
+    name: tStatic("wf.view.newWorkflowName"),
     version: 1,
     enabled: true,
     triggers: [{ id: crypto.randomUUID(), type: "manual" }],
@@ -71,6 +72,7 @@ function snapshot(workflow: Workflow | null): string | null {
  */
 export function WorkflowsView() {
   const { call, onEvent } = useGateway();
+  const { t } = useI18n();
 
   const [workflows, setWorkflows] = useState<WorkflowSummary[] | null>(null);
   const [nodeTypes, setNodeTypes] = useState<NodeTypeInfo[]>([]);
@@ -149,7 +151,7 @@ export function WorkflowsView() {
       await call("workflows.save", { workflow: draft });
       setSavedSnapshot(snapshot(draft));
       await refreshList();
-      setInfo("Saved.");
+      setInfo(t("wf.view.saved"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     } finally {
@@ -168,14 +170,14 @@ export function WorkflowsView() {
         return;
       }
       if (result.reason === "automation_paused") {
-        setError('Automation is paused (kill switch) — turn it off in Settings → Automation.');
+        setError(t("wf.view.paused"));
         return;
       }
       if (result.reason === "concurrency_skip") {
-        setInfo("A run is already in flight for this workflow — this trigger was skipped.");
+        setInfo(t("wf.view.concurrencySkip"));
         return;
       }
-      setInfo("Run started.");
+      setInfo(t("wf.view.runStarted"));
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
     }
@@ -187,7 +189,7 @@ export function WorkflowsView() {
 
   const deleteWorkflow = async () => {
     if (!draft) return;
-    if (!window.confirm(`Delete "${draft.name}"? This also removes its grant and can't be undone.`)) return;
+    if (!window.confirm(t("wf.view.deleteConfirm", { name: draft.name }))) return;
     await call("workflows.delete", { id: draft.id });
     setSelectedId(null);
     setDraft(null);
@@ -234,7 +236,7 @@ export function WorkflowsView() {
 
   const grantBadge = (status: WorkflowSummary["grantStatus"]) => {
     if (status === "not_required") return null;
-    return <span className={`workflow-grant-badge workflow-grant-${status}`}>{status}</span>;
+    return <span className={`workflow-grant-badge workflow-grant-${status}`}>{t(`wf.view.grant.${status}`)}</span>;
   };
 
   return (
@@ -242,16 +244,16 @@ export function WorkflowsView() {
       <div className="agent-flow-toolbar">
         <select value={selectedId ?? ""} onChange={(e) => (e.target.value ? selectWorkflow(e.target.value) : undefined)}>
           <option value="" disabled>
-            Select a workflow…
+            {t("wf.view.selectWorkflow")}
           </option>
           {workflows?.map((s) => (
             <option key={s.workflow.id} value={s.workflow.id}>
-              {s.workflow.name} {s.workflow.enabled ? "" : "(disabled)"} {s.grantStatus !== "not_required" ? `[${s.grantStatus}]` : ""}
+              {s.workflow.name} {s.workflow.enabled ? "" : t("wf.view.disabledSuffix")} {s.grantStatus !== "not_required" ? `[${t(`wf.view.grant.${s.grantStatus}`)}]` : ""}
             </option>
           ))}
         </select>
         <button type="button" className="agent-flow-toolbar-btn" onClick={startNewWorkflow}>
-          + New workflow
+          {t("wf.view.new")}
         </button>
         {draft && (
           <>
@@ -261,18 +263,18 @@ export function WorkflowsView() {
               onChange={(e) => setDraft({ ...draft, name: e.target.value })}
             />
             <button type="button" className="agent-flow-toolbar-btn" onClick={() => void save()} disabled={saving || !dirty}>
-              {saving ? "Saving…" : "Save"}
+              {saving ? t("wf.view.saving") : t("wf.view.save")}
             </button>
             <button type="button" className="agent-flow-toolbar-btn" onClick={() => void run()} disabled={dirty || !!runState.liveRunId}>
-              {runState.liveRunId ? "Running…" : "Run"}
+              {runState.liveRunId ? t("wf.view.running") : t("wf.view.run")}
             </button>
             {runState.liveRunId && (
               <button type="button" className="agent-flow-toolbar-btn" onClick={() => void cancelRun(runState.liveRunId!)}>
-                Cancel run
+                {t("wf.view.cancelRun")}
               </button>
             )}
             <button type="button" className="agent-flow-toolbar-btn" onClick={() => void toggleEnabled()}>
-              {draft.enabled ? "Disable" : "Enable"}
+              {draft.enabled ? t("wf.view.disable") : t("wf.view.enable")}
             </button>
             <button
               type="button"
@@ -282,7 +284,7 @@ export function WorkflowsView() {
                 setSidebarTab((t) => (t === "triggers" ? null : "triggers"));
               }}
             >
-              Triggers
+              {t("wf.view.triggers")}
             </button>
             <button
               type="button"
@@ -292,10 +294,10 @@ export function WorkflowsView() {
                 setSidebarTab((t) => (t === "history" ? null : "history"));
               }}
             >
-              History
+              {t("wf.view.history")}
             </button>
             <button type="button" className="agent-flow-toolbar-btn danger" onClick={() => void deleteWorkflow()}>
-              Delete
+              {t("wf.view.delete")}
             </button>
             {selectedSummary && grantBadge(selectedSummary.grantStatus)}
           </>
@@ -305,14 +307,14 @@ export function WorkflowsView() {
       {error && <p className="error">{error}</p>}
       {info && !error && <p className="muted">{info}</p>}
 
-      {!draft && <p className="muted">Select a workflow, or create a new one.</p>}
+      {!draft && <p className="muted">{t("wf.view.selectOrCreate")}</p>}
 
       {draft && (
         <div className="agent-flow-body">
           <div className="workflow-main-column">
             <div className="workflow-add-node">
               <select value={addNodeType} onChange={(e) => setAddNodeType(e.target.value)}>
-                <option value="">+ Add node…</option>
+                <option value="">{t("wf.view.addNodePlaceholder")}</option>
                 {nodeTypes.map((nt) => (
                   <option key={nt.type} value={nt.type}>
                     {nt.type} — {nt.description}
@@ -320,12 +322,12 @@ export function WorkflowsView() {
                 ))}
               </select>
               <button type="button" onClick={addNode} disabled={!addNodeType}>
-                Add
+                {t("wf.view.add")}
               </button>
             </div>
             <div className="agent-flow-canvas-area">
               {draft.nodes.length === 0 ? (
-                <div className="agent-flow-canvas-empty muted">No nodes yet — add one above.</div>
+                <div className="agent-flow-canvas-empty muted">{t("wf.view.noNodes")}</div>
               ) : (
                 <WorkflowCanvas
                   nodes={draft.nodes}

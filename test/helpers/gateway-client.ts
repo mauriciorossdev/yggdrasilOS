@@ -76,6 +76,26 @@ export class GatewayWsClient {
     });
   }
 
+  /** Resolves with the next event of this name. Start waiting before the call that triggers it. */
+  waitForEvent(event: string, timeoutMs = 10_000): Promise<GatewayWsEvent> {
+    const ws = this.ws;
+    if (!ws) throw new Error("GatewayWsClient not connected");
+    return new Promise<GatewayWsEvent>((resolve, reject) => {
+      const timer = setTimeout(() => {
+        ws.off("message", onMessage);
+        reject(new Error(`Timed out waiting for event: ${event}`));
+      }, timeoutMs);
+      const onMessage = (data: WebSocket.RawData) => {
+        const msg = JSON.parse(String(data)) as WsIncoming;
+        if (!("type" in msg) || msg.type !== "event" || msg.event !== event) return;
+        clearTimeout(timer);
+        ws.off("message", onMessage);
+        resolve({ event: msg.event, payload: msg.payload });
+      };
+      ws.on("message", onMessage);
+    });
+  }
+
   close(): void {
     this.ws?.close();
     this.ws = null;

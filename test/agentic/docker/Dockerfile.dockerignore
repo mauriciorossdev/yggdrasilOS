@@ -1,0 +1,19 @@
+# Used instead of the repo's .dockerignore when building test/agentic/docker/Dockerfile.
+.git
+**/node_modules
+**/dist
+**/*.tsbuildinfo
+coverage
+notes
+docs
+.claude
+test/agentic/results
+packages/app-desktop/resources
+packages/app-avatar/resources
+mobile/*
+!mobile/termux
+*.sqlite
+*.db
+.DS_Store
+.env
+.env.*

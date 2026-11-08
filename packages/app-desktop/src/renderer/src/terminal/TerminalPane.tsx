@@ -1,4 +1,6 @@
 import { useEffect, useRef, useState } from "react";
+import { usePaneBranch } from "./paneBranchContext.js";
+import { PaneBranchChip } from "./PaneBranchChip.js";
 import { createPortal } from "react-dom";
 import {
   ArrowRightIcon,
@@ -18,6 +20,7 @@ import { FitAddon } from "@xterm/addon-fit";
 import { WebLinksAddon } from "@xterm/addon-web-links";
 import "@xterm/xterm/css/xterm.css";
 import { useGateway } from "@yggdrasil/client-web";
+import { t as tStandalone, useI18n } from "../i18n/index.js";
 import type { LeafPane, PaneAction } from "./paneTree.js";
 import type { TerminalRegistry } from "./terminalRegistry.js";
 import { getFlowLink } from "./flowLinks.js";
@@ -89,6 +92,8 @@ type Props = {
    * isn't meaningful there.
    */
   canvasMode?: boolean;
+  /** Rendered in the Browser tab's agent dock: no split/minimize (it isn't part of the grid) and not draggable for pane swaps. */
+  docked?: boolean;
 };
 
 export function TerminalPane({
@@ -105,7 +110,9 @@ export function TerminalPane({
   dispatch,
   mobileFocused,
   canvasMode,
+  docked,
 }: Props) {
+  const { t } = useI18n();
   const { call } = useGateway();
   const { specPath, badge: specBadge } = usePaneSpec(leaf.id, leaf.specPath);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -113,6 +120,7 @@ export function TerminalPane({
   const [taskSent, setTaskSent] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(leaf.title);
+  const branch = usePaneBranch(leaf.cwd);
   const [delegateTargetId, setDelegateTargetId] = useState("");
   const [delegateOpen, setDelegateOpen] = useState(false);
   const [delegateDraft, setDelegateDraft] = useState("");
@@ -218,7 +226,9 @@ export function TerminalPane({
         if (!e) return;
         e.exited = true;
         e.exitCode = exitCode;
-        term.write(`\r\n\x1b[90m[process exited${exitCode != null ? ` (code ${exitCode})` : ""}]\x1b[0m\r\n`);
+        const exitedText =
+          exitCode != null ? tStandalone("term.pane.processExitedCode", { code: exitCode }) : tStandalone("term.pane.processExited");
+        term.write(`\r\n\x1b[90m${exitedText}\x1b[0m\r\n`);
         e.onExitedChange?.();
       });
     }
@@ -354,7 +364,7 @@ export function TerminalPane({
   const sendDelegate = () => {
     const target = registry.get(delegateTargetId);
     if (!target) {
-      setDelegateError("Target pane is no longer open.");
+      setDelegateError(t("term.pane.targetClosed"));
       return;
     }
     target.term.paste(delegateDraft);
@@ -451,7 +461,7 @@ export function TerminalPane({
         <div
           className="terminal-pane-header"
           ref={headerRef}
-          draggable={!canvasMode}
+          draggable={!canvasMode && !docked}
           onDragStart={(e) => {
             // Drag handle lives on the header, not the whole pane — the pane
             // body wraps xterm.js's live, focused hidden <textarea>,
@@ -477,22 +487,23 @@ export function TerminalPane({
               {leaf.title}
             </span>
           )}
+          {branch && <PaneBranchChip branch={branch} />}
           {specPath && specBadge && (
             <Chip
               tone={statusTone(specBadge.status)}
-              title={`${specPath} — click to open`}
+              title={t("term.spec.openTitle", { path: specPath })}
               onClick={() => {
                 requestOpenDocument(specPath);
                 requestTab("documents");
               }}
             >
-              {specBadge.label}
+              {t(specBadge.labelKey)}
             </Chip>
           )}
           {compactHeader ? (
             <div className="terminal-pane-actions">
               <IconButton
-                label="Acciones del panel"
+                label={t("term.pane.actions")}
                 onClick={(e) => {
                   const rect = e.currentTarget.getBoundingClientRect();
                   setActionsMenu({ x: rect.right - 200, y: rect.bottom + 4 });
@@ -510,18 +521,18 @@ export function TerminalPane({
                 title={leaf.initialPrompt}
                 onClick={sendInitialTask}
               >
-                Start task <PlayIcon className="hero-icon" />
+                {t("term.pane.startTask")} <PlayIcon className="hero-icon" />
               </button>
             )}
             {flowLink && flowLink.targets.length > 0 && (
-              <button type="button" className="delegate-btn" title="Delegate to another pane" onClick={openDelegate}>
-                Delegate <ArrowRightIcon className="hero-icon" />
+              <button type="button" className="delegate-btn" title={t("term.pane.delegateTitle")} onClick={openDelegate}>
+                {t("term.pane.delegate")} <ArrowRightIcon className="hero-icon" />
               </button>
             )}
             <button
               type="button"
               className={`terminal-mic-button${dictation.phase === "recording" ? " recording" : ""}`}
-              title={dictation.phase === "recording" ? "Parar dictado" : "Dictar en esta terminal"}
+              title={dictation.phase === "recording" ? t("term.pane.stopDictation") : t("term.pane.dictateTitle")}
               disabled={exited || dictation.phase === "transcribing"}
               onClick={dictation.toggle}
             >
@@ -530,7 +541,7 @@ export function TerminalPane({
             <button
               type="button"
               className={`terminal-speak-button${speakLastResponse.phase !== "idle" ? " loading" : ""}`}
-              title="Hablar última respuesta"
+              title={t("term.pane.speakLast")}
               disabled={exited || speakLastResponse.phase !== "idle"}
               onClick={(e) => {
                 const rect = e.currentTarget.getBoundingClientRect();
@@ -541,7 +552,7 @@ export function TerminalPane({
             </button>
             <button
               type="button"
-              title={isExpanded ? "Collapse" : "Expand"}
+              title={isExpanded ? t("term.pane.collapse") : t("term.pane.expand")}
               onClick={() => {
                 if (isExpanded) collapseExpanded();
                 else setIsExpanded(true);
@@ -554,28 +565,32 @@ export function TerminalPane({
                 <ArrowsPointingOutIcon className="hero-icon" />
               )}
             </button>
-            <button
-              type="button"
-              title="Split"
-              onClick={(e) => {
-                const rect = e.currentTarget.getBoundingClientRect();
-                setSplitMenu({ x: rect.left, y: rect.bottom + 4 });
-              }}
-            >
-              <ViewColumnsIcon className="hero-icon" />
-            </button>
-            <button
-              type="button"
-              title="Minimize"
-              onClick={() => {
-                setIsExpanded(false);
-                onMinimize();
-              }}
-            >
-              <MinusIcon className="hero-icon" />
-            </button>
+            {!docked && (
+              <>
+                <button
+                  type="button"
+                  title={t("term.pane.split")}
+                  onClick={(e) => {
+                    const rect = e.currentTarget.getBoundingClientRect();
+                    setSplitMenu({ x: rect.left, y: rect.bottom + 4 });
+                  }}
+                >
+                  <ViewColumnsIcon className="hero-icon" />
+                </button>
+                <button
+                  type="button"
+                  title={t("term.pane.minimize")}
+                  onClick={() => {
+                    setIsExpanded(false);
+                    onMinimize();
+                  }}
+                >
+                  <MinusIcon className="hero-icon" />
+                </button>
+              </>
+            )}
             {!isExpanded && (
-              <button type="button" title="Close" onClick={onClose}>
+              <button type="button" title={t("term.pane.close")} onClick={onClose}>
                 <XMarkIcon className="hero-icon" />
               </button>
             )}
@@ -587,13 +602,13 @@ export function TerminalPane({
           {dictation.phase !== "idle" && (
             <div className="terminal-voice-bar">
               <span className={`terminal-voice-dot${dictation.phase === "recording" ? "" : " idle"}`} />
-              <span>{dictation.phase === "recording" ? "Escuchando" : "Transcribiendo…"}</span>
+              <span>{dictation.phase === "recording" ? t("term.pane.listening") : t("term.pane.transcribing")}</span>
               {dictation.phase === "recording" && (
                 <>
                   <span className="terminal-voice-time">{formatElapsed(dictation.elapsedMs)}</span>
                   <button type="button" className="terminal-voice-stop" onClick={dictation.toggle}>
                     <StopIcon className="hero-icon" />
-                    Parar
+                    {t("term.pane.stop")}
                   </button>
                 </>
               )}
@@ -603,7 +618,7 @@ export function TerminalPane({
             <div className="terminal-voice-bar error">
               <span>{dictation.error}</span>
               <button type="button" className="terminal-voice-stop" onClick={dictation.dismissError}>
-                Cerrar
+                {t("term.pane.dismiss")}
               </button>
             </div>
           )}
@@ -611,19 +626,19 @@ export function TerminalPane({
             <div className="terminal-voice-bar error">
               <span>{speakLastResponse.error}</span>
               <button type="button" className="terminal-voice-stop" onClick={speakLastResponse.dismissError}>
-                Cerrar
+                {t("term.pane.dismiss")}
               </button>
             </div>
           )}
           {mobileFocused && (
             <div className="terminal-pane-mobile-focus-overlay">
-              <span>Focus on mobile</span>
+              <span>{t("term.pane.focusOnMobile")}</span>
             </div>
           )}
         </div>
         {exited && (
           <button type="button" className="terminal-pane-restart" onClick={restart}>
-            Restart
+            {t("term.pane.restart")}
           </button>
         )}
       </div>
@@ -643,7 +658,7 @@ export function TerminalPane({
                   sendInitialTask();
                 }}
               >
-                <PlayIcon className="hero-icon" /> Start task
+                <PlayIcon className="hero-icon" /> {t("term.pane.startTask")}
               </MenuItem>
             )}
             {flowLink && flowLink.targets.length > 0 && (
@@ -653,7 +668,7 @@ export function TerminalPane({
                   openDelegate();
                 }}
               >
-                <ArrowRightIcon className="hero-icon" /> Delegate
+                <ArrowRightIcon className="hero-icon" /> {t("term.pane.delegate")}
               </MenuItem>
             )}
             <MenuItem
@@ -663,7 +678,7 @@ export function TerminalPane({
                 dictation.toggle();
               }}
             >
-              <MicrophoneIcon className="hero-icon" /> {dictation.phase === "recording" ? "Parar dictado" : "Dictar"}
+              <MicrophoneIcon className="hero-icon" /> {dictation.phase === "recording" ? t("term.pane.stopDictation") : t("term.pane.dictate")}
             </MenuItem>
             <MenuItem
               disabled={exited || speakLastResponse.phase !== "idle"}
@@ -672,7 +687,7 @@ export function TerminalPane({
                 setActionsMenu(null);
               }}
             >
-              <SpeakerWaveIcon className="hero-icon" /> Hablar última respuesta
+              <SpeakerWaveIcon className="hero-icon" /> {t("term.pane.speakLast")}
             </MenuItem>
             <MenuItem
               onClick={() => {
@@ -681,25 +696,29 @@ export function TerminalPane({
               }}
             >
               {isExpanded ? <ArrowsPointingInIcon className="hero-icon" /> : <ArrowsPointingOutIcon className="hero-icon" />}{" "}
-              {isExpanded ? "Collapse" : "Expand"}
+              {isExpanded ? t("term.pane.collapse") : t("term.pane.expand")}
             </MenuItem>
-            <MenuItem
-              onClick={() => {
-                setSplitMenu({ x: actionsMenu.x, y: actionsMenu.y });
-                setActionsMenu(null);
-              }}
-            >
-              <ViewColumnsIcon className="hero-icon" /> Split…
-            </MenuItem>
-            <MenuItem
-              onClick={() => {
-                setActionsMenu(null);
-                setIsExpanded(false);
-                onMinimize();
-              }}
-            >
-              <MinusIcon className="hero-icon" /> Minimize
-            </MenuItem>
+            {!docked && (
+              <>
+                <MenuItem
+                  onClick={() => {
+                    setSplitMenu({ x: actionsMenu.x, y: actionsMenu.y });
+                    setActionsMenu(null);
+                  }}
+                >
+                  <ViewColumnsIcon className="hero-icon" /> {t("term.pane.splitMore")}
+                </MenuItem>
+                <MenuItem
+                  onClick={() => {
+                    setActionsMenu(null);
+                    setIsExpanded(false);
+                    onMinimize();
+                  }}
+                >
+                  <MinusIcon className="hero-icon" /> {t("term.pane.minimize")}
+                </MenuItem>
+              </>
+            )}
             {!isExpanded && (
               <>
                 <MenuSeparator />
@@ -710,7 +729,7 @@ export function TerminalPane({
                     onClose();
                   }}
                 >
-                  <XMarkIcon className="hero-icon" /> Close
+                  <XMarkIcon className="hero-icon" /> {t("term.pane.close")}
                 </MenuItem>
               </>
             )}
@@ -746,24 +765,24 @@ export function TerminalPane({
           <div className="modal-overlay" onClick={() => setDelegateOpen(false)}>
             <div className="modal delegate-modal" onClick={(e) => e.stopPropagation()}>
               <div className="modal-header">
-                <h2>Delegate from {leaf.title}</h2>
+                <h2>{t("term.pane.delegateFrom", { title: leaf.title })}</h2>
                 <button type="button" className="icon-btn" onClick={() => setDelegateOpen(false)}>
                   <XMarkIcon className="hero-icon" />
                 </button>
               </div>
               {flowLink.targets.length > 1 && (
                 <label>
-                  Send to
+                  {t("term.pane.sendTo")}
                   <select value={delegateTargetId} onChange={(e) => setDelegateTargetId(e.target.value)}>
-                    {flowLink.targets.map((t) => (
-                      <option key={t.leafId} value={t.leafId}>
-                        {t.name}
+                    {flowLink.targets.map((target) => (
+                      <option key={target.leafId} value={target.leafId}>
+                        {target.name}
                       </option>
                     ))}
                   </select>
                 </label>
               )}
-              {flowLink.targets.length === 1 && <p className="muted">Send to {flowLink.targets[0]!.name}</p>}
+              {flowLink.targets.length === 1 && <p className="muted">{t("term.pane.sendToName", { name: flowLink.targets[0]!.name })}</p>}
               <textarea
                 className="delegate-textarea"
                 value={delegateDraft}
@@ -777,10 +796,10 @@ export function TerminalPane({
               {delegateError && <p className="error">{delegateError}</p>}
               <div className="agent-form-actions">
                 <button type="button" onClick={() => setDelegateOpen(false)}>
-                  Cancel
+                  {t("term.pane.cancel")}
                 </button>
                 <button type="button" onClick={sendDelegate} disabled={!delegateDraft.trim() || !delegateTargetId}>
-                  Send
+                  {t("term.pane.send")}
                 </button>
               </div>
             </div>

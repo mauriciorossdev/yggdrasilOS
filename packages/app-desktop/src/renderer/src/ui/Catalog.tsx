@@ -9,6 +9,7 @@ import { NavItem } from "./NavItem.js";
 import { ProgressBar } from "./ProgressBar.js";
 import { StatusChip } from "./Chip.js";
 import { Tabs } from "./Tabs.js";
+import { useI18n } from "../i18n/index.js";
 
 /**
  * Live catalog of the component library with the current theme. Shown under
@@ -16,47 +17,48 @@ import { Tabs } from "./Tabs.js";
  * edited. Everything here is rendered by the real components, nothing mocked.
  */
 export function Catalog() {
+  const { t } = useI18n();
   const [tab, setTab] = useState("kickoff");
   const [modalOpen, setModalOpen] = useState(false);
 
   return (
     <div className="ygg-catalog">
-      <h4 className="ygg-catalog__title">Vista previa</h4>
+      <h4 className="ygg-catalog__title">{t("ui.cat.preview")}</h4>
 
       <div>
-        <div className="ygg-catalog__label">Botones</div>
+        <div className="ygg-catalog__label">{t("ui.cat.buttons")}</div>
         <div className="ygg-catalog__row">
-          <Button variant="primary">Principal</Button>
-          <Button variant="secondary">Secundario</Button>
-          <Button variant="ghost">Discreto</Button>
-          <Button variant="danger">Peligroso</Button>
+          <Button variant="primary">{t("ui.cat.primary")}</Button>
+          <Button variant="secondary">{t("ui.cat.secondary")}</Button>
+          <Button variant="ghost">{t("ui.cat.ghost")}</Button>
+          <Button variant="danger">{t("ui.cat.danger")}</Button>
           <Button variant="secondary" size="sm">
-            Pequeño
+            {t("ui.cat.small")}
           </Button>
           <Button variant="primary" disabled>
-            Deshabilitado
+            {t("ui.cat.disabled")}
           </Button>
-          <IconButton label="Ajustes">⚙</IconButton>
+          <IconButton label={t("ui.cat.settings")}>⚙</IconButton>
         </div>
       </div>
 
       <div>
-        <div className="ygg-catalog__label">Estados</div>
+        <div className="ygg-catalog__label">{t("ui.cat.states")}</div>
         <div className="ygg-catalog__row">
           <StatusChip status="working" dot />
           <StatusChip status="checking" />
           <StatusChip status="ready" />
           <StatusChip status="needs-decision" />
-          <Chip tone="accent">Acento</Chip>
-          <Chip>Neutro</Chip>
+          <Chip tone="accent">{t("ui.cat.accent")}</Chip>
+          <Chip>{t("ui.cat.neutral")}</Chip>
         </div>
       </div>
 
       <div>
-        <div className="ygg-catalog__label">Progreso</div>
+        <div className="ygg-catalog__label">{t("ui.cat.progress")}</div>
         <div className="ygg-catalog__row">
           <div style={{ width: 220 }}>
-            <ProgressBar value={0.89} label="Avance de la feature" />
+            <ProgressBar value={0.89} label={t("ui.cat.featureProgress")} />
           </div>
           <div style={{ width: 120 }}>
             <ProgressBar value={0.5} tone="working" />
@@ -68,7 +70,7 @@ export function Catalog() {
       </div>
 
       <div>
-        <div className="ygg-catalog__label">Pestañas y navegación</div>
+        <div className="ygg-catalog__label">{t("ui.cat.tabsNav")}</div>
         <Tabs
           tabs={[
             { id: "kickoff", label: "fight-template-kickoff.md", closable: true },
@@ -87,15 +89,15 @@ export function Catalog() {
       </div>
 
       <div>
-        <div className="ygg-catalog__label">Campos</div>
+        <div className="ygg-catalog__label">{t("ui.cat.fields")}</div>
         <div className="ygg-catalog__row">
           <div style={{ width: 220 }}>
-            <Field label="Nombre">
+            <Field label={t("ui.cat.name")}>
               <Input placeholder="template-fight" />
             </Field>
           </div>
           <div style={{ width: 180 }}>
-            <Field label="Modelo">
+            <Field label={t("ui.cat.model")}>
               <Select defaultValue="sonnet">
                 <option value="sonnet">Sonnet 5.5</option>
                 <option value="opus">Opus 5.5</option>
@@ -106,7 +108,7 @@ export function Catalog() {
       </div>
 
       <div>
-        <div className="ygg-catalog__label">Tarjeta, menú y diálogo</div>
+        <div className="ygg-catalog__label">{t("ui.cat.cardMenuDialog")}</div>
         <div className="ygg-catalog__row" style={{ alignItems: "flex-start" }}>
           <Card accent>
             <strong>template-fight</strong>
@@ -115,37 +117,37 @@ export function Catalog() {
           <div className="ygg-catalog__menu">
             <div className="ygg-menu">
               <button type="button" className="ygg-menu__item">
-                Renombrar
+                {t("ui.cat.rename")}
               </button>
               <button type="button" className="ygg-menu__item">
-                Copiar ruta
+                {t("ui.cat.copyPath")}
               </button>
               <div className="ygg-menu__separator" />
               <button type="button" className="ygg-menu__item ygg-menu__item--danger">
-                Eliminar
+                {t("ui.cat.delete")}
               </button>
             </div>
           </div>
-          <Button onClick={() => setModalOpen(true)}>Abrir diálogo</Button>
+          <Button onClick={() => setModalOpen(true)}>{t("ui.cat.openDialog")}</Button>
         </div>
       </div>
 
       {modalOpen && (
         <Modal
-          title="Diálogo de ejemplo"
+          title={t("ui.cat.dialogTitle")}
           onClose={() => setModalOpen(false)}
           footer={
             <>
               <Button variant="ghost" onClick={() => setModalOpen(false)}>
-                Cancelar
+                {t("ui.cancel")}
               </Button>
               <Button variant="primary" onClick={() => setModalOpen(false)}>
-                Aceptar
+                {t("ui.cat.accept")}
               </Button>
             </>
           }
         >
-          <p style={{ margin: 0, color: "var(--ygg-text-2)" }}>Así se ve un diálogo con el tema actual.</p>
+          <p style={{ margin: 0, color: "var(--ygg-text-2)" }}>{t("ui.cat.dialogBody")}</p>
         </Modal>
       )}
     </div>

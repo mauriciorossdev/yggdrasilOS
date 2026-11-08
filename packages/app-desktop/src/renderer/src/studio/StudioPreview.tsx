@@ -2,6 +2,7 @@ import { useState } from "react";
 import { PluginFrame } from "../plugins/PluginFrame.js";
 import type { PluginConsoleEntry, PluginErrorEntry, PluginLogEntry } from "../plugins/pluginTypes.js";
 import type { PluginRecord } from "../types.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = { plugin: PluginRecord };
 
@@ -17,6 +18,7 @@ const MAX_LOGS = 200;
  * every other open plugin tab/panel to reload too.
  */
 export function StudioPreview({ plugin }: Props) {
+  const { t } = useI18n();
   const [version, setVersion] = useState(0);
   const [logs, setLogs] = useState<PluginLogEntry[]>([]);
 
@@ -37,16 +39,16 @@ export function StudioPreview({ plugin }: Props) {
   return (
     <div className="studio-preview">
       <div className="studio-preview-toolbar">
-        <span className="muted">Vista previa</span>
+        <span className="muted">{t("studio.preview.title")}</span>
         <button type="button" onClick={reload}>
-          Recargar
+          {t("studio.preview.reload")}
         </button>
       </div>
       <div className="studio-preview-frame">
         <PluginFrame plugin={plugin} version={version} visible onConsole={pushConsole} onError={pushError} />
       </div>
       <div className="studio-preview-log">
-        {logs.length === 0 && <p className="muted studio-preview-log-empty">Sin logs todavía.</p>}
+        {logs.length === 0 && <p className="muted studio-preview-log-empty">{t("studio.preview.noLogs")}</p>}
         {logs.map((entry, i) => (
           <div
             key={i}

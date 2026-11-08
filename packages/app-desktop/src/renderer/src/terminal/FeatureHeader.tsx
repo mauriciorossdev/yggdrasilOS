@@ -1,3 +1,4 @@
+import { useI18n } from "../i18n/index.js";
 import { requestTab } from "../chat/mainTabsBridge.js";
 import { requestOpenDocument } from "../chat/documentsBridge.js";
 import { ProgressBar, StatusChip } from "../ui/index.js";
@@ -9,6 +10,7 @@ import { useLatestSpecPath, useSpecSummary } from "./usePaneSpec.js";
  * same chip). Click opens the doc. Renders nothing until a pane has been handed one.
  */
 export function FeatureHeader() {
+  const { t } = useI18n();
   const specPath = useLatestSpecPath();
   const { badge, title } = useSpecSummary(specPath);
   if (!specPath || !badge) return null;
@@ -20,7 +22,7 @@ export function FeatureHeader() {
       <button
         type="button"
         className="feature-header-title"
-        title={`${specPath} — click to open`}
+        title={t("term.spec.openTitle", { path: specPath })}
         onClick={() => {
           requestOpenDocument(specPath);
           requestTab("documents");
@@ -29,12 +31,12 @@ export function FeatureHeader() {
         {title ?? specPath}
       </button>
       <StatusChip status={badge.status}>
-        {badge.label}
+        {t(badge.labelKey)}
         {counts}
       </StatusChip>
       {badge.total > 0 && (
         <div className="feature-header-progress">
-          <ProgressBar value={progress} tone={badge.status === "ready" ? "ready" : "accent"} label="Avance de la feature" />
+          <ProgressBar value={progress} tone={badge.status === "ready" ? "ready" : "accent"} label={t("term.spec.progressLabel")} />
         </div>
       )}
     </div>

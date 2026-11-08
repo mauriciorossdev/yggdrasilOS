@@ -7,6 +7,7 @@ import { ApprovalBar } from "../chat/ApprovalBar.js";
 import { ChatInput } from "../chat/ChatInput.js";
 import { studioChatContext } from "./studioContext.js";
 import type { AgentInfo, Attachment, ChatSendResult, PluginRecord } from "../types.js";
+import { useI18n } from "../i18n/index.js";
 
 const CHANNEL_ID = "desktop";
 const ACCOUNT_ID = "default";
@@ -26,6 +27,7 @@ type Props = { plugin: PluginRecord };
  * self-contained-component convention.
  */
 export function StudioChatPane({ plugin }: Props) {
+  const { t: tr } = useI18n();
   const { call, onEvent } = useGateway();
   const [state, dispatch] = useReducer(chatReducer, undefined, initialChatState);
   const [attachedFiles, setAttachedFiles] = useState<Attachment[]>([]);
@@ -45,7 +47,7 @@ export function StudioChatPane({ plugin }: Props) {
       } catch (err) {
         dispatch({
           type: "ADD_SYSTEM_MESSAGE",
-          text: `No se pudo iniciar el chat: ${err instanceof Error ? err.message : String(err)}`,
+          text: tr("studio.chat.startFailed", { message: err instanceof Error ? err.message : String(err) }),
         });
       }
     })();
@@ -76,11 +78,11 @@ export function StudioChatPane({ plugin }: Props) {
       } catch (err) {
         const message = err instanceof Error ? err.message : String(err);
         if (!message.startsWith("Timeout:")) {
-          dispatch({ type: "ADD_SYSTEM_MESSAGE", text: `Error: ${message}` });
+          dispatch({ type: "ADD_SYSTEM_MESSAGE", text: tr("studio.chat.error", { message }) });
         }
       }
     },
-    [call, state.sessionKey, state.activeAgentId, plugin],
+    [call, state.sessionKey, state.activeAgentId, plugin, tr],
   );
 
   const respondApproval = useCallback(

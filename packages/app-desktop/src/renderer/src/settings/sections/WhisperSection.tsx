@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
+import { useI18n } from "../../i18n/index.js";
 import type { SttCloudProvider, SttSettings, WhisperBackend, WhisperModelName, WhisperSettings } from "../../types.js";
 
 type Props = {
@@ -29,6 +30,7 @@ const LANGUAGES: Array<{ code: string; label: string }> = [
 ];
 
 export function WhisperSection({ settings, setSettings, sttSettings, setSttSettings }: Props) {
+  const { t } = useI18n();
   const switchCloudProvider = (provider: SttCloudProvider) => {
     setSttSettings({
       ...sttSettings,
@@ -102,24 +104,24 @@ export function WhisperSection({ settings, setSettings, sttSettings, setSttSetti
 
   return (
     <section className="settings-section">
-      <h3>STT (speech-to-text) — for dictation in Documents</h3>
+      <h3>{t("set.whisper.title")}</h3>
 
       <label>
-        Source
+        {t("set.whisper.source")}
         <div className="input-with-button">
           <button
             type="button"
             className={sttSettings.source === "local" ? "active" : ""}
             onClick={() => setSttSettings({ ...sttSettings, source: "local" })}
           >
-            Local (Whisper)
+            {t("set.whisper.sourceLocal")}
           </button>
           <button
             type="button"
             className={sttSettings.source === "cloud" ? "active" : ""}
             onClick={() => setSttSettings({ ...sttSettings, source: "cloud" })}
           >
-            Cloud
+            {t("set.whisper.sourceCloud")}
           </button>
         </div>
       </label>
@@ -127,17 +129,17 @@ export function WhisperSection({ settings, setSettings, sttSettings, setSttSetti
       {sttSettings.source === "cloud" && (
         <>
           <label>
-            Provider
+            {t("set.whisper.provider")}
             <select
               value={sttSettings.cloud.provider}
               onChange={(e) => switchCloudProvider(e.target.value as SttCloudProvider)}
             >
               <option value="openai">OpenAI</option>
-              <option value="custom">Custom (OpenAI-compatible)</option>
+              <option value="custom">{t("set.whisper.providerCustom")}</option>
             </select>
           </label>
           <label>
-            Base URL
+            {t("set.whisper.baseUrl")}
             <input
               type="text"
               value={sttSettings.cloud.baseUrl}
@@ -146,7 +148,7 @@ export function WhisperSection({ settings, setSettings, sttSettings, setSttSetti
             />
           </label>
           <label>
-            Model
+            {t("set.whisper.model")}
             <input
               type="text"
               value={sttSettings.cloud.model}
@@ -155,7 +157,7 @@ export function WhisperSection({ settings, setSettings, sttSettings, setSttSetti
             />
           </label>
           <label>
-            API key
+            {t("set.whisper.apiKey")}
             <input
               type="password"
               value={sttSettings.cloud.apiKey}
@@ -165,8 +167,8 @@ export function WhisperSection({ settings, setSettings, sttSettings, setSttSetti
           </label>
           {!sttSettings.cloud.apiKey && (
             <p className="provider-warning">
-              <ExclamationTriangleIcon className="hero-icon" /> No API key set — cloud transcription won't work
-              until this is filled in.
+              <ExclamationTriangleIcon className="hero-icon" />{" "}
+              {t("set.whisper.noApiKey")}
             </p>
           )}
         </>
@@ -175,7 +177,7 @@ export function WhisperSection({ settings, setSettings, sttSettings, setSttSetti
       {sttSettings.source === "local" && (
         <>
           <label>
-            Backend
+            {t("set.whisper.backend")}
             <div className="input-with-button">
               <button
                 type="button"
@@ -195,42 +197,41 @@ export function WhisperSection({ settings, setSettings, sttSettings, setSttSetti
           </label>
           {settings.backend === "gpu" && !bundledBackends.gpu && (
             <p className="provider-warning">
-              <ExclamationTriangleIcon className="hero-icon" /> No bundled GPU build found. Point "whisper-server
-              path" below at your own GPU-accelerated whisper.cpp build manually.
+              <ExclamationTriangleIcon className="hero-icon" />{" "}
+              {t("set.whisper.noGpu")}
             </p>
           )}
           <p className="muted">
-            Same model, same settings, different binary — switch back and forth to compare speed. CPU always works;
-            GPU needs a compatible whisper-server build for your hardware.
+            {t("set.whisper.backendHint")}
           </p>
 
           <label>
-            whisper-server path
+            {t("set.whisper.serverPath")}
             <div className="input-with-button">
               <input
                 type="text"
                 value={settings.binaryPath}
                 onChange={(e) => setSettings({ ...settings, binaryPath: e.target.value })}
-                placeholder="Not found — browse for a whisper-server binary"
+                placeholder={t("set.whisper.serverPathPlaceholder")}
               />
               <button type="button" onClick={() => void pickBinary()}>
-                Browse…
+                {t("set.whisper.browse")}
               </button>
             </div>
           </label>
           <p className="muted">
-            Transcription runs against a persistent whisper-server process (loads the model into RAM once, not on
-            every dictation) — this must point at <code>whisper-server</code>, not <code>whisper-cli</code>.
+            {t("set.whisper.serverHintA")} <code>whisper-server</code>
+            {t("set.whisper.serverHintB")} <code>whisper-cli</code>.
           </p>
           {!settings.binaryPath && (
             <p className="provider-warning">
-              <ExclamationTriangleIcon className="hero-icon" /> No whisper-server binary set. Build or download a
-              whisper.cpp release (whisper-server) and point this at it — dictation won't work until then.
+              <ExclamationTriangleIcon className="hero-icon" />{" "}
+              {t("set.whisper.noBinary")}
             </p>
           )}
 
           <label>
-            Models folder
+            {t("set.whisper.modelsFolder")}
             <input
               type="text"
               value={settings.modelsDir}
@@ -239,11 +240,11 @@ export function WhisperSection({ settings, setSettings, sttSettings, setSttSetti
           </label>
 
           <label>
-            Language
+            {t("set.whisper.language")}
             <select value={settings.language} onChange={(e) => setSettings({ ...settings, language: e.target.value })}>
               {LANGUAGES.map((l) => (
                 <option key={l.code} value={l.code}>
-                  {l.label}
+                  {l.code === "auto" ? t("set.whisper.autoDetect") : l.label}
                 </option>
               ))}
             </select>
@@ -251,8 +252,7 @@ export function WhisperSection({ settings, setSettings, sttSettings, setSttSetti
 
           <div className="whisper-models">
             <p className="muted">
-              Model size trades off speed for accuracy — tiny/base for fast replies, small/medium for better accuracy
-              on a desktop machine.
+              {t("set.whisper.modelHint")}
             </p>
             {availableModels.map((name) => {
               const isDownloaded = downloaded.has(name);
@@ -270,14 +270,14 @@ export function WhisperSection({ settings, setSettings, sttSettings, setSttSetti
                     {name}
                   </label>
                   {progress !== undefined ? (
-                    <span className="muted">Downloading… {Math.round(progress * 100)}%</span>
+                    <span className="muted">{t("set.whisper.downloading", { pct: Math.round(progress * 100) })}</span>
                   ) : isDownloaded ? (
                     <button type="button" onClick={() => void remove(name)}>
-                      Delete
+                      {t("set.whisper.delete")}
                     </button>
                   ) : (
                     <button type="button" onClick={() => void download(name)}>
-                      Download
+                      {t("set.whisper.download")}
                     </button>
                   )}
                 </div>

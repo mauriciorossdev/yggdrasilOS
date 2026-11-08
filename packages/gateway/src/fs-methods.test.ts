@@ -560,6 +560,72 @@ describe("fs.search gateway method", () => {
   });
 });
 
+describe("fs.searchContent gateway method", () => {
+  let workspaceRoot: string;
+
+  beforeEach(async () => {
+    workspaceRoot = await mkdtemp(join(tmpdir(), "ygg-fs-search-content-"));
+    await mkdir(join(workspaceRoot, "notes"), { recursive: true });
+    await writeFile(join(workspaceRoot, "notes", "a.md"), "El contrato de flujos.\n", "utf8");
+    await writeFile(join(workspaceRoot, "outside.md"), "El contrato fuera de notes.\n", "utf8");
+  });
+
+  type Outcome = { results: Array<{ relativePath: string; snippets: Array<{ text: string }> }>; truncated: boolean };
+
+  it("searches names and text inside the given folder only", async () => {
+    const config = mergeConfig({}, {});
+    const out = (await callFsMethod("fs.searchContent", { query: "contrato", root: "notes" }, config, workspaceRoot)) as Outcome;
+    expect(out.results.map((r) => r.relativePath)).toEqual(["notes/a.md"]);
+    expect(out.results[0]!.snippets[0]!.text).toContain("contrato");
+  });
+
+  it("refuses a folder outside the workspace", async () => {
+    const config = mergeConfig({}, {});
+    await expect(callFsMethod("fs.searchContent", { query: "x", root: "../" }, config, workspaceRoot)).rejects.toThrow(/escapes the project root/);
+  });
+
+  it("is gated like fs.read: a remote connection that is denied gets nothing", async () => {
+    const config = mergeConfig({}, {});
+    await expect(callFsMethod("fs.searchContent", { query: "contrato", root: "notes" }, config, workspaceRoot, false, "remote-conn-1")).rejects.toThrow();
+  });
+});
+
+describe("documents.index gateway method", () => {
+  let workspaceRoot: string;
+
+  beforeEach(async () => {
+    workspaceRoot = await mkdtemp(join(tmpdir(), "ygg-documents-index-"));
+    await mkdir(join(workspaceRoot, "notes"), { recursive: true });
+    await writeFile(join(workspaceRoot, "notes", "a.md"), "# A\n\nVer [b](b.md).\n", "utf8");
+    await writeFile(join(workspaceRoot, "notes", "b.md"), "# B\n", "utf8");
+  });
+
+  type Outcome = { notes: Array<{ path: string; title: string; links: Array<{ target: string }> }>; truncated: boolean };
+
+  it("returns titles and links for the notes folder, or only for the given paths", async () => {
+    const config = mergeConfig({}, {});
+    const all = (await callFsMethod("documents.index", { root: "notes" }, config, workspaceRoot)) as Outcome;
+    expect(all.notes.map((n) => [n.path, n.title])).toEqual([
+      ["notes/a.md", "A"],
+      ["notes/b.md", "B"],
+    ]);
+    expect(all.notes[0]!.links.map((l) => l.target)).toEqual(["notes/b.md"]);
+    const some = (await callFsMethod("documents.index", { root: "notes", paths: ["notes/b.md"] }, config, workspaceRoot)) as Outcome;
+    expect(some.notes.map((n) => n.path)).toEqual(["notes/b.md"]);
+  });
+
+  it("refuses a folder or a path outside the workspace", async () => {
+    const config = mergeConfig({}, {});
+    await expect(callFsMethod("documents.index", { root: "../" }, config, workspaceRoot)).rejects.toThrow(/escapes the project root/);
+    await expect(callFsMethod("documents.index", { root: "notes", paths: ["../x.md"] }, config, workspaceRoot)).rejects.toThrow(/escapes the project root/);
+  });
+
+  it("is gated like fs.read: a remote connection that is denied gets nothing", async () => {
+    const config = mergeConfig({}, {});
+    await expect(callFsMethod("documents.index", { root: "notes" }, config, workspaceRoot, false, "remote-conn-2")).rejects.toThrow();
+  });
+});
+
 // Deliberately no proper xref table (offsets aren't worth hand-computing) —
 // pdfjs-dist falls back to scanning the file for objects when the xref is
 // missing/broken, which is exactly the code path real-world "slightly off"

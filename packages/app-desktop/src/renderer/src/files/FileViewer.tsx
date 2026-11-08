@@ -3,6 +3,7 @@ import { useGateway } from "@yggdrasil/client-web";
 import type { FsReadBinaryResult } from "../types.js";
 import { imageMimeType, isBlenderFile, type PreviewKind } from "./filePreviewKind.js";
 import { AudioViewer } from "./AudioViewer.js";
+import { useI18n } from "../i18n/index.js";
 
 // three.js is large — only pulled in when a 3D file is actually opened.
 const ModelViewer = lazy(() => import("./ModelViewer.js"));
@@ -16,6 +17,7 @@ type Props = {
 // still handled by the caller (FileContentPanel/DocumentsView), which owns
 // the editable fs.read/fs.write flow. This component is read-only.
 export function FileViewer({ relativePath, kind }: Props) {
+  const { t } = useI18n();
   const { call } = useGateway();
   const [dataUrl, setDataUrl] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -29,7 +31,7 @@ export function FileViewer({ relativePath, kind }: Props) {
       try {
         const res = await call<FsReadBinaryResult>("fs.readBinary", { relativePath });
         if (res.truncated) {
-          setError(`Too large to preview (${(res.totalBytes / 1_000_000).toFixed(1)} MB).`);
+          setError(t("doc.file.tooLarge", { mb: (res.totalBytes / 1_000_000).toFixed(1) }));
           return;
         }
         const mime = kind === "pdf" ? "application/pdf" : imageMimeType(relativePath);
@@ -73,10 +75,10 @@ export function FileViewer({ relativePath, kind }: Props) {
             className="new-chat"
             onClick={async () => {
               const res = await window.yggdrasil.ide.openInBlender(relativePath);
-              if (!res.opened) setError(res.error ?? "Could not open Blender.");
+              if (!res.opened) setError(res.error ?? t("doc.file.blenderError"));
             }}
           >
-            Open in Blender
+            {t("doc.openBlender")}
           </button>
         )}
         <button type="button" className="new-chat" onClick={() => void openExternal()} disabled={opening}>

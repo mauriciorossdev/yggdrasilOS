@@ -1,9 +1,11 @@
+import { FolderIcon } from "@heroicons/react/20/solid";
 import type { RepoInfo } from "./types.js";
+import { useI18n } from "../i18n/index.js";
 
-function describe(repo: RepoInfo): string {
-  if (repo.relation === "root") return "raíz del proyecto";
-  if (repo.relation === "parent") return `fuera de la raíz (${repo.path})`;
-  return `subcarpeta ${repo.path}`;
+function describe(repo: RepoInfo, t: ReturnType<typeof useI18n>["t"]): string {
+  if (repo.relation === "root") return t("repo.selector.root");
+  if (repo.relation === "parent") return t("repo.selector.parent", { path: repo.path });
+  return t("repo.selector.child", { path: repo.path });
 }
 
 type Props = {
@@ -14,19 +16,23 @@ type Props = {
 
 /** Repo picker + a note saying where the selected repo lives relative to the project. */
 export function RepoSelector({ repos, selected, onSelect }: Props) {
+  const { t } = useI18n();
   const current = repos.find((r) => r.path === selected) ?? null;
   return (
     <div className="repo-selector">
+      <span className="repo-selector-icon" aria-hidden="true">
+        <FolderIcon className="hero-icon" />
+      </span>
       <select
         className="repo-select"
         value={selected ?? ""}
         onChange={(e) => onSelect(e.target.value)}
         disabled={repos.length < 2}
-        title="Repositorio"
+        title={t("repo.selector.title")}
       >
         {repos.map((r) => (
           <option key={r.path} value={r.path}>
-            {r.name} — {describe(r)}
+            {r.name} — {describe(r, t)}
             {r.branch ? ` · ${r.branch}` : ""}
           </option>
         ))}
@@ -34,11 +40,11 @@ export function RepoSelector({ repos, selected, onSelect }: Props) {
       {current && current.relation !== "root" && (
         <span className="repo-location-note">
           {current.relation === "child"
-            ? `Repositorio en una subcarpeta del proyecto: ${current.path}`
-            : `El proyecto está dentro de este repositorio (${current.path})`}
+            ? t("repo.selector.childNote", { path: current.path })
+            : t("repo.selector.parentNote", { path: current.path })}
         </span>
       )}
-      {repos.length > 1 && <span className="repo-location-note">{repos.length} repositorios en este proyecto</span>}
+      {repos.length > 1 && <span className="repo-location-note">{t("repo.selector.count", { count: repos.length })}</span>}
     </div>
   );
 }

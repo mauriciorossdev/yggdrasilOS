@@ -116,7 +116,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
           TextButton(onPressed: () => Navigator.pop(context, false), child: Text(AppStrings.t('common.cancel'))),
           TextButton(
             onPressed: () => Navigator.pop(context, true),
-            child: Text(AppStrings.t('common.delete'), style: const TextStyle(color: YggColors.errorRed)),
+            child: Text(AppStrings.t('common.delete'), style: TextStyle(color: YggColors.errorRed)),
           ),
         ],
       ),
@@ -148,7 +148,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
         child: const Icon(Icons.add),
       ),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: YggColors.accent))
+          ? Center(child: CircularProgressIndicator(color: YggColors.accent))
           : _error != null
               ? Center(
                   child: Padding(
@@ -156,7 +156,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Text(AppStrings.t('memory.loadError'), style: const TextStyle(color: YggColors.textMuted)),
+                        Text(AppStrings.t('memory.loadError'), style: TextStyle(color: YggColors.textMuted)),
                         const SizedBox(height: 12),
                         TextButton(onPressed: _load, child: Text(AppStrings.t('common.retry'))),
                       ],
@@ -170,7 +170,7 @@ class _MemoryScreenState extends State<MemoryScreen> {
                         child: Text(
                           AppStrings.t('memory.empty'),
                           textAlign: TextAlign.center,
-                          style: const TextStyle(color: YggColors.textMuted, height: 1.5),
+                          style: TextStyle(color: YggColors.textMuted, height: 1.5),
                         ),
                       ),
                     )
@@ -194,18 +194,18 @@ class _MemoryScreenState extends State<MemoryScreen> {
                                     child: Column(
                                       crossAxisAlignment: CrossAxisAlignment.start,
                                       children: [
-                                        Text(e.content, style: const TextStyle(color: YggColors.text, fontSize: 15, height: 1.4)),
+                                        Text(e.content, style: TextStyle(color: YggColors.text, fontSize: 15, height: 1.4)),
                                         const SizedBox(height: 6),
                                         Text(
                                           [e.type, _date(e.updatedAt)].where((s) => s.isNotEmpty).join(' · '),
-                                          style: const TextStyle(color: YggColors.textFaint, fontSize: 12),
+                                          style: TextStyle(color: YggColors.textFaint, fontSize: 12),
                                         ),
                                       ],
                                     ),
                                   ),
                                   IconButton(
                                     onPressed: () => _delete(e),
-                                    icon: const Icon(Icons.delete_outline, color: YggColors.textMuted, size: 20),
+                                    icon: Icon(Icons.delete_outline, color: YggColors.textMuted, size: 20),
                                   ),
                                 ],
                               ),

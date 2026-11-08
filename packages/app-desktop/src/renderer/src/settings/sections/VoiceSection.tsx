@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useI18n } from "../../i18n/index.js";
 import type { TtsSettings } from "../../types.js";
 
 // Confirmed preset voice_ids for Replicate's minimax/speech-2.8-turbo model
@@ -34,6 +35,7 @@ const PRESET_VOICES = [
  * SettingsView-batched-config pattern, since nothing else depends on this.
  */
 export function VoiceSection() {
+  const { t } = useI18n();
   const [settings, setSettings] = useState<TtsSettings | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -60,29 +62,28 @@ export function VoiceSection() {
 
   return (
     <section className="settings-section">
-      <h3>Voz</h3>
+      <h3>{t("set.voice.title")}</h3>
       <p className="muted">
-        Texto-a-voz de este equipo (ej. "hablar la última respuesta" en una terminal, y lo que use el teléfono
-        cuando se conecta a este gateway).
+        {t("set.voice.intro")}
       </p>
 
       {error && <p className="error">{error}</p>}
-      {!settings && !error && <p className="muted">Cargando…</p>}
+      {!settings && !error && <p className="muted">{t("set.voice.loading")}</p>}
 
       {settings && (
         <>
-          <label>
+          <label className="settings-check">
             <input
               type="checkbox"
               checked={settings.enabled}
               disabled={saving}
               onChange={(e) => void save({ ...settings, enabled: e.target.checked })}
             />
-            Activar texto-a-voz
+            {t("set.voice.enable")}
           </label>
 
           <label>
-            Voz
+            {t("set.voice.voice")}
             <select
               value={PRESET_VOICES.includes(settings.voiceId) ? settings.voiceId : ""}
               disabled={saving || !settings.enabled}
@@ -91,7 +92,7 @@ export function VoiceSection() {
               }}
             >
               <option value="">
-                {settings.voiceId && !PRESET_VOICES.includes(settings.voiceId) ? "(id personalizado abajo)" : "Por defecto"}
+                {settings.voiceId && !PRESET_VOICES.includes(settings.voiceId) ? t("set.voice.customBelow") : t("set.voice.default")}
               </option>
               {PRESET_VOICES.map((v) => (
                 <option key={v} value={v}>
@@ -101,7 +102,7 @@ export function VoiceSection() {
             </select>
           </label>
           <label>
-            Voice id (vacío = usar la de por defecto; también acepta cualquier otro id de Replicate/MiniMax)
+            {t("set.voice.voiceId")}
             <input
               type="text"
               value={settings.voiceId}
@@ -116,14 +117,13 @@ export function VoiceSection() {
             <input
               type="password"
               value={settings.apiToken}
-              placeholder="r8_… (vacío = usar la variable de entorno del equipo)"
+              placeholder={t("set.voice.tokenPlaceholder")}
               disabled={saving || !settings.enabled}
               onChange={(e) => void save({ ...settings, apiToken: e.target.value })}
             />
           </label>
           <p className="muted">
-            Necesario para que la síntesis de voz funcione — sin un token válido (acá o como variable de entorno
-            REPLICATE_API_TOKEN del gateway) cualquier intento de hablar falla con "TTS not configured".
+            {t("set.voice.tokenHint")}
           </p>
         </>
       )}

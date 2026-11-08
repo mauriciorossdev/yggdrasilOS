@@ -4,6 +4,7 @@ import type {
   ApprovalModeChangedPayload,
   ChatDeltaPayload,
   ChatFinalPayload,
+  ProviderRetryPayload,
   ToolApprovalRequestedPayload,
   ToolApprovalResolvedPayload,
   ToolExecutePayload,
@@ -30,6 +31,7 @@ export function useGatewayEvents(
     const onDisconnected = () => dispatch({ type: "SET_CONNECTED", connected: false });
     const onDelta = (p: ChatDeltaPayload) => matchesSession(p) && dispatch({ type: "CHAT_DELTA", payload: p });
     const onFinal = (p: ChatFinalPayload) => matchesSession(p) && dispatch({ type: "CHAT_FINAL", payload: p });
+    const onRetry = (p: ProviderRetryPayload) => matchesSession(p) && dispatch({ type: "PROVIDER_RETRY", payload: p });
     const onTurnStart = (p: TurnStartPayload) => matchesSession(p) && dispatch({ type: "TURN_START", payload: p });
     const onTurnEnd = (p: TurnEndPayload) => matchesSession(p) && dispatch({ type: "TURN_END", payload: p });
     const onToolExec = (p: ToolExecutePayload) => matchesSession(p) && dispatch({ type: "TOOL_EXECUTE", payload: p });
@@ -44,6 +46,7 @@ export function useGatewayEvents(
     client.on("disconnected", onDisconnected);
     client.on("chat.delta", onDelta);
     client.on("chat.final", onFinal);
+    client.on("provider.retry", onRetry);
     client.on("turn.start", onTurnStart);
     client.on("turn.end", onTurnEnd);
     client.on("tool.execute", onToolExec);
@@ -56,6 +59,7 @@ export function useGatewayEvents(
       client.off("disconnected", onDisconnected);
       client.off("chat.delta", onDelta);
       client.off("chat.final", onFinal);
+      client.off("provider.retry", onRetry);
       client.off("turn.start", onTurnStart);
       client.off("turn.end", onTurnEnd);
       client.off("tool.execute", onToolExec);

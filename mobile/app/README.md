@@ -20,6 +20,8 @@ ship a Firebase configuration: create your own project and add its client config
    (change both if you want your own id).
 2. Download `google-services.json` into `android/app/` (use `google-services.json.example` as a reference for the
    shape). The file is git-ignored; never commit it.
+   Debug builds use the application id suffix `.dev`, so they need their own client config in
+   `android/app/src/debug/google-services.json`.
 3. For iOS, add `GoogleService-Info.plist` to `ios/Runner/` (also git-ignored).
 
 Without these files the Android build fails at the `com.google.gms.google-services` Gradle plugin. If you do not need

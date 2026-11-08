@@ -4,7 +4,6 @@ import '../chat/voice_mic_button.dart';
 import '../l10n/app_strings.dart';
 import '../pi/pi_chat_screen.dart';
 import '../pi/pi_settings.dart';
-import '../pi/tailscale_channel.dart';
 import '../services/yggdrasil_client.dart';
 import '../theme/ygg_theme.dart';
 
@@ -18,8 +17,17 @@ class NewProjectTarget {
 }
 
 /// Mac/PC target: the desktop gateway's projects.create makes `~/Yggdrasil/<name>`
-/// (git init), registers it and opens it. [client] must already be connected.
-NewProjectTarget desktopTarget({required String label, required Future<YggdrasilClient> Function() connect}) {
+/// (git init), registers it and opens it. [connect] must hand back a connected client.
+///
+/// The client is closed afterwards only when this target opened it ([ownsClient], the
+/// default). A client that belongs to the screen showing the project list must stay open:
+/// closing it here left that list (and every project opened from it) talking to a dead
+/// socket, "Bad state: WebSocket closed".
+NewProjectTarget desktopTarget({
+  required String label,
+  required Future<YggdrasilClient> Function() connect,
+  bool ownsClient = true,
+}) {
   return NewProjectTarget(
     label: label,
     icon: Icons.computer,
@@ -28,7 +36,7 @@ NewProjectTarget desktopTarget({required String label, required Future<Yggdrasil
       try {
         await client.call('projects.create', {'name': name}, timeout: const Duration(seconds: 60));
       } finally {
-        client.disconnect();
+        if (ownsClient) client.disconnect();
       }
     },
   );
@@ -38,10 +46,10 @@ NewProjectTarget desktopTarget({required String label, required Future<Yggdrasil
 /// own tmux session running Claude; then opens that project's chat.
 NewProjectTarget piTarget(BuildContext context, PiSettings settings) {
   return NewProjectTarget(
-    label: AppStrings.t('settings.pi'),
+    label: settings.displayName,
     icon: Icons.memory,
     create: (name) async {
-      await TailscaleChannel.connect();
+      await settings.connectNetwork();
       final client = YggdrasilClient(baseUrl: settings.baseUrl, apiKey: settings.apiKey);
       client.connectToMirror((_) {});
       dynamic created;
@@ -133,7 +141,7 @@ class _NewProjectFormState extends State<_NewProjectForm> {
           mainAxisSize: MainAxisSize.min,
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            Text(AppStrings.t('newProject.title'), style: const TextStyle(fontSize: 17, color: YggColors.text)),
+            Text(AppStrings.t('newProject.title'), style: TextStyle(fontSize: 17, color: YggColors.text)),
             const SizedBox(height: 14),
             Row(
               children: [
@@ -152,7 +160,7 @@ class _NewProjectFormState extends State<_NewProjectForm> {
               ],
             ),
             const SizedBox(height: 14),
-            Text(AppStrings.t('newProject.where'), style: const TextStyle(fontSize: 12.5, color: YggColors.textMuted)),
+            Text(AppStrings.t('newProject.where'), style: TextStyle(fontSize: 12.5, color: YggColors.textMuted)),
             const SizedBox(height: 6),
             Wrap(
               spacing: 8,
@@ -168,7 +176,7 @@ class _NewProjectFormState extends State<_NewProjectForm> {
             ),
             if (_error != null) ...[
               const SizedBox(height: 10),
-              Text(_error!, style: const TextStyle(fontSize: 12.5, color: Colors.redAccent)),
+              Text(_error!, style: TextStyle(fontSize: 12.5, color: YggColors.danger)),
             ],
             const SizedBox(height: 16),
             Align(

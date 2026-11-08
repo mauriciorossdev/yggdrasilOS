@@ -7,6 +7,9 @@ class LocalChat {
   final String id;
   final String profileId;
   String? title;
+
+  /// The personality this chat runs on; null falls back to the default one.
+  String? personaId;
   List<LocalMessage> messages;
   final int createdAt;
   int updatedAt;
@@ -15,6 +18,7 @@ class LocalChat {
     required this.id,
     required this.profileId,
     this.title,
+    this.personaId,
     List<LocalMessage>? messages,
     int? createdAt,
     int? updatedAt,
@@ -26,6 +30,7 @@ class LocalChat {
         id: json['id']?.toString() ?? '',
         profileId: json['profileId']?.toString() ?? '',
         title: json['title']?.toString(),
+        personaId: json['personaId']?.toString(),
         messages: (json['messages'] as List<dynamic>?)
             ?.map((e) => LocalMessage.fromJson(e as Map<String, dynamic>))
             .toList(),
@@ -37,6 +42,7 @@ class LocalChat {
         'id': id,
         'profileId': profileId,
         if (title != null) 'title': title,
+        if (personaId != null) 'personaId': personaId,
         'messages': messages.map((m) => m.toJson()).toList(),
         'createdAt': createdAt,
         'updatedAt': updatedAt,

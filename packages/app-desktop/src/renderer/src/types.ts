@@ -86,6 +86,8 @@ export type AgentInfo = {
   model?: string;
   provider?: string;
   systemPrompt?: string;
+  /** Omitted = every tool; `{ allow: [] }` = no tools at all. Patterns may use `*`. */
+  tools?: { allow?: string[] };
   scope?: "local" | "global";
 };
 
@@ -95,6 +97,7 @@ export type CreateAgentParams = {
   systemPrompt?: string;
   provider?: string;
   model?: string;
+  tools?: { allow?: string[] };
   scope: "local" | "global";
 };
 
@@ -109,6 +112,7 @@ export type UpdateAgentParams = {
   systemPrompt?: string;
   provider?: string;
   model?: string;
+  tools?: { allow?: string[] };
   scope: "local" | "global";
 };
 
@@ -175,6 +179,15 @@ export type McpServerStatus = {
   connected: boolean;
   toolCount: number;
   tools: string[];
+  error?: string;
+};
+
+/** Result of `mcp.test`: a server config tried without saving it. */
+export type McpTestResult = {
+  ok: boolean;
+  toolCount: number;
+  tools: string[];
+  durationMs: number;
   error?: string;
 };
 
@@ -538,6 +551,8 @@ export type CreatePaneSpec = {
   command?: string;
   args?: string[];
   purpose?: string;
+  /** Kept on the pane for its "Start task" button; never submitted by itself. App UI only (plugins cannot set it, see pluginHost.ts). */
+  initialPrompt?: string;
   sourcePaneId?: string;
 };
 
@@ -553,12 +568,35 @@ export type ImportFilesResult = { imported: string[]; errors: string[] };
 // Electron main-process concept (packages/app-desktop/src/main/agentFlow.ts),
 // mirrored here structurally, same convention as ProjectRecord/PaneNode above.
 export type AgentFlowHarness =
-  | { type: "yggdrasil"; agentId: string }
+  | {
+      type: "yggdrasil";
+      agentId: string;
+      /** Metadata only, like the other harnesses' initialPrompt: never auto-submitted (see main/terminals.ts). */
+      initialPrompt?: string;
+      /** `yggdrasil tui --model`: override for the agent's own model on every message. */
+      model?: string;
+      /** `yggdrasil tui --mode`: approval mode the session starts in. */
+      approvalMode?: "auto" | "plan" | "restrict" | "yolo";
+      /** Reopen this node's previous conversation instead of starting a new one (see buildFlowLeaves.ts). */
+      continueSession?: boolean;
+    }
   | {
       type: "claude";
       systemPromptAppend?: string;
       model?: string;
       effort?: "low" | "medium" | "high" | "xhigh" | "max";
+      /** --permission-mode (see buildLaunchCommand.ts). Unset = claude's own default. Ignored for cloud nodes. */
+      /** --continue: most recent conversation in the project folder. Ignored when resumeSession is set, and for cloud nodes. */
+      continueSession?: boolean;
+      /** --resume=<session id or name>. Ignored for cloud nodes. */
+      resumeSession?: string;
+      /** --name: display name for the session, which makes it resumable by that name later. */
+      sessionName?: string;
+      permissionMode?: "acceptEdits" | "auto" | "bypassPermissions" | "manual" | "dontAsk" | "plan";
+      /** --allowedTools: tool rules that run without asking, e.g. "Read", "Bash(git log:*)". Ignored for cloud nodes. */
+      allowedTools?: string[];
+      /** --disallowedTools: tool rules that are always refused. Ignored for cloud nodes. */
+      disallowedTools?: string[];
       addDirs?: string[];
       initialPrompt?: string;
       cloud?: boolean;
@@ -596,6 +634,8 @@ export type AgentFlowNode = {
   communication?: string;
   /** Feature doc (project-relative) this node was created with — create_pane's specPath. */
   specPath?: string;
+  /** Run this node's pane in its own git worktree (<repo>/.yggdrasil/worktrees/<name>) instead of the project folder. */
+  worktree?: boolean;
 };
 
 // Electron main-process concept (packages/app-desktop/src/main/agentTeams.ts),
@@ -632,7 +672,14 @@ export type AgentFlowCommunicationPayload = { from: string; to: string };
 // not a DOM node, so BrowserTabView.tsx's placeholder div reports its own
 // real screen rect here instead of any CSS being able to size the actual
 // content.
-export type BrowserTabBounds = { x: number; y: number; width: number; height: number };
+export type BrowserTabBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  emulate?: { width: number; height: number; mobile: boolean };
+  crop?: { width: number; height: number };
+};
 
 // Mirrors main/browserTabView.ts's BrowserTabState — pushed on browserTab:state:
 // the active page's navigation state plus the tab strip.
@@ -684,9 +731,21 @@ export type AgentFlow = {
   updatedAt: number;
 };
 
-/** Settings → Teléfono (main/phoneLink.ts): this desktop as published to the Railway hub. Never carries the hub key. */
+export type HubUrlCheck = "empty" | "ok" | "insecure-local" | "insecure-public" | "invalid";
+
+/** Mirrors main/phoneLinkCore.ts's HubTestResult. */
+export type HubTestResult =
+  | { ok: true; desktops: number; insecure: boolean }
+  | {
+      ok: false;
+      code: "invalid-url" | "insecure" | "missing-key" | "unreachable" | "not-yggdrasil" | "bad-key" | "server-open" | "no-directory";
+      detail?: string;
+    };
+
+/** Settings → Teléfono (main/phoneLink.ts): this desktop as published to the link server. Never carries the hub key. */
 export type PhoneLinkInfo = {
   hubUrl: string;
+  hubUrlCheck: HubUrlCheck;
   hasHubKey: boolean;
   publish: boolean;
   desktopName: string;

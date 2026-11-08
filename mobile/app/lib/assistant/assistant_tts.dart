@@ -6,29 +6,9 @@ import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../services/yggdrasil_client.dart';
+import '../voice/speakable_text.dart';
 
-/// The gateway rejects longer text (packages/gateway/src/tts.ts TTS_MAX_CHARS).
-const ttsMaxChars = 2000;
-
-/// Reduces a markdown reply to what's worth reading aloud: no code blocks,
-/// links keep their label, no emphasis/heading/list markers, no emoji
-/// variation noise — and capped at [ttsMaxChars] on a sentence boundary.
-String speakableText(String markdown) {
-  var t = markdown;
-  t = t.replaceAll(RegExp(r'```[\s\S]*?```'), ' ');
-  t = t.replaceAllMapped(RegExp(r'`([^`]*)`'), (m) => m[1] ?? '');
-  t = t.replaceAllMapped(RegExp(r'!?\[([^\]]*)\]\([^)]*\)'), (m) => m[1] ?? '');
-  t = t.replaceAll(RegExp(r'^\s{0,3}#{1,6}\s*', multiLine: true), '');
-  t = t.replaceAll(RegExp(r'^\s*[-*+]\s+', multiLine: true), '');
-  t = t.replaceAll(RegExp(r'^\s*\d+\.\s+', multiLine: true), '');
-  t = t.replaceAll(RegExp(r'[*_~]{1,3}'), '');
-  t = t.replaceAll(RegExp(r'\n{2,}'), '. ').replaceAll('\n', ' ');
-  t = t.replaceAll(RegExp(r'\s{2,}'), ' ').trim();
-  if (t.length <= ttsMaxChars) return t;
-  final cut = t.substring(0, ttsMaxChars);
-  final end = cut.lastIndexOf(RegExp(r'[.!?]\s'));
-  return end > ttsMaxChars ~/ 2 ? cut.substring(0, end + 1) : cut;
-}
+export '../voice/speakable_text.dart' show speakableText, ttsMaxChars;
 
 /// Spoken replies for the assistant chat: settings (on/off, voice) plus
 /// playback. Audio is synthesized by the gateway's `tts.synthesize` (Replicate

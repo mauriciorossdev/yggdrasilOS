@@ -4,8 +4,10 @@ import { ChatView } from "./chat/ChatView.js";
 import { TitleBar } from "./components/TitleBar.js";
 import { WorkspaceOverlay } from "./workspace/WorkspaceOverlay.js";
 import { OnboardingGate } from "./onboarding/OnboardingGate.js";
+import { useI18n } from "./i18n/index.js";
 
 export function App() {
+  const { t } = useI18n();
   const { connected, authenticated, connect } = useGateway();
   const [error, setError] = useState<string | null>(null);
   // Once the first handshake has succeeded, ChatView stays mounted through
@@ -40,7 +42,7 @@ export function App() {
       <div className="app-shell">
         <TitleBar />
         <div className="app-status">
-          <p>Connecting to gateway…</p>
+          <p>{t("app.connecting")}</p>
         </div>
       </div>
     );
@@ -49,7 +51,7 @@ export function App() {
   return (
     <div className="app-shell">
       <TitleBar />
-      {!ready && <div className="gateway-reconnect-banner">Reconnecting to gateway…</div>}
+      {!ready && <div className="gateway-reconnect-banner">{t("app.reconnecting")}</div>}
       <ChatView />
       <WorkspaceOverlay />
       <OnboardingGate />

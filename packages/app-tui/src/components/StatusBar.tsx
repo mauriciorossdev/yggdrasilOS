@@ -15,6 +15,13 @@ type Props = {
   state: TuiState;
 };
 
+/** Last path segment of the workspace root ("/a/b/my-app" -> "my-app"), tolerant of Windows separators and trailing slashes. */
+export function projectName(root: string | null): string | null {
+  if (!root) return null;
+  const parts = root.split(/[\\/]+/).filter(Boolean);
+  return parts[parts.length - 1] ?? null;
+}
+
 function contextPercent(state: TuiState): { pct: number; color: string } | null {
   const inputTokens = state.lastUsage?.inputTokens;
   if (!inputTokens) return null;
@@ -35,7 +42,9 @@ function contextPercent(state: TuiState): { pct: number; color: string } | null 
 
 export function StatusBar({ state }: Props): React.ReactElement {
   const agent = state.activeAgentId ?? state.defaultAgent ?? "—";
-  const session = state.sessionKey ? state.sessionKey.slice(-8) : "none";
+  const session = state.sessionTitle ?? (state.sessionKey ? state.sessionKey.slice(-8) : "none");
+  const agentInfo = state.agents.find((a) => a.id === (state.activeAgentId ?? state.defaultAgent));
+  const project = projectName(state.workspaceRoot);
   const connStatus = state.connected ? "●" : "○";
   const connColor = state.connected ? theme.success : theme.error;
   const ctx = contextPercent(state);
@@ -49,8 +58,14 @@ export function StatusBar({ state }: Props): React.ReactElement {
     >
       <Box gap={2}>
         <Text color={connColor}>{connStatus}</Text>
+        {project && (
+          <Text color={theme.statusBar.fg}>
+            <Text color={theme.statusBar.accent}>{project}</Text>
+          </Text>
+        )}
         <Text color={theme.statusBar.fg}>
           agent:<Text color={theme.statusBar.accent}>{agent}</Text>
+          {agentInfo?.model && <Text color={theme.dim}> ({agentInfo.model})</Text>}
         </Text>
         <Text color={theme.statusBar.fg}>
           session:<Text color={theme.dim}>{session}</Text>
@@ -61,13 +76,22 @@ export function StatusBar({ state }: Props): React.ReactElement {
         <Text color={MODE_STYLE[state.mode].color} bold>
           {MODE_STYLE[state.mode].glyph} {state.mode}
         </Text>
-        {state.isTurnActive && (
-          <Text color={theme.warning}>⟳ thinking…</Text>
+        {state.isCancelling ? (
+          <Text color={theme.warning}>■ cancelling…</Text>
+        ) : state.retryNotice ? (
+          <Text color={theme.warning}>
+            ↻ retrying in {Math.max(1, Math.round(state.retryNotice.delayMs / 1000))}s ({state.retryNotice.reason}, attempt {state.retryNotice.attempt}){" "}
+            <Text color={theme.dim}>(esc to cancel)</Text>
+          </Text>
+        ) : (
+          (state.isTurnActive || state.isStreaming) && (
+            <Text color={theme.warning}>⟳ thinking… <Text color={theme.dim}>(esc to cancel)</Text></Text>
+          )
         )}
         {state.turnDurationMs != null && !state.isTurnActive && (
           <Text color={theme.dim}>{state.turnDurationMs}ms</Text>
         )}
-        <Text color={theme.dim}>ctrl+k:commands shift+tab:mode esc:back ctrl+c:quit</Text>
+        <Text color={theme.dim}>ctrl+k:commands shift+tab:mode esc:back/cancel ctrl+c:cancel/quit</Text>
       </Box>
     </Box>
   );

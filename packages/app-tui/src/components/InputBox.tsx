@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from "react";
 import { Box, Text, useInput } from "ink";
 import { theme } from "../render/theme.js";
 import type { Command } from "./CommandPalette.js";
+import { BlinkingCursor } from "./BlinkingCursor.js";
 
 type Props = {
   onSubmit: (text: string) => void;
@@ -138,13 +139,16 @@ export function InputBox({
           {"❯ "}
         </Text>
         {showPlaceholder ? (
-          <Text color={theme.dim}>{placeholder}</Text>
+          <>
+            <BlinkingCursor active={!disabled} resetKey={value} />
+            <Text color={theme.dim}>{placeholder}</Text>
+          </>
         ) : isMultiline ? (
           <Text color={isShellCommand ? theme.warning : undefined}>{lines[0]}</Text>
         ) : (
           <Text color={isShellCommand ? theme.warning : undefined}>
             {value}
-            <Text color={theme.dim}>█</Text>
+            <BlinkingCursor active={!disabled} resetKey={value} />
           </Text>
         )}
       </Box>
@@ -153,7 +157,7 @@ export function InputBox({
           <Box key={i} marginLeft={2}>
             <Text color={isShellCommand ? theme.warning : undefined}>
               {line}
-              {i === lines.length - 2 && <Text color={theme.dim}>█</Text>}
+              {i === lines.length - 2 && <BlinkingCursor active={!disabled} resetKey={value} />}
             </Text>
           </Box>
         ))}

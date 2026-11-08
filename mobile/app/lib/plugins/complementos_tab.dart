@@ -4,6 +4,7 @@ import '../chat/projects_screen.dart';
 import '../l10n/app_strings.dart';
 import '../services/yggdrasil_client.dart';
 import '../theme/ygg_theme.dart';
+import '../ui/ui.dart';
 import 'complemento_manifest.dart';
 import 'complemento_webview_screen.dart';
 import 'complementos_repo.dart';
@@ -63,57 +64,63 @@ class _ComplementosTabState extends State<ComplementosTab> {
   Widget build(BuildContext context) {
     final client = widget.client;
     if (client == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            AppStrings.t('projects.notOpenOnComputer'),
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: YggColors.textFaint),
-          ),
-        ),
-      );
+      return YggEmptyState(icon: Icons.extension_outlined, message: AppStrings.t('projects.notOpenOnComputer'));
     }
-    if (_loading) return const Center(child: CircularProgressIndicator(color: YggColors.accent));
+    if (_loading) return Center(child: CircularProgressIndicator(color: YggColors.accent));
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text('${AppStrings.t('common.errorPrefix')}: $_error', style: const TextStyle(color: YggColors.textMuted)),
+      return YggEmptyState(
+        icon: Icons.error_outline,
+        message: '${AppStrings.t('common.errorPrefix')}: $_error',
+        action: OutlinedButton(onPressed: _load, child: Text(AppStrings.t('common.retry'))),
       );
     }
     if (_items.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            AppStrings.t('projects.noComplementos'),
-            textAlign: TextAlign.center,
-            style: const TextStyle(color: YggColors.textFaint),
-          ),
-        ),
+      return YggEmptyState(
+        icon: Icons.extension_outlined,
+        message: AppStrings.t('projects.noComplementos'),
+        hint: AppStrings.t('complementos.hint'),
       );
     }
     return RefreshIndicator(
       onRefresh: _load,
       color: YggColors.accent,
-      child: ListView.builder(
-        padding: const EdgeInsets.symmetric(vertical: 4),
-        itemCount: _items.length,
-        itemBuilder: (_, i) {
-          final item = _items[i];
-          return ListTile(
-            leading: item.iconIsFile || item.icon == null
-                ? const Icon(Icons.extension_outlined, color: YggColors.accent)
-                : Text(item.icon!, style: const TextStyle(fontSize: 20)),
-            title: Text(item.name, style: const TextStyle(fontSize: 14.5, color: YggColors.text)),
-            onTap: () => Navigator.push(
-              context,
-              MaterialPageRoute(
-                builder: (_) => ComplementoWebViewScreen(client: client, projectId: widget.project.id, manifest: item),
-              ),
+      child: ListView(
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
+        children: [
+          YggSectionLabel(AppStrings.tp('complementos.enabledForMobile', {'n': '${_items.length}'})),
+          YggListGroup(
+            children: [
+              for (final item in _items)
+                YggListRow(
+                  leading: Container(
+                    width: 40,
+                    height: 40,
+                    alignment: Alignment.center,
+                    decoration: BoxDecoration(color: YggColors.accentSoft, borderRadius: BorderRadius.circular(YggRadius.md)),
+                    child: item.iconIsFile || item.icon == null
+                        ? Icon(Icons.extension_outlined, size: 20, color: YggColors.accent)
+                        : Text(item.icon!, style: const TextStyle(fontSize: 20)),
+                  ),
+                  title: item.name,
+                  onTap: () => Navigator.push(
+                    context,
+                    MaterialPageRoute(
+                      builder: (_) => ComplementoWebViewScreen(client: client, projectId: widget.project.id, manifest: item),
+                    ),
+                  ),
+                ),
+            ],
+          ),
+          const SizedBox(height: 22),
+          Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Text(
+              AppStrings.t('complementos.hint'),
+              textAlign: TextAlign.center,
+              style: TextStyle(fontSize: 12.5, height: 1.5, color: YggColors.textFainter),
             ),
-          );
-        },
+          ),
+        ],
       ),
     );
   }

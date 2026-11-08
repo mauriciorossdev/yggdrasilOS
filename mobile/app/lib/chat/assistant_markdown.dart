@@ -11,7 +11,7 @@ import '../theme/ygg_theme.dart';
 /// TextSpan already used before markdown rendering existed
 /// (markdown-render-ux.md §0/§4). Bold/italic/headers/etc. below are all
 /// defined relative to this.
-const kAssistantProseStyle = TextStyle(fontWeight: FontWeight.w300, fontSize: 15.5, height: 1.6, color: YggColors.text);
+TextStyle get kAssistantProseStyle => TextStyle(fontWeight: FontWeight.w300, fontSize: 15.5, height: 1.6, color: YggColors.text);
 
 /// Renders a (possibly partial, mid-stream) markdown string with the styles
 /// from markdown-render-ux.md. Used for both the "safe prefix" while
@@ -49,7 +49,7 @@ Future<void> _openLink(String? href) async {
   }
 }
 
-final MarkdownStyleSheet _styleSheet = MarkdownStyleSheet(
+MarkdownStyleSheet get _styleSheet => MarkdownStyleSheet(
   p: kAssistantProseStyle,
   pPadding: EdgeInsets.zero,
   // §4: w600, not bold/w700 — the base weight is already light (w300), w700
@@ -58,21 +58,21 @@ final MarkdownStyleSheet _styleSheet = MarkdownStyleSheet(
   // §4: italic only, no color/opacity change — italics already reads as
   // emphasis on its own.
   em: const TextStyle(fontStyle: FontStyle.italic),
-  a: const TextStyle(color: YggColors.accent, decoration: TextDecoration.underline),
-  h1: const TextStyle(fontWeight: FontWeight.w600, fontSize: 20, color: YggColors.text),
+  a: TextStyle(color: YggColors.accent, decoration: TextDecoration.underline),
+  h1: TextStyle(fontWeight: FontWeight.w600, fontSize: 20, color: YggColors.text),
   h1Padding: const EdgeInsets.only(top: 12, bottom: 6),
-  h2: const TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: YggColors.text),
+  h2: TextStyle(fontWeight: FontWeight.w600, fontSize: 18, color: YggColors.text),
   h2Padding: const EdgeInsets.only(top: 12, bottom: 6),
-  h3: const TextStyle(fontWeight: FontWeight.w600, fontSize: 16.5, color: YggColors.text),
+  h3: TextStyle(fontWeight: FontWeight.w600, fontSize: 16.5, color: YggColors.text),
   h3Padding: const EdgeInsets.only(top: 12, bottom: 6),
   // Listed for completeness (MarkdownStyleSheet.fromTheme's default is used
   // as the base via merge()) — the actual code-span look comes from
   // _InlineCodeBuilder below, which the 'code' builder entry overrides this
   // with for every real inline code span.
-  code: const TextStyle(fontFamily: 'monospace', fontSize: 15.5, color: YggColors.text),
+  code: TextStyle(fontFamily: YggFonts.mono, fontSize: 15.5, color: YggColors.text),
   // §4: list marker in accent, same size/line-height as the paragraph so a
   // list doesn't feel "tighter" than surrounding prose.
-  listBullet: const TextStyle(color: YggColors.accent, fontSize: 15.5, height: 1.6),
+  listBullet: TextStyle(color: YggColors.accent, fontSize: 15.5, height: 1.6),
   listIndent: 22,
   listBulletPadding: const EdgeInsets.only(right: 6),
   blockSpacing: 10,
@@ -80,17 +80,17 @@ final MarkdownStyleSheet _styleSheet = MarkdownStyleSheet(
   // table (no separate container needed, TableBorder.all supports
   // borderRadius directly), header fill cardFillHigh + bold, body left
   // transparent (shows bg through, same as the rest of the message).
-  tableHead: const TextStyle(fontWeight: FontWeight.w600, color: YggColors.text, fontSize: 14),
-  tableBody: const TextStyle(color: YggColors.text, fontSize: 14),
+  tableHead: TextStyle(fontWeight: FontWeight.w600, color: YggColors.text, fontSize: 14),
+  tableBody: TextStyle(color: YggColors.text, fontSize: 14),
   tableHeadAlign: TextAlign.left,
   tableCellsPadding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-  tableHeadCellsDecoration: const BoxDecoration(color: YggColors.cardFillHigh),
+  tableHeadCellsDecoration: BoxDecoration(color: YggColors.cardFillHigh),
   tableBorder: TableBorder.all(color: YggColors.hairline, width: 1, borderRadius: BorderRadius.circular(12)),
   // Not in either doc's priority list (UX §1 explicitly leaves blockquotes
   // out of scope) — minimal treatment only, per UX §1's own suggestion.
-  blockquote: const TextStyle(color: YggColors.textMuted, fontStyle: FontStyle.italic, fontSize: 15.5, height: 1.6),
+  blockquote: TextStyle(color: YggColors.textMuted, fontStyle: FontStyle.italic, fontSize: 15.5, height: 1.6),
   blockquotePadding: const EdgeInsets.only(left: 12),
-  blockquoteDecoration: const BoxDecoration(
+  blockquoteDecoration: BoxDecoration(
     border: Border(left: BorderSide(color: YggColors.accent, width: 3)),
   ),
 );
@@ -110,7 +110,7 @@ class _InlineCodeBuilder extends MarkdownElementBuilder {
       decoration: BoxDecoration(color: YggColors.cardFillHigh, borderRadius: BorderRadius.circular(4)),
       child: Text(
         element.textContent,
-        style: const TextStyle(fontFamily: 'monospace', fontSize: 15.5, color: YggColors.text),
+        style: TextStyle(fontFamily: YggFonts.mono, fontSize: 15.5, color: YggColors.text),
       ),
     );
   }
@@ -185,7 +185,7 @@ class _CodeBlock extends StatelessWidget {
                   ),
                   child: Text(
                     language!.toUpperCase(),
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 10, letterSpacing: 0.8, color: YggColors.accent),
+                    style: TextStyle(fontFamily: YggFonts.mono, fontSize: 10, letterSpacing: 0.8, color: YggColors.accent),
                   ),
                 ),
               ),
@@ -194,7 +194,7 @@ class _CodeBlock extends StatelessWidget {
             padding: const EdgeInsets.all(12),
             child: SingleChildScrollView(
               scrollDirection: Axis.horizontal,
-              child: Text(code, style: const TextStyle(fontFamily: 'monospace', fontSize: 13.5, height: 1.4, color: YggColors.text)),
+              child: Text(code, style: TextStyle(fontFamily: YggFonts.mono, fontSize: 13.5, height: 1.4, color: YggColors.text)),
             ),
           ),
           Padding(
@@ -210,7 +210,7 @@ class _CodeBlock extends StatelessWidget {
                 child: Container(
                   padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
                   decoration: BoxDecoration(borderRadius: BorderRadius.circular(999), border: Border.all(color: YggColors.hairline)),
-                  child: Text(AppStrings.t('common.copy'), style: const TextStyle(fontSize: 11.5, color: YggColors.textMuted)),
+                  child: Text(AppStrings.t('common.copy'), style: TextStyle(fontSize: 11.5, color: YggColors.textMuted)),
                 ),
               ),
             ),

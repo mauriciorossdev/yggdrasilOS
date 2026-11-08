@@ -1,3 +1,4 @@
+import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { delimiter, join } from "node:path";
@@ -12,7 +13,11 @@ import * as pty from "node-pty";
 import xtermHeadlessPkg from "@xterm/headless";
 const { Terminal: HeadlessTerminal } = xtermHeadlessPkg;
 type HeadlessTerminal = InstanceType<typeof HeadlessTerminal>;
+// Same CJS-interop story as @xterm/headless above.
+import serializePkg from "@xterm/addon-serialize";
+const { SerializeAddon } = serializePkg;
 import { readTerminalLayout, writeTerminalLayout, type TerminalLayout } from "./terminalLayout.js";
+import { readWindowsPidTable } from "./pidTree.js";
 import { discoverTranscriptPath, readTranscriptTail, type TranscriptMessage } from "./claudeTranscript.js";
 
 const require = createRequire(import.meta.url);
@@ -35,6 +40,10 @@ type TerminalHandle = {
    * what the pane would actually show on screen right now.
    */
   headlessTerm: HeadlessTerminal;
+  /** SPIKE: serializes `headlessTerm`'s screen + scrollback so a second view can start from an exact snapshot. */
+  serializer: InstanceType<typeof SerializeAddon>;
+  /** Count of output chunks fed to `headlessTerm` so far; lets a second view that starts from a snapshot drop the chunks the snapshot already contains. */
+  outputSeq: number;
   /**
    * A SECOND emulator fed the same bytes, kept at whatever column width a
    * reader last asked for via readTerminalOutputAtWidth (mobile's narrower
@@ -127,7 +136,7 @@ export type CreateTerminalParams = {
   command?: string;
   args?: string[];
   env?: Record<string, string>;
-  /** When set, overrides command/args entirely — see resolveYggdrasilTuiCommand. */
+  /** When set, overrides command entirely — see resolveYggdrasilTuiCommand. `args` are then extra `yggdrasil tui` flags (--mode/--model), not a command line. */
   yggdrasilAgentId?: string;
   /** yggdrasilAgentId only — join this exact session instead of minting a fresh TUI one, so the pane shows a "Run Flow" run live. */
   sessionKey?: string;
@@ -210,11 +219,13 @@ function resolveYggdrasilTuiCommand(
   gatewayUrl: string,
   sessionKey: string | undefined,
   readOnly: boolean | undefined,
+  extraArgs: string[] = [],
 ): { command: string; args: string[]; env: Record<string, string> } {
   const cliEntry = require.resolve("@yggdrasil/cli");
   const args = [cliEntry, "tui", "--agent", agentId, "--connect", gatewayUrl];
   if (sessionKey) args.push("--session", sessionKey);
   if (readOnly) args.push("--readonly");
+  args.push(...extraArgs);
 
   const systemNode = process.platform === "win32" ? findOnWindowsPath("node") : "node";
   if (systemNode) {
@@ -226,7 +237,7 @@ function resolveYggdrasilTuiCommand(
 export function createTerminal(
   params: CreateTerminalParams,
   gatewayUrl: string | undefined,
-  onData: (chunk: string) => void,
+  onData: (chunk: string, seq: number) => void,
   onExit: (exitCode: number | null) => void,
 ): void {
   // A stale/duplicate create for an id that's already live (e.g. a renderer
@@ -235,7 +246,7 @@ export function createTerminal(
 
   const resolved =
     params.yggdrasilAgentId && gatewayUrl
-      ? resolveYggdrasilTuiCommand(params.yggdrasilAgentId, gatewayUrl, params.sessionKey, params.readOnly)
+      ? resolveYggdrasilTuiCommand(params.yggdrasilAgentId, gatewayUrl, params.sessionKey, params.readOnly, params.args)
       : params.command
         ? { command: resolveWindowsExecutable(params.command), args: params.args ?? [], env: params.env }
         : { command: defaultShell(), args: params.args ?? [], env: params.env };
@@ -273,6 +284,8 @@ export function createTerminal(
       scrollback: HEADLESS_SCROLLBACK,
       allowProposedApi: true,
     }),
+    serializer: new SerializeAddon(),
+    outputSeq: 0,
     mobileTerm: new HeadlessTerminal({
       cols: MOBILE_DEFAULT_COLS,
       rows: MOBILE_ROWS,
@@ -292,10 +305,13 @@ export function createTerminal(
     transcriptCache: [],
   };
 
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  handle.headlessTerm.loadAddon(handle.serializer as any);
   proc.onData((chunk) => {
+    handle.outputSeq += 1;
     handle.headlessTerm.write(chunk);
     handle.mobileTerm.write(chunk);
-    onData(chunk);
+    onData(chunk, handle.outputSeq);
   });
   handle.exitListener = proc.onExit(({ exitCode }) => {
     terminals.delete(params.id);
@@ -432,6 +448,54 @@ export async function readTranscript(
   }
 }
 
+/** Parent of a process: `ps` on macOS/Linux, a PowerShell process table on Windows. Undefined when it can't be read. */
+async function parentPid(pid: number): Promise<number | undefined> {
+  if (process.platform === "win32") {
+    const parent = (await readWindowsPidTable())?.get(pid);
+    return parent && parent > 0 ? parent : undefined;
+  }
+  return new Promise((resolve) => {
+    execFile("ps", ["-o", "ppid=", "-p", String(pid)], { timeout: 2000 }, (err, stdout) => {
+      const ppid = err ? NaN : Number(stdout.trim());
+      resolve(Number.isInteger(ppid) && ppid > 0 ? ppid : undefined);
+    });
+  });
+}
+
+const MAX_ANCESTOR_HOPS = 12;
+
+/**
+ * The terminal whose process is `pid` or an ancestor of it, e.g. a pane that
+ * launched `claude` directly, or through a shell. The Worktrees view uses it to
+ * find the pane behind a "claude session … (pid N …)" worktree lock.
+ */
+export async function findTerminalForPid(pid: number): Promise<TerminalId | undefined> {
+  if (!Number.isInteger(pid) || pid <= 0) return undefined;
+  const byPid = new Map<number, TerminalId>();
+  for (const [id, handle] of terminals) byPid.set(handle.proc.pid, id);
+  let current: number | undefined = pid;
+  for (let hop = 0; current !== undefined && hop < MAX_ANCESTOR_HOPS; hop++) {
+    const hit = byPid.get(current);
+    if (hit) return hit;
+    current = await parentPid(current);
+  }
+  return undefined;
+}
+
+/** SPIKE: exact screen snapshot (colors, cursor, scrollback) of a pty, as an escape-sequence string a fresh xterm can replay. */
+export async function snapshotTerminal(
+  id: TerminalId,
+): Promise<{ data: string; cols: number; rows: number; seq: number } | undefined> {
+  const handle = terminals.get(id);
+  if (!handle) return undefined;
+  // xterm parses writes asynchronously. An empty write's callback fires once
+  // everything queued before it is parsed, so the serialized screen holds
+  // exactly the chunks up to `seq`; later ones arrive as terminal:data.
+  const seq = handle.outputSeq;
+  await new Promise<void>((resolve) => handle.headlessTerm.write("", resolve));
+  return { data: handle.serializer.serialize(), cols: handle.headlessTerm.cols, rows: handle.headlessTerm.rows, seq };
+}
+
 /** Desktop's own resize path (TerminalPane.tsx's ResizeObserver → terminal:resize IPC). */
 export function resizeTerminal(id: TerminalId, cols: number, rows: number): void {
   const handle = terminals.get(id);
@@ -540,9 +604,9 @@ export function registerTerminalIpc(
       createTerminal(
         params,
         getGatewayUrl(params.projectId),
-        (chunk) => {
+        (chunk, seq) => {
           const win = getWindow(params.projectId);
-          if (win && !win.isDestroyed()) win.webContents.send("terminal:data", { id: params.id, chunk });
+          if (win && !win.isDestroyed()) win.webContents.send("terminal:data", { id: params.id, chunk, seq });
         },
         (exitCode) => {
           const win = getWindow(params.projectId);
@@ -553,11 +617,15 @@ export function registerTerminalIpc(
   );
 
   ipcMain.handle("terminal:write", (_event, id: TerminalId, data: string) => writeToTerminal(id, data));
-  ipcMain.handle("terminal:resize", (_event, id: TerminalId, cols: number, rows: number) =>
-    resizeTerminal(id, cols, rows),
-  );
+  ipcMain.handle("terminal:resize", (event, id: TerminalId, cols: number, rows: number) => {
+    resizeTerminal(id, cols, rows);
+    // Second views (the Worktrees mirror) follow the pane's size; they never resize the pty themselves.
+    event.sender.send("terminal:resized", { id, cols, rows });
+  });
   ipcMain.handle("terminal:dispose", (_event, id: TerminalId) => disposeTerminal(id));
   ipcMain.handle("terminal:read", (_event, id: TerminalId, maxChars?: number) => readTerminalOutput(id, maxChars));
+  ipcMain.handle("terminal:forPid", (_event, pid: number) => findTerminalForPid(pid));
+  ipcMain.handle("terminal:snapshot", (_event, id: TerminalId) => snapshotTerminal(id));
   ipcMain.handle("terminal:getLayout", (_event, projectId: string) => readTerminalLayout(projectId));
   ipcMain.handle("terminal:saveLayout", (_event, projectId: string, layout: TerminalLayout) =>
     writeTerminalLayout(projectId, layout),

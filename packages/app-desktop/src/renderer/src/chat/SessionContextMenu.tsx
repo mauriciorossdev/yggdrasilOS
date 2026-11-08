@@ -1,6 +1,7 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import type { SessionInfo } from "../types.js";
 import { useDismiss } from "../ui/useDismiss.js";
+import { useI18n } from "../i18n/index.js";
 
 type Mode = "menu" | "rename" | "confirm-delete";
 
@@ -14,6 +15,7 @@ type Props = {
 };
 
 export function SessionContextMenu({ session, x, y, onClose, onRename, onDelete }: Props) {
+  const { t } = useI18n();
   const [mode, setMode] = useState<Mode>("menu");
   const [renameValue, setRenameValue] = useState(session.title ?? session.sessionKey);
   const [copied, setCopied] = useState(false);
@@ -48,17 +50,17 @@ export function SessionContextMenu({ session, x, y, onClose, onRename, onDelete 
       {mode === "menu" && (
         <>
           <button type="button" className="context-menu-item" onClick={() => void copyId()}>
-            {copied ? "Copied!" : "Copy ID"}
+            {copied ? t("chat.sessionMenu.copied") : t("chat.sessionMenu.copyId")}
           </button>
           <button type="button" className="context-menu-item" onClick={() => setMode("rename")}>
-            Rename
+            {t("chat.sessionMenu.rename")}
           </button>
           <button
             type="button"
             className="context-menu-item danger"
             onClick={() => setMode("confirm-delete")}
           >
-            Delete
+            {t("chat.sessionMenu.delete")}
           </button>
         </>
       )}
@@ -76,7 +78,7 @@ export function SessionContextMenu({ session, x, y, onClose, onRename, onDelete 
 
       {mode === "confirm-delete" && (
         <>
-          <div className="context-menu-confirm-label">Delete this session?</div>
+          <div className="context-menu-confirm-label">{t("chat.sessionMenu.confirmLabel")}</div>
           <button
             type="button"
             className="context-menu-item danger"
@@ -85,10 +87,10 @@ export function SessionContextMenu({ session, x, y, onClose, onRename, onDelete 
               onClose();
             }}
           >
-            Confirm delete
+            {t("chat.sessionMenu.confirmDelete")}
           </button>
           <button type="button" className="context-menu-item" onClick={() => setMode("menu")}>
-            Cancel
+            {t("chat.sessionMenu.cancel")}
           </button>
         </>
       )}

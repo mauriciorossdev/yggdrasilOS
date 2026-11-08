@@ -1,13 +1,15 @@
 import 'package:flutter/material.dart';
 
+import '../l10n/app_strings.dart';
 import '../services/yggdrasil_client.dart';
+import '../ui/ui.dart';
 import 'terminal_chat_view.dart';
 
-/// Full-screen Scaffold shell around TerminalChatView — the actual
-/// poll/send/transcript logic lives there now so ProjectWorkspaceScreen's
-/// split view can embed it directly, under a shared AppBar, instead of
-/// pushing this whole screen. Every existing caller (TerminalsTab, PiChatScreen)
-/// keeps its previous look unchanged.
+/// Full-screen shell around TerminalChatView — the actual poll/send/transcript
+/// logic lives there so ProjectWorkspaceScreen's split view can embed it directly,
+/// under a shared header, instead of pushing this whole screen. Every existing
+/// caller (TerminalsTab, PiChatScreen) keeps its behavior; only the top bar is the
+/// app's own header now.
 class TerminalViewScreen extends StatelessWidget {
   final YggdrasilClient client;
   final String paneId;
@@ -32,11 +34,10 @@ class TerminalViewScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Scaffold(
-      appBar: AppBar(
-        title: Text(title, overflow: TextOverflow.ellipsis),
-        actions: appBarActions,
-      ),
+    return YggScreen(
+      title: title,
+      eyebrow: AppStrings.t('projects.terminalHeaderLabel'),
+      actions: appBarActions,
       body: TerminalChatView(
         client: client,
         paneId: paneId,

@@ -4,6 +4,7 @@ import '../chat/projects_screen.dart';
 import '../l10n/app_strings.dart';
 import '../services/yggdrasil_client.dart';
 import '../theme/ygg_theme.dart';
+import '../ui/ui.dart';
 
 /// Static Agent Flow + Agent Teams for a project — read-only, structured
 /// display (no visual canvas, that's desktop-only territory). A project can
@@ -76,63 +77,99 @@ class _AgentFlowTabState extends State<AgentFlowTab> {
     return model != null ? '$type · $model' : type;
   }
 
-  Widget _nodesList(List<Map> nodes) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        for (final node in nodes)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 10),
+  /// One agent: a numbered tile, its name and (in mono) the harness it runs on.
+  Widget _nodeCard(Map node, int number) {
+    final harness = _harnessLabel(node['harness']);
+    return YggCard(
+      radius: YggRadius.lg,
+      color: YggColors.surface,
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      child: Row(
+        children: [
+          Container(
+            width: 36,
+            height: 36,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(color: YggColors.accentSoft, borderRadius: BorderRadius.circular(YggRadius.md)),
+            child: Text('$number', style: TextStyle(fontFamily: YggFonts.mono, fontSize: 14, fontWeight: FontWeight.w500, color: YggColors.accent)),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Text(
-                  node['name']?.toString() ?? '',
-                  style: const TextStyle(fontSize: 14.5, color: YggColors.text),
-                ),
-                const SizedBox(height: 2),
-                Text(
-                  _harnessLabel(node['harness']),
-                  style: const TextStyle(
-                    fontSize: 12.5,
-                    color: YggColors.textFaint,
-                  ),
-                ),
+                Text(node['name']?.toString() ?? '', maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w500, color: YggColors.text)),
+                if (harness.isNotEmpty) ...[
+                  const SizedBox(height: 3),
+                  Text(harness, maxLines: 1, overflow: TextOverflow.ellipsis, style: TextStyle(fontFamily: YggFonts.mono, fontSize: 11, color: YggColors.textMuted)),
+                ],
               ],
             ),
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _nodesList(List<Map> nodes) {
+    return Column(
+      children: [
+        for (var i = 0; i < nodes.length; i++) ...[
+          _nodeCard(nodes[i], i + 1),
+          if (i < nodes.length - 1) const SizedBox(height: 8),
+        ],
       ],
+    );
+  }
+
+  /// "Planificador → Desarrollador   tarea": one connection between two agents.
+  Widget _edgeRow(Map edge) {
+    final mono = TextStyle(fontFamily: YggFonts.mono, fontSize: 12, color: YggColors.text);
+    final label = edge['label']?.toString();
+    return Container(
+      constraints: const BoxConstraints(minHeight: 44),
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 8),
+      child: Row(
+        children: [
+          Expanded(
+            child: Text.rich(
+              TextSpan(
+                style: mono,
+                children: [
+                  TextSpan(text: '${edge['from']}'),
+                  TextSpan(text: '  →  ', style: mono.copyWith(color: YggColors.accent)),
+                  TextSpan(text: '${edge['to']}'),
+                ],
+              ),
+            ),
+          ),
+          if (label != null && label.isNotEmpty) ...[
+            const SizedBox(width: 10),
+            Text(label, style: mono.copyWith(color: YggColors.textMuted)),
+          ],
+        ],
+      ),
     );
   }
 
   @override
   Widget build(BuildContext context) {
-    if (_loading)
-      return const Center(
-        child: CircularProgressIndicator(color: YggColors.accent),
-      );
+    if (_loading) {
+      return Center(child: CircularProgressIndicator(color: YggColors.accent));
+    }
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text(
-          '${AppStrings.t('common.errorPrefix')}: $_error',
-          style: const TextStyle(color: YggColors.textMuted),
-        ),
+      return YggEmptyState(
+        icon: Icons.error_outline,
+        message: '${AppStrings.t('common.errorPrefix')}: $_error',
+        action: OutlinedButton(onPressed: _load, child: Text(AppStrings.t('common.retry'))),
       );
     }
     final flow = _flow;
     if (flow == null && _teams.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(
-            AppStrings.t('projects.noAgentFlow'),
-            style: const TextStyle(color: YggColors.textFaint),
-          ),
-        ),
-      );
+      return YggEmptyState(icon: Icons.account_tree_outlined, message: AppStrings.t('projects.noAgentFlow'));
     }
 
+    final nodes = (flow?['nodes'] as List<dynamic>? ?? []).cast<Map>();
     final edges = (flow?['edges'] as List<dynamic>? ?? []).cast<Map>();
     final supervisor = (flow?['supervisor'] as Map?)?['type']?.toString() ?? '';
 
@@ -140,92 +177,49 @@ class _AgentFlowTabState extends State<AgentFlowTab> {
       onRefresh: _load,
       color: YggColors.accent,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [
           if (flow != null) ...[
-            Text(
-              flow['name']?.toString() ?? '',
-              style: const TextStyle(
-                fontSize: 16,
-                fontWeight: FontWeight.w600,
-                color: YggColors.text,
-              ),
-            ),
-            const SizedBox(height: 4),
-            Text(
-              '${AppStrings.t('projects.supervisor')}: $supervisor',
-              style: const TextStyle(
-                fontSize: 12.5,
-                color: YggColors.textFaint,
-              ),
-            ),
-            const SizedBox(height: 16),
-            Text(
-              AppStrings.t('projects.nodes'),
-              style: const TextStyle(
-                fontSize: 12,
-                letterSpacing: 1.2,
-                color: YggColors.textFainter,
-              ),
-            ),
-            const SizedBox(height: 8),
-            _nodesList((flow['nodes'] as List<dynamic>? ?? []).cast<Map>()),
-            if (edges.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                AppStrings.t('projects.edges'),
-                style: const TextStyle(
-                  fontSize: 12,
-                  letterSpacing: 1.2,
-                  color: YggColors.textFainter,
-                ),
-              ),
-              const SizedBox(height: 8),
-              for (final edge in edges)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 6),
-                  child: Text(
-                    '${edge['from']} → ${edge['to']}${edge['label'] != null ? " (${edge['label']})" : ""}',
-                    style: const TextStyle(
-                      fontSize: 13,
-                      color: YggColors.textFaint,
-                    ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(4, 0, 4, 16),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    flow['name']?.toString() ?? '',
+                    style: TextStyle(fontFamily: YggFonts.serif, fontSize: 22, height: 1.2, color: YggColors.text),
                   ),
-                ),
+                  const SizedBox(height: 10),
+                  Wrap(
+                    spacing: 8,
+                    runSpacing: 6,
+                    children: [
+                      if (supervisor.isNotEmpty) YggChip('${AppStrings.t('projects.supervisor')} · $supervisor', tone: YggChipTone.accent),
+                      YggChip(AppStrings.tp('agentflow.counts', {'nodes': '${nodes.length}', 'edges': '${edges.length}'})),
+                    ],
+                  ),
+                ],
+              ),
+            ),
+            YggSectionLabel(AppStrings.t('projects.nodes')),
+            _nodesList(nodes),
+            if (edges.isNotEmpty) ...[
+              const SizedBox(height: 22),
+              YggSectionLabel(AppStrings.t('projects.edges')),
+              YggListGroup(children: [for (final edge in edges) _edgeRow(edge)]),
             ],
           ],
           if (_teams.isNotEmpty) ...[
-            if (flow != null) const SizedBox(height: 24),
-            Text(
-              AppStrings.t('projects.teams'),
-              style: const TextStyle(
-                fontSize: 12,
-                letterSpacing: 1.2,
-                color: YggColors.textFainter,
-              ),
-            ),
-            const SizedBox(height: 8),
-            for (final team in _teams)
+            if (flow != null) const SizedBox(height: 26),
+            YggSectionLabel(AppStrings.t('projects.teams')),
+            for (final team in _teams) ...[
               Padding(
-                padding: const EdgeInsets.only(bottom: 16),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      team['name']?.toString() ?? '',
-                      style: const TextStyle(
-                        fontSize: 14.5,
-                        fontWeight: FontWeight.w600,
-                        color: YggColors.text,
-                      ),
-                    ),
-                    const SizedBox(height: 6),
-                    _nodesList(
-                      (team['nodes'] as List<dynamic>? ?? []).cast<Map>(),
-                    ),
-                  ],
-                ),
+                padding: const EdgeInsets.fromLTRB(4, 4, 4, 10),
+                child: Text(team['name']?.toString() ?? '', style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: YggColors.text)),
               ),
+              _nodesList((team['nodes'] as List<dynamic>? ?? []).cast<Map>()),
+              const SizedBox(height: 18),
+            ],
           ],
         ],
       ),

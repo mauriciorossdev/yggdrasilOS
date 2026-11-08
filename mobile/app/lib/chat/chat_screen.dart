@@ -10,6 +10,7 @@ import '../capabilities/capability_registry.dart';
 import '../l10n/app_strings.dart';
 import '../services/yggdrasil_client.dart';
 import '../theme/ygg_theme.dart';
+import '../ui/ui.dart';
 import 'assistant_markdown.dart';
 import 'composer_bar.dart';
 import 'chat_list_extras.dart';
@@ -555,7 +556,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ])
               ListTile(
                 leading: Icon(icon, color: YggColors.accent),
-                title: Text(AppStrings.t(key), style: const TextStyle(color: YggColors.text)),
+                title: Text(AppStrings.t(key), style: TextStyle(color: YggColors.text)),
                 onTap: () => Navigator.pop(context, src),
               ),
           ],
@@ -683,44 +684,24 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Widget _buildHeader(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(18, 18, 18, 10),
-      child: Row(
-        children: [
-          _headerIconButton(icon: Icons.menu, onTap: () => Navigator.of(context).pop()),
-          const SizedBox(width: 12),
-          Expanded(
-            child: GestureDetector(
-              onTap: _renameTitle,
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      Text(
-                        AppStrings.t('chat.headerLabel'),
-                        style: const TextStyle(fontSize: 13, letterSpacing: 2.2, color: YggColors.textMuted, fontWeight: FontWeight.w500),
-                      ),
-                      if (_isAssistantChat) ...[
-                        const SizedBox(width: 10),
-                        _buildUsageChip(context),
-                      ],
-                    ],
-                  ),
-                  Text(
-                    (_title?.isNotEmpty ?? false) ? _title! : AppStrings.t('common.newChat'),
-                    overflow: TextOverflow.ellipsis,
-                    style: const TextStyle(fontSize: 15, color: YggColors.text),
-                  ),
-                ],
-              ),
-            ),
-          ),
-          _headerIconButton(icon: Icons.add, onTap: () => Navigator.of(context).pop('new')),
-        ],
+    return YggHeader(
+      padding: const EdgeInsets.fromLTRB(16, 18, 16, 10),
+      leading: YggIconButton(
+        icon: Icons.menu,
+        tooltip: AppStrings.t('drawer.open'),
+        onTap: () => Navigator.of(context).pop(),
       ),
+      eyebrow: AppStrings.t('chat.headerLabel'),
+      eyebrowTrailing: _isAssistantChat ? _buildUsageChip(context) : null,
+      title: (_title?.isNotEmpty ?? false) ? _title! : AppStrings.t('common.newChat'),
+      onTitleTap: _renameTitle,
+      trailing: [
+        YggIconButton(
+          icon: Icons.add,
+          tooltip: AppStrings.t('common.newChat'),
+          onTap: () => Navigator.of(context).pop('new'),
+        ),
+      ],
     );
   }
 
@@ -767,26 +748,14 @@ class _ChatScreenState extends State<ChatScreen> {
             child: Row(
               mainAxisSize: MainAxisSize.min,
               children: [
-                Text(label, style: const TextStyle(fontSize: 11.5, color: YggColors.accent)),
+                Text(label, style: TextStyle(fontSize: 11.5, color: YggColors.accent)),
                 const SizedBox(width: 4),
-                const Icon(Icons.tune, size: 12, color: YggColors.textMuted),
+                Icon(Icons.tune, size: 12, color: YggColors.textMuted),
               ],
             ),
           ),
         );
       },
-    );
-  }
-
-  Widget _headerIconButton({required IconData icon, required VoidCallback onTap}) {
-    return GestureDetector(
-      onTap: onTap,
-      child: Container(
-        width: 40,
-        height: 40,
-        decoration: const BoxDecoration(color: YggColors.cardFillHigh, shape: BoxShape.circle),
-        child: Icon(icon, color: YggColors.text, size: 18),
-      ),
     );
   }
 
@@ -796,9 +765,9 @@ class _ChatScreenState extends State<ChatScreen> {
       child: Row(
         mainAxisSize: MainAxisSize.min,
         children: [
-          const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: YggColors.accent)),
+          SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2, color: YggColors.accent)),
           const SizedBox(width: 8),
-          Text(AppStrings.t('common.thinking'), style: const TextStyle(color: YggColors.textMuted)),
+          Text(AppStrings.t('common.thinking'), style: TextStyle(color: YggColors.textMuted)),
         ],
       ),
     );
@@ -813,7 +782,7 @@ class _ChatScreenState extends State<ChatScreen> {
       case _Kind.interactive:
         return _buildInteractiveCard(context, item);
       case _Kind.note:
-        return _pill(context, [Flexible(child: Text(item.text, style: const TextStyle(color: YggColors.textMuted, fontSize: 12.5)))]);
+        return _pill(context, [Flexible(child: Text(item.text, style: TextStyle(color: YggColors.textMuted, fontSize: 12.5)))]);
       case _Kind.user:
         return Align(
           alignment: Alignment.centerRight,
@@ -825,16 +794,16 @@ class _ChatScreenState extends State<ChatScreen> {
             margin: const EdgeInsets.symmetric(vertical: 4),
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
             constraints: BoxConstraints(maxWidth: MediaQuery.of(context).size.width * 0.8),
-            decoration: const BoxDecoration(
-              color: YggColors.text,
+            decoration: BoxDecoration(
+              color: YggColors.accent,
               borderRadius: BorderRadius.only(
-                topLeft: Radius.circular(20),
-                topRight: Radius.circular(20),
-                bottomRight: Radius.circular(6),
-                bottomLeft: Radius.circular(20),
+                topLeft: Radius.circular(YggRadius.lg),
+                topRight: Radius.circular(YggRadius.lg),
+                bottomRight: Radius.circular(4),
+                bottomLeft: Radius.circular(YggRadius.lg),
               ),
             ),
-            child: Text(item.text, style: const TextStyle(color: YggColors.surface, fontSize: 15, height: 1.45)),
+            child: Text(item.text, style: TextStyle(color: YggColors.onAccent, fontSize: 15, height: 1.45)),
           ),
               Padding(padding: const EdgeInsets.only(bottom: 4), child: CopyPill(text: item.text)),
             ],
@@ -907,7 +876,7 @@ class _ChatScreenState extends State<ChatScreen> {
                             '${item.usage!.cacheRead > 0 ? ' · ⚡${formatTokens(item.usage!.cacheRead)}' : ''}'
                             '${item.usage!.usd != null ? ' · ${formatUsd(item.usage!.usd!)}' : ''}',
                             overflow: TextOverflow.ellipsis,
-                            style: const TextStyle(fontSize: 11.5, color: YggColors.textFaint),
+                            style: TextStyle(fontSize: 11.5, color: YggColors.textFaint),
                           ),
                         ),
                       ],
@@ -951,6 +920,19 @@ class _ChatScreenState extends State<ChatScreen> {
       detail: item.detail,
       onRetry: () => _retry(item),
     );
+  }
+
+  YggChipTone _riskTone(String? riskLevel) {
+    switch (riskLevel) {
+      case 'destructive':
+        return YggChipTone.danger;
+      case 'moderate':
+        return YggChipTone.working;
+      case 'safe':
+        return YggChipTone.ready;
+      default:
+        return YggChipTone.neutral;
+    }
   }
 
   String _riskLabel(String? riskLevel) {
@@ -1000,7 +982,7 @@ class _ChatScreenState extends State<ChatScreen> {
           margin: const EdgeInsets.symmetric(vertical: 4),
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 9),
           decoration: BoxDecoration(color: YggColors.cardFill, borderRadius: BorderRadius.circular(14), border: Border.all(color: YggColors.hairline)),
-          child: Text(line, style: const TextStyle(fontFamily: 'monospace', fontSize: 12.5, color: Color.fromRGBO(244, 239, 230, 0.55))),
+          child: Text(line, style: TextStyle(fontFamily: YggFonts.mono, fontSize: 12.5, color: YggColors.text.withValues(alpha: 0.55))),
         ),
       );
     }
@@ -1009,7 +991,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return Container(
       margin: const EdgeInsets.symmetric(vertical: 4),
       padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
-      decoration: BoxDecoration(color: YggColors.surface, borderRadius: BorderRadius.circular(16), border: Border.all(color: YggColors.hairline)),
+      decoration: BoxDecoration(color: YggColors.surface, borderRadius: BorderRadius.circular(YggRadius.lg), border: Border.all(color: YggColors.border)),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         mainAxisSize: MainAxisSize.min,
@@ -1019,31 +1001,24 @@ class _ChatScreenState extends State<ChatScreen> {
               Expanded(
                 child: Text(
                   (item.toolName ?? '').toUpperCase(),
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 11, letterSpacing: 1.1, color: Color.fromRGBO(244, 239, 230, 0.55)),
+                  style: TextStyle(fontFamily: YggFonts.mono, fontSize: 11, letterSpacing: 1.1, color: YggColors.text.withValues(alpha: 0.55)),
                 ),
               ),
-              Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 3),
-                decoration: BoxDecoration(borderRadius: BorderRadius.circular(999), border: Border.all(color: const Color.fromRGBO(201, 165, 78, 0.55))),
-                child: Text(
-                  _riskLabel(item.riskLevel).toUpperCase(),
-                  style: const TextStyle(fontFamily: 'monospace', fontSize: 10, letterSpacing: 0.8, color: YggColors.accent),
-                ),
-              ),
+              YggChip(_riskLabel(item.riskLevel), tone: _riskTone(item.riskLevel)),
             ],
           ),
           if (item.args != null && item.args!.isNotEmpty) ...[
             const SizedBox(height: 10),
             Text(
               _prettyJson(item.args!),
-              style: const TextStyle(fontFamily: 'monospace', fontSize: 12, height: 1.5, color: Color.fromRGBO(244, 239, 230, 0.6)),
+              style: TextStyle(fontFamily: YggFonts.mono, fontSize: 12, height: 1.5, color: YggColors.text.withValues(alpha: 0.6)),
             ),
           ],
           if (isInteractive) ...[
             const SizedBox(height: 8),
             Text(
               AppStrings.t('chat.opensFilePicker'),
-              style: const TextStyle(fontWeight: FontWeight.w300, fontSize: 13, color: Color.fromRGBO(244, 239, 230, 0.7)),
+              style: TextStyle(fontWeight: FontWeight.w300, fontSize: 13, color: YggColors.text.withValues(alpha: 0.7)),
             ),
           ],
           const SizedBox(height: 10),
@@ -1056,7 +1031,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     height: 40,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(borderRadius: BorderRadius.circular(999), border: Border.all(color: YggColors.hairlineStrong)),
-                    child: Text(AppStrings.t('common.reject'), style: const TextStyle(fontSize: 13.5, color: Color.fromRGBO(244, 239, 230, 0.75))),
+                    child: Text(AppStrings.t('common.reject'), style: TextStyle(fontSize: 13.5, color: YggColors.text.withValues(alpha: 0.75))),
                   ),
                 ),
               ),
@@ -1068,7 +1043,7 @@ class _ChatScreenState extends State<ChatScreen> {
                     height: 40,
                     alignment: Alignment.center,
                     decoration: BoxDecoration(color: YggColors.accent, borderRadius: BorderRadius.circular(999)),
-                    child: Text(AppStrings.t('common.approve'), style: const TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: YggColors.surface)),
+                    child: Text(AppStrings.t('common.approve'), style: TextStyle(fontSize: 13.5, fontWeight: FontWeight.w500, color: YggColors.onAccent)),
                   ),
                 ),
               ),

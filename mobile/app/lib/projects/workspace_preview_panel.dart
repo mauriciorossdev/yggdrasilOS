@@ -132,7 +132,7 @@ class _WorkspacePreviewPanelState extends State<WorkspacePreviewPanel> {
                   IconButton(
                     padding: EdgeInsets.zero,
                     constraints: const BoxConstraints(),
-                    icon: const Icon(Icons.arrow_back, size: 18, color: YggColors.textFaint),
+                    icon: Icon(Icons.arrow_back, size: 18, color: YggColors.textFaint),
                     onPressed: () => setState(() => _openFilePath = null),
                   ),
                   const SizedBox(width: 6),
@@ -141,7 +141,7 @@ class _WorkspacePreviewPanelState extends State<WorkspacePreviewPanel> {
                       openPath,
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
-                      style: const TextStyle(fontFamily: 'monospace', fontSize: 12, color: YggColors.text),
+                      style: TextStyle(fontFamily: YggFonts.mono, fontSize: 12, color: YggColors.text),
                     ),
                   ),
                 ],
@@ -173,7 +173,7 @@ class _WorkspacePreviewPanelState extends State<WorkspacePreviewPanel> {
                   child: TextField(
                     controller: _portController,
                     keyboardType: TextInputType.number,
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 13, color: YggColors.text),
+                    style: TextStyle(fontFamily: YggFonts.mono, fontSize: 13, color: YggColors.text),
                     decoration: InputDecoration(
                       isDense: true,
                       prefixText: 'localhost:',
@@ -185,12 +185,12 @@ class _WorkspacePreviewPanelState extends State<WorkspacePreviewPanel> {
                 ),
                 const SizedBox(width: 8),
                 IconButton(
-                  icon: const Icon(Icons.arrow_forward, color: YggColors.accent),
+                  icon: Icon(Icons.arrow_forward, color: YggColors.accent),
                   onPressed: _goToPort,
                 ),
                 if (_loadedUrl != null)
                   IconButton(
-                    icon: const Icon(Icons.refresh, color: YggColors.text),
+                    icon: Icon(Icons.refresh, color: YggColors.text),
                     onPressed: () => _webController?.reload(),
                   ),
               ],
@@ -201,13 +201,13 @@ class _WorkspacePreviewPanelState extends State<WorkspacePreviewPanel> {
                 ? Center(
                     child: Text(
                       AppStrings.t('projects.webPortEmpty'),
-                      style: const TextStyle(color: YggColors.textFaint),
+                      style: TextStyle(color: YggColors.textFaint),
                     ),
                   )
                 : Stack(
                     children: [
                       WebViewWidget(controller: _webController!),
-                      if (_webLoading) const Center(child: CircularProgressIndicator(color: YggColors.accent)),
+                      if (_webLoading) Center(child: CircularProgressIndicator(color: YggColors.accent)),
                     ],
                   ),
           ),

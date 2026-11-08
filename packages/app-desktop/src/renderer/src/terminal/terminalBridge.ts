@@ -48,19 +48,23 @@ export function requestNewTerminal(): void {
 // this nudge, output already delivered to the pty sits unpainted until
 // something re-triggers fit() — which reads to the user as "delegation
 // only works if I focus the terminal."
+//
+// Unlike the bridges above, this one has two subscribers (TerminalContainer
+// re-fits its panes, TerminalNavbar refetches the saved teams), so it keeps a
+// set: with a single slot, whichever mounted last silently displaced the other.
 type TerminalTabVisibleListener = () => void;
 
-let terminalTabVisibleListener: TerminalTabVisibleListener | null = null;
+const terminalTabVisibleListeners = new Set<TerminalTabVisibleListener>();
 
 export function onTerminalTabVisible(fn: TerminalTabVisibleListener): () => void {
-  terminalTabVisibleListener = fn;
+  terminalTabVisibleListeners.add(fn);
   return () => {
-    if (terminalTabVisibleListener === fn) terminalTabVisibleListener = null;
+    terminalTabVisibleListeners.delete(fn);
   };
 }
 
 export function notifyTerminalTabVisible(): void {
-  terminalTabVisibleListener?.();
+  for (const fn of [...terminalTabVisibleListeners]) fn();
 }
 
 // Same pattern, for MainTabs's persistent "Teams ▾" control — resolving a

@@ -1,9 +1,14 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Chip } from "../../ui/index.js";
+import { useI18n, type MessageKey } from "../../i18n/index.js";
 import type { WorkspaceView } from "../../types.js";
 
-const ACTION_LABEL = { read: "leer", write: "escribir" } as const;
-const VIA_LABEL = { ask: "aprobado", trust: "por confianza", denied: "denegado" } as const;
+const ACTION_LABEL = { read: "set.workspace.read", write: "set.workspace.write" } as const satisfies Record<string, MessageKey>;
+const VIA_LABEL = {
+  ask: "set.workspace.viaAsk",
+  trust: "set.workspace.viaTrust",
+  denied: "set.workspace.viaDenied",
+} as const satisfies Record<string, MessageKey>;
 
 /**
  * Settings -> Workspace: which other projects this project's agents may ask to
@@ -12,6 +17,7 @@ const VIA_LABEL = { ask: "aprobado", trust: "por confianza", denied: "denegado" 
  * asks unless the user ticked "trust" on that prompt.
  */
 export function WorkspaceSection() {
+  const { t: tr } = useI18n();
   const [view, setView] = useState<WorkspaceView | null>(null);
   const [error, setError] = useState<string | null>(null);
 
@@ -36,58 +42,56 @@ export function WorkspaceSection() {
 
   return (
     <section className="settings-section">
-      <h3>Workspace</h3>
+      <h3>{tr("set.workspace.title")}</h3>
       <p className="muted">
-        Deja que los agentes de este proyecto lean, o escriban en, los panes de otros proyectos abiertos en este equipo.
-        Vincular un proyecto no concede nada: cada lectura o escritura te pregunta, salvo que marques «confiar» en la
-        pregunta. El vínculo es de este proyecto hacia el otro (el otro no puede alcanzar a este por eso).
+        {tr("set.workspace.intro")}
       </p>
       {error && <p className="error">{error}</p>}
 
-      <h4>Proyectos vinculados</h4>
-      {view && view.projects.length === 0 && <p className="muted">No hay otros proyectos registrados.</p>}
+      <h4>{tr("set.workspace.linked")}</h4>
+      {view && view.projects.length === 0 && <p className="muted">{tr("set.workspace.noProjects")}</p>}
       <ul className="workspace-list">
         {view?.projects.map((p) => (
           <li key={p.id}>
-            <label>
+            <label className="settings-check">
               <input type="checkbox" checked={p.linked} onChange={(e) => void toggleLink(p.id, e.target.checked)} />
               {p.name}
             </label>
-            <Chip tone={p.open ? "ready" : "neutral"}>{p.open ? "abierto" : "cerrado"}</Chip>
+            <Chip tone={p.open ? "ready" : "neutral"}>{p.open ? tr("set.workspace.open") : tr("set.workspace.closed")}</Chip>
           </li>
         ))}
       </ul>
 
-      <h4>Confianzas concedidas</h4>
-      {view && view.trust.length === 0 && <p className="muted">Ninguna: se pregunta cada vez.</p>}
+      <h4>{tr("set.workspace.trusts")}</h4>
+      {view && view.trust.length === 0 && <p className="muted">{tr("set.workspace.noTrusts")}</p>}
       <ul className="workspace-list">
         {view?.trust.map((t) => (
           <li key={t.key}>
             <span>
-              {ACTION_LABEL[t.action]} panes de <strong>{t.toName}</strong> sin preguntar
+              {tr(ACTION_LABEL[t.action])} {tr("set.workspace.panesOf")} <strong>{t.toName}</strong> {tr("set.workspace.withoutAsking")}
             </span>
             <Button size="sm" variant="secondary" onClick={() => void revoke(t.key)}>
-              Quitar
+              {tr("set.workspace.remove")}
             </Button>
           </li>
         ))}
       </ul>
 
-      <h4>Registro</h4>
-      {view && view.audit.length === 0 && <p className="muted">Sin actividad entre proyectos todavía.</p>}
+      <h4>{tr("set.workspace.log")}</h4>
+      {view && view.audit.length === 0 && <p className="muted">{tr("set.workspace.noActivity")}</p>}
       <ul className="workspace-list workspace-audit">
         {view?.audit.map((e) => (
           <li key={`${e.at}-${e.from}-${e.to}-${e.pane}-${e.action}`}>
             <span>
               {new Date(e.at).toLocaleString()} · <strong>{e.from}</strong> → <strong>{e.to}</strong> ({e.pane}) ·{" "}
-              {ACTION_LABEL[e.action]}
+              {tr(ACTION_LABEL[e.action])}
             </span>
-            <Chip tone={e.via === "denied" ? "danger" : "neutral"}>{VIA_LABEL[e.via]}</Chip>
+            <Chip tone={e.via === "denied" ? "danger" : "neutral"}>{tr(VIA_LABEL[e.via])}</Chip>
           </li>
         ))}
       </ul>
       <Button size="sm" variant="ghost" onClick={refresh}>
-        Actualizar
+        {tr("set.workspace.refresh")}
       </Button>
     </section>
   );

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useI18n } from "../i18n/index.js";
 import { TrashIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { AgentFlowHarness, AgentFlowNode, AgentInfo } from "../types.js";
 import { AgentTemplatePicker } from "./AgentTemplatePicker.js";
@@ -20,7 +21,30 @@ type Props = {
 const EFFORT_5 = ["low", "medium", "high", "xhigh", "max"] as const;
 const EFFORT_3 = ["low", "medium", "high"] as const;
 const OMP_THINKING = ["off", "minimal", "low", "medium", "high", "xhigh", "max", "auto"] as const;
+const YGG_APPROVAL_MODES = ["auto", "plan", "restrict", "yolo"] as const;
 const OMP_APPROVAL_MODES = ["always-ask", "write", "yolo"] as const;
+const CLAUDE_PERMISSION_MODES = ["acceptEdits", "auto", "bypassPermissions", "manual", "dontAsk", "plan"] as const;
+
+const splitList = (v: string) =>
+  v
+    .split(",")
+    .map((s) => s.trim())
+    .filter(Boolean);
+
+// Keeps the raw text while typing: re-deriving it from the parsed list would eat the trailing comma.
+function ListInput({ value, onChange, placeholder }: { value: string[]; onChange: (v: string[]) => void; placeholder?: string }) {
+  const [text, setText] = useState(value.join(", "));
+  return (
+    <input
+      value={text}
+      onChange={(e) => {
+        setText(e.target.value);
+        onChange(splitList(e.target.value));
+      }}
+      placeholder={placeholder}
+    />
+  );
+}
 
 function harnessFor(type: AgentFlowHarness["type"]): AgentFlowHarness {
   switch (type) {
@@ -54,6 +78,7 @@ export function NodeConfigDrawer({
   onClose,
   onCreateRoleNode,
 }: Props) {
+  const { t } = useI18n();
   const [showNewAgent, setShowNewAgent] = useState(false);
   const { settings: onboardingSettings } = useOnboarding();
   // A node already using a filtered-out harness keeps it in the list so the select never shows a blank value.
@@ -76,17 +101,17 @@ export function NodeConfigDrawer({
           className="flow-node-name"
           value={node.name}
           onChange={(e) => onChange({ ...node, name: e.target.value })}
-          placeholder="Node name"
+          placeholder={t("flow.drawer.nodeNamePlaceholder")}
           autoFocus
         />
-        <button type="button" className="icon-btn" onClick={onClose} title="Close">
+        <button type="button" className="icon-btn" onClick={onClose} title={t("flow.drawer.close")}>
           <XMarkIcon className="hero-icon" />
         </button>
       </div>
 
       <div className="node-config-drawer-body">
         <label>
-          Harness
+          {t("flow.drawer.harness")}
           <select
             value={node.harness.type}
             onChange={(e) => setHarness(harnessFor(e.target.value as AgentFlowHarness["type"]))}
@@ -98,6 +123,17 @@ export function NodeConfigDrawer({
             {harnessOption("copilot") && <option value="copilot">copilot</option>}
           </select>
         </label>
+        <label className="flow-node-checkbox">
+          <input
+            type="checkbox"
+            checked={node.worktree ?? false}
+            onChange={(e) => onChange({ ...node, worktree: e.target.checked || undefined })}
+          />
+          {t("flow.drawer.isolatedWorktree")}
+        </label>
+        <p className="flow-node-hint">
+          {node.worktree ? t("flow.drawer.worktreeOn") : t("flow.drawer.worktreeOff")}
+        </p>
 
         {node.harness.type === "yggdrasil" &&
           (() => {
@@ -105,10 +141,10 @@ export function NodeConfigDrawer({
             return (
               <>
                 <label>
-                  Agent
+                  {t("flow.drawer.agent")}
                   <div className="flow-node-agent-row">
-                    <select value={ygg.agentId} onChange={(e) => setHarness({ type: "yggdrasil", agentId: e.target.value })}>
-                      <option value="">(select an agent)</option>
+                    <select value={ygg.agentId} onChange={(e) => setHarness({ ...ygg, agentId: e.target.value })}>
+                      <option value="">{t("flow.drawer.selectAgent")}</option>
                       {agents.map((a) => (
                         <option key={a.id} value={a.id}>
                           {a.label ?? a.id}
@@ -118,7 +154,7 @@ export function NodeConfigDrawer({
                     <button
                       type="button"
                       className="icon-btn"
-                      title="Delete agent"
+                      title={t("flow.drawer.deleteAgent")}
                       disabled={!ygg.agentId}
                       onClick={() => onDeleteAgent(ygg.agentId)}
                     >
@@ -126,16 +162,59 @@ export function NodeConfigDrawer({
                     </button>
                   </div>
                 </label>
+                <label className="flow-node-checkbox">
+                  <input
+                    type="checkbox"
+                    checked={ygg.continueSession ?? false}
+                    onChange={(e) => setHarness({ ...ygg, continueSession: e.target.checked || undefined })}
+                  />
+                  {t("flow.drawer.continueConv")}
+                </label>
+                <label>
+                  {t("flow.drawer.initialPrompt")}
+                  <textarea
+                    value={ygg.initialPrompt ?? ""}
+                    onChange={(e) => setHarness({ ...ygg, initialPrompt: e.target.value || undefined })}
+                    rows={3}
+                  />
+                </label>
+                <label>
+                  {t("flow.drawer.model")}
+                  <input
+                    value={ygg.model ?? ""}
+                    onChange={(e) => setHarness({ ...ygg, model: e.target.value || undefined })}
+                    placeholder={t("flow.drawer.modelOwn")}
+                  />
+                </label>
+                <label>
+                  {t("flow.drawer.approvalMode")}
+                  <select
+                    value={ygg.approvalMode ?? ""}
+                    onChange={(e) =>
+                      setHarness({ ...ygg, approvalMode: (e.target.value || undefined) as typeof ygg.approvalMode })
+                    }
+                  >
+                    <option value="">{t("flow.drawer.default")}</option>
+                    {YGG_APPROVAL_MODES.map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {ygg.approvalMode === "yolo" && (
+                  <p className="flow-node-warning">{t("flow.drawer.yoloWarn")}</p>
+                )}
                 {!showNewAgent ? (
                   <button type="button" className="link-btn" onClick={() => setShowNewAgent(true)}>
-                    + New agent
+                    {t("flow.drawer.newAgent")}
                   </button>
                 ) : (
                   <div className="flow-node-new-agent">
                     <input
                       value={newAgentId}
                       onChange={(e) => setNewAgentId(e.target.value)}
-                      placeholder="New agent id"
+                      placeholder={t("flow.drawer.newAgentId")}
                     />
                     <button
                       type="button"
@@ -148,10 +227,10 @@ export function NodeConfigDrawer({
                         setShowNewAgent(false);
                       }}
                     >
-                      Create
+                      {t("flow.drawer.create")}
                     </button>
                     <button type="button" onClick={() => setShowNewAgent(false)}>
-                      Cancel
+                      {t("flow.drawer.cancel")}
                     </button>
                   </div>
                 )}
@@ -165,7 +244,7 @@ export function NodeConfigDrawer({
             return (
               <>
                 <label>
-                  Initial prompt
+                  {t("flow.drawer.initialPrompt")}
                   <textarea
                     value={claude.initialPrompt ?? ""}
                     onChange={(e) => setHarness({ ...claude, initialPrompt: e.target.value })}
@@ -178,7 +257,7 @@ export function NodeConfigDrawer({
                   onCreateRoleNode={onCreateRoleNode}
                 />
                 <label>
-                  System prompt (appended)
+                  {t("flow.drawer.systemPrompt")}
                   <textarea
                     value={claude.systemPromptAppend ?? ""}
                     onChange={(e) => setHarness({ ...claude, systemPromptAppend: e.target.value })}
@@ -186,22 +265,22 @@ export function NodeConfigDrawer({
                   />
                 </label>
                 <label>
-                  Model
+                  {t("flow.drawer.model")}
                   <input
                     value={claude.model ?? ""}
                     onChange={(e) => setHarness({ ...claude, model: e.target.value || undefined })}
-                    placeholder="(default)"
+                    placeholder={t("flow.drawer.default")}
                   />
                 </label>
                 <label>
-                  Effort
+                  {t("flow.drawer.effort")}
                   <select
                     value={claude.effort ?? ""}
                     onChange={(e) =>
                       setHarness({ ...claude, effort: (e.target.value || undefined) as typeof claude.effort })
                     }
                   >
-                    <option value="">(default)</option>
+                    <option value="">{t("flow.drawer.default")}</option>
                     {EFFORT_5.map((v) => (
                       <option key={v} value={v}>
                         {v}
@@ -210,7 +289,79 @@ export function NodeConfigDrawer({
                   </select>
                 </label>
                 <label>
-                  Additional dirs (comma-separated)
+                  {t("flow.drawer.session")}
+                  <select
+                    value={claude.resumeSession !== undefined ? "resume" : claude.continueSession ? "continue" : "new"}
+                    onChange={(e) =>
+                      setHarness({
+                        ...claude,
+                        continueSession: e.target.value === "continue" || undefined,
+                        resumeSession: e.target.value === "resume" ? (claude.resumeSession ?? "") : undefined,
+                      })
+                    }
+                  >
+                    <option value="new">{t("flow.drawer.sessionNew")}</option>
+                    <option value="continue">{t("flow.drawer.sessionContinue")}</option>
+                    <option value="resume">{t("flow.drawer.sessionResume")}</option>
+                  </select>
+                </label>
+                {claude.resumeSession !== undefined && (
+                  <label>
+                    {t("flow.drawer.sessionIdOrName")}
+                    <input
+                      value={claude.resumeSession}
+                      onChange={(e) => setHarness({ ...claude, resumeSession: e.target.value })}
+                      placeholder={t("flow.drawer.sessionIdPlaceholder")}
+                    />
+                  </label>
+                )}
+                <label>
+                  {t("flow.drawer.sessionName")}
+                  <input
+                    value={claude.sessionName ?? ""}
+                    onChange={(e) => setHarness({ ...claude, sessionName: e.target.value || undefined })}
+                    placeholder={t("flow.drawer.sessionNamePlaceholder")}
+                  />
+                </label>
+                <label>
+                  {t("flow.drawer.permissionMode")}
+                  <select
+                    value={claude.permissionMode ?? ""}
+                    onChange={(e) =>
+                      setHarness({ ...claude, permissionMode: (e.target.value || undefined) as typeof claude.permissionMode })
+                    }
+                  >
+                    <option value="">{t("flow.drawer.default")}</option>
+                    {CLAUDE_PERMISSION_MODES.map((v) => (
+                      <option key={v} value={v}>
+                        {v}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                {claude.permissionMode === "bypassPermissions" && (
+                  <p className="flow-node-warning">
+                    {t("flow.drawer.bypassWarn")}
+                  </p>
+                )}
+                <label>
+                  {t("flow.drawer.allowedTools")}
+                  <ListInput
+                    value={claude.allowedTools ?? []}
+                    onChange={(v) => setHarness({ ...claude, allowedTools: v.length ? v : undefined })}
+                    placeholder="Read, Bash(git log:*)"
+                  />
+                </label>
+                <label>
+                  {t("flow.drawer.disallowedTools")}
+                  <ListInput
+                    value={claude.disallowedTools ?? []}
+                    onChange={(v) => setHarness({ ...claude, disallowedTools: v.length ? v : undefined })}
+                    placeholder="Bash(rm:*)"
+                  />
+                </label>
+                <label>
+                  {t("flow.drawer.addDirs")}
                   <input
                     value={addDirsValue(claude.addDirs)}
                     onChange={(e) => setHarness({ ...claude, addDirs: parseAddDirs(e.target.value) })}
@@ -222,7 +373,7 @@ export function NodeConfigDrawer({
                     checked={claude.cloud ?? false}
                     onChange={(e) => setHarness({ ...claude, cloud: e.target.checked || undefined })}
                   />
-                  Run in Claude Cloud (--cloud, instead of a local terminal pane)
+                  {t("flow.drawer.cloud")}
                 </label>
               </>
             );
@@ -234,7 +385,7 @@ export function NodeConfigDrawer({
             return (
               <>
                 <label>
-                  Initial prompt
+                  {t("flow.drawer.initialPrompt")}
                   <textarea
                     value={agy.initialPrompt ?? ""}
                     onChange={(e) => setHarness({ ...agy, initialPrompt: e.target.value })}
@@ -247,20 +398,20 @@ export function NodeConfigDrawer({
                   onCreateRoleNode={onCreateRoleNode}
                 />
                 <label>
-                  Model
+                  {t("flow.drawer.model")}
                   <input
                     value={agy.model ?? ""}
                     onChange={(e) => setHarness({ ...agy, model: e.target.value || undefined })}
-                    placeholder="(default)"
+                    placeholder={t("flow.drawer.default")}
                   />
                 </label>
                 <label>
-                  Effort
+                  {t("flow.drawer.effort")}
                   <select
                     value={agy.effort ?? ""}
                     onChange={(e) => setHarness({ ...agy, effort: (e.target.value || undefined) as typeof agy.effort })}
                   >
-                    <option value="">(default)</option>
+                    <option value="">{t("flow.drawer.default")}</option>
                     {EFFORT_3.map((v) => (
                       <option key={v} value={v}>
                         {v}
@@ -269,18 +420,18 @@ export function NodeConfigDrawer({
                   </select>
                 </label>
                 <label>
-                  Mode
+                  {t("flow.drawer.mode")}
                   <select
                     value={agy.mode ?? ""}
                     onChange={(e) => setHarness({ ...agy, mode: (e.target.value || undefined) as typeof agy.mode })}
                   >
-                    <option value="">(default)</option>
+                    <option value="">{t("flow.drawer.default")}</option>
                     <option value="accept-edits">accept-edits</option>
                     <option value="plan">plan</option>
                   </select>
                 </label>
                 <label>
-                  Additional dirs (comma-separated)
+                  {t("flow.drawer.addDirs")}
                   <input
                     value={addDirsValue(agy.addDirs)}
                     onChange={(e) => setHarness({ ...agy, addDirs: parseAddDirs(e.target.value) })}
@@ -296,7 +447,7 @@ export function NodeConfigDrawer({
             return (
               <>
                 <label>
-                  Initial prompt
+                  {t("flow.drawer.initialPrompt")}
                   <textarea
                     value={omp.initialPrompt ?? ""}
                     onChange={(e) => setHarness({ ...omp, initialPrompt: e.target.value })}
@@ -309,7 +460,7 @@ export function NodeConfigDrawer({
                   onCreateRoleNode={onCreateRoleNode}
                 />
                 <label>
-                  System prompt (appended)
+                  {t("flow.drawer.systemPrompt")}
                   <textarea
                     value={omp.systemPromptAppend ?? ""}
                     onChange={(e) => setHarness({ ...omp, systemPromptAppend: e.target.value })}
@@ -317,22 +468,22 @@ export function NodeConfigDrawer({
                   />
                 </label>
                 <label>
-                  Model
+                  {t("flow.drawer.model")}
                   <input
                     value={omp.model ?? ""}
                     onChange={(e) => setHarness({ ...omp, model: e.target.value || undefined })}
-                    placeholder="(default) — fuzzy match, e.g. opus, gpt-5.2"
+                    placeholder={t("flow.drawer.modelFuzzy")}
                   />
                 </label>
                 <label>
-                  Thinking
+                  {t("flow.drawer.thinking")}
                   <select
                     value={omp.thinking ?? ""}
                     onChange={(e) =>
                       setHarness({ ...omp, thinking: (e.target.value || undefined) as typeof omp.thinking })
                     }
                   >
-                    <option value="">(default)</option>
+                    <option value="">{t("flow.drawer.default")}</option>
                     {OMP_THINKING.map((v) => (
                       <option key={v} value={v}>
                         {v}
@@ -341,14 +492,14 @@ export function NodeConfigDrawer({
                   </select>
                 </label>
                 <label>
-                  Approval mode
+                  {t("flow.drawer.approvalMode")}
                   <select
                     value={omp.approvalMode ?? ""}
                     onChange={(e) =>
                       setHarness({ ...omp, approvalMode: (e.target.value || undefined) as typeof omp.approvalMode })
                     }
                   >
-                    <option value="">(default)</option>
+                    <option value="">{t("flow.drawer.default")}</option>
                     {OMP_APPROVAL_MODES.map((v) => (
                       <option key={v} value={v}>
                         {v}
@@ -357,7 +508,7 @@ export function NodeConfigDrawer({
                   </select>
                 </label>
                 <label>
-                  Additional dirs (comma-separated)
+                  {t("flow.drawer.addDirs")}
                   <input
                     value={addDirsValue(omp.addDirs)}
                     onChange={(e) => setHarness({ ...omp, addDirs: parseAddDirs(e.target.value) })}
@@ -373,7 +524,7 @@ export function NodeConfigDrawer({
             return (
               <>
                 <label>
-                  Initial prompt
+                  {t("flow.drawer.initialPrompt")}
                   <textarea
                     value={copilot.initialPrompt ?? ""}
                     onChange={(e) => setHarness({ ...copilot, initialPrompt: e.target.value })}
@@ -386,11 +537,11 @@ export function NodeConfigDrawer({
                   onCreateRoleNode={onCreateRoleNode}
                 />
                 <label>
-                  Model
+                  {t("flow.drawer.model")}
                   <input
                     value={copilot.model ?? ""}
                     onChange={(e) => setHarness({ ...copilot, model: e.target.value || undefined })}
-                    placeholder="(default)"
+                    placeholder={t("flow.drawer.default")}
                   />
                 </label>
                 <label className="flow-node-checkbox">
@@ -399,10 +550,10 @@ export function NodeConfigDrawer({
                     checked={copilot.allowAllTools ?? false}
                     onChange={(e) => setHarness({ ...copilot, allowAllTools: e.target.checked || undefined })}
                   />
-                  Allow all tools (--allow-all-tools, skips permission prompts)
+                  {t("flow.drawer.allowAll")}
                 </label>
                 <label>
-                  Additional dirs (comma-separated)
+                  {t("flow.drawer.addDirs")}
                   <input
                     value={addDirsValue(copilot.addDirs)}
                     onChange={(e) => setHarness({ ...copilot, addDirs: parseAddDirs(e.target.value) })}
@@ -413,18 +564,18 @@ export function NodeConfigDrawer({
           })()}
 
         <label className="flow-node-communication">
-          Communication note (not yet wired to any real messaging)
+          {t("flow.drawer.comm")}
           <input
             value={node.communication ?? ""}
             onChange={(e) => onChange({ ...node, communication: e.target.value || undefined })}
-            placeholder="e.g. reports findings to Supervisor"
+            placeholder={t("flow.drawer.commPlaceholder")}
           />
         </label>
       </div>
 
       <div className="node-config-drawer-footer">
         <button type="button" className="icon-btn" onClick={onDelete}>
-          Delete node
+          {t("flow.drawer.deleteNode")}
         </button>
       </div>
     </div>

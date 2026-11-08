@@ -1,4 +1,5 @@
 import { ViewColumnsIcon } from "@heroicons/react/20/solid";
+import { useI18n } from "../i18n/index.js";
 import { Menu, MenuItem } from "../ui/index.js";
 
 type Props = {
@@ -10,6 +11,7 @@ type Props = {
 
 // The pane header's single split button opens this instead of showing one icon per direction.
 export function SplitMenu({ x, y, onClose, onPick }: Props) {
+  const { t } = useI18n();
   const pick = (direction: "row" | "column") => () => {
     onPick(direction);
     onClose();
@@ -19,11 +21,11 @@ export function SplitMenu({ x, y, onClose, onPick }: Props) {
     <Menu x={x} y={y} onClose={onClose}>
       <MenuItem onClick={pick("row")}>
         <ViewColumnsIcon className="hero-icon" />
-        Split horizontally
+        {t("term.splitMenu.horizontal")}
       </MenuItem>
       <MenuItem onClick={pick("column")}>
         <ViewColumnsIcon className="hero-icon terminal-pane-split-vertical" />
-        Split vertically
+        {t("term.splitMenu.vertical")}
       </MenuItem>
     </Menu>
   );

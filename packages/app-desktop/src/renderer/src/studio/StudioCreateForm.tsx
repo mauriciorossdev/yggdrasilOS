@@ -1,5 +1,6 @@
 import { useState } from "react";
 import type { PluginPermission, PluginRecord, PluginScope, PluginView, ScaffoldPluginSpec } from "../types.js";
+import { useI18n } from "../i18n/index.js";
 
 type Props = {
   onCancel: () => void;
@@ -20,6 +21,7 @@ function slugify(name: string): string {
 
 /** "+ Nuevo" in StudioView — describes a complemento and creates it (as a draft) via `plugins:scaffold`. No file editing happens here; that's StudioWorkspace's job once the draft exists. */
 export function StudioCreateForm({ onCancel, onCreated }: Props) {
+  const { t } = useI18n();
   const [name, setName] = useState("");
   const [id, setId] = useState("");
   const [idTouched, setIdTouched] = useState(false);
@@ -55,15 +57,15 @@ export function StudioCreateForm({ onCancel, onCreated }: Props) {
   const submit = async () => {
     setError(null);
     if (!name.trim()) {
-      setError("El nombre es requerido");
+      setError(t("studio.create.errName"));
       return;
     }
     if (!PLUGIN_ID_RE.test(effectiveId)) {
-      setError("El id debe ser minúsculas/números/guiones, máx 64 caracteres");
+      setError(t("studio.create.errId"));
       return;
     }
     if (views.length === 0) {
-      setError("Elegí al menos una vista (pestaña, panel o mobile)");
+      setError(t("studio.create.errViews"));
       return;
     }
     const spec: ScaffoldPluginSpec = {
@@ -88,15 +90,15 @@ export function StudioCreateForm({ onCancel, onCreated }: Props) {
 
   return (
     <div className="studio-create-form">
-      <h3 className="agent-form-title">Nuevo complemento</h3>
+      <h3 className="agent-form-title">{t("studio.create.title")}</h3>
       <div className="agent-form">
         {error && <p className="error">{error}</p>}
         <label>
-          Nombre
-          <input value={name} onChange={(e) => setName(e.target.value)} placeholder="Tareas" autoFocus />
+          {t("studio.create.name")}
+          <input value={name} onChange={(e) => setName(e.target.value)} placeholder={t("studio.create.namePlaceholder")} autoFocus />
         </label>
         <label>
-          Id (nombre de carpeta)
+          {t("studio.create.id")}
           <input
             value={effectiveId}
             onChange={(e) => {
@@ -106,15 +108,14 @@ export function StudioCreateForm({ onCancel, onCreated }: Props) {
           />
         </label>
         <label>
-          Icono (emoji, opcional)
+          {t("studio.create.icon")}
           <input value={icon} onChange={(e) => setIcon(e.target.value)} placeholder="📋" />
         </label>
         <label>
-          Alcance
+          {t("studio.create.scope")}
           <div className="scope-choice">
             <label>
-              <input type="radio" checked={scope === "project"} onChange={() => setScope("project")} /> Este
-              proyecto
+              <input type="radio" checked={scope === "project"} onChange={() => setScope("project")} /> {t("studio.create.scopeProject")}
             </label>
             <label>
               <input
@@ -127,32 +128,32 @@ export function StudioCreateForm({ onCancel, onCreated }: Props) {
                   setViews((prev) => prev.filter((v) => v !== "mobile"));
                 }}
               />{" "}
-              Global
+              {t("studio.create.scopeGlobal")}
             </label>
           </div>
         </label>
         <label>
-          Dónde se puede abrir
+          {t("studio.create.views")}
           <div className="scope-choice">
             <label>
-              <input type="checkbox" checked={views.includes("tab")} onChange={() => toggleView("tab")} /> Pestaña
+              <input type="checkbox" checked={views.includes("tab")} onChange={() => toggleView("tab")} /> {t("studio.create.viewTab")}
             </label>
             <label>
-              <input type="checkbox" checked={views.includes("panel")} onChange={() => toggleView("panel")} /> Panel
+              <input type="checkbox" checked={views.includes("panel")} onChange={() => toggleView("panel")} /> {t("studio.create.viewPanel")}
             </label>
-            <label title={scope === "global" ? "No disponible para complementos globales — mobile solo lee los del proyecto abierto." : undefined}>
+            <label title={scope === "global" ? t("studio.create.mobileUnavailable") : undefined}>
               <input
                 type="checkbox"
                 checked={views.includes("mobile")}
                 disabled={scope === "global"}
                 onChange={() => toggleView("mobile")}
               />{" "}
-              Mobile
+              {t("studio.create.viewMobile")}
             </label>
           </div>
         </label>
         <label>
-          Permisos
+          {t("studio.create.permissions")}
           <div className="scope-choice">
             <label>
               <input type="checkbox" checked={permissions.includes("fs")} onChange={() => togglePermission("fs")} /> fs
@@ -178,7 +179,7 @@ export function StudioCreateForm({ onCancel, onCreated }: Props) {
             <input
               value={gatewayMethod}
               onChange={(e) => setGatewayMethod(e.target.value)}
-              placeholder="método gateway, ej. chat.send"
+              placeholder={t("studio.create.gatewayPlaceholder")}
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
@@ -187,7 +188,7 @@ export function StudioCreateForm({ onCancel, onCreated }: Props) {
               }}
             />
             <button type="button" onClick={addGatewayPermission}>
-              Agregar
+              {t("studio.create.add")}
             </button>
           </div>
           {gatewayPermissions.length > 0 && (
@@ -204,15 +205,15 @@ export function StudioCreateForm({ onCancel, onCreated }: Props) {
           )}
         </label>
         <label>
-          Descripción (opcional)
+          {t("studio.create.description")}
           <textarea value={description} onChange={(e) => setDescription(e.target.value)} rows={3} />
         </label>
         <div className="agent-form-actions">
           <button type="button" onClick={onCancel} disabled={submitting}>
-            Cancelar
+            {t("ui.cancel")}
           </button>
           <button type="submit" onClick={() => void submit()} disabled={submitting}>
-            {submitting ? "Creando…" : "Crear borrador"}
+            {submitting ? t("studio.create.submitting") : t("studio.create.submit")}
           </button>
         </div>
       </div>

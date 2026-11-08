@@ -3,6 +3,7 @@ import type {
   ChatCompleteResult,
   ChatStreamEvent,
 } from "@yggdrasil/sdk";
+import { sendWithRetry, type RetryOptions } from "./retry.js";
 import {
   toOllamaMessages,
   toOllamaTools,
@@ -14,7 +15,40 @@ import {
 export type OllamaClientOptions = {
   baseUrl: string;
   fetchImpl?: typeof fetch;
+  /**
+   * Ollama's `think` switch for models with a thinking mode. Left undefined it follows the model's own default,
+   * which for e.g. qwen3.5 is "on" — and then a reply can come back with `content` empty and the whole answer
+   * in `message.thinking`, which the tool loop sees as an empty response. `false` turns thinking off — but that also makes a model like qwen3.5:9b give up earlier
+   * (5/15 vs 14/15 agentic runs passed in our evals), so it is an option, not a recommended default.
+   */
+  think?: boolean;
+  /** Sent as `Authorization: Bearer …` — what Ollama Cloud (https://ollama.com) requires. A local server needs none. */
+  apiKey?: string;
+  /** Retrying transient failures of the chat request (see retry.ts). `maxRetries: 0` turns it off. */
+  retry?: RetryOptions;
 };
+
+/** The configured retry options, also reporting each retry to the caller of this request. */
+function withRetryCallback(retry: RetryOptions | undefined, onRetry: ChatCompleteParams["onRetry"]): RetryOptions {
+  if (!onRetry) return retry ?? {};
+  return {
+    ...retry,
+    onRetry: (info) => {
+      retry?.onRetry?.(info);
+      onRetry(info);
+    },
+  };
+}
+
+function authHeaders(options: OllamaClientOptions): Record<string, string> {
+  return options.apiKey ? { Authorization: `Bearer ${options.apiKey}` } : {};
+}
+
+/** A 401/403 from the server almost always means a missing or wrong key; say so instead of dumping the body. */
+function authHint(status: number, options: OllamaClientOptions): string {
+  if (status !== 401 && status !== 403) return "";
+  return options.apiKey ? " (the server rejected the API key)" : " (the server wants an API key: set providers.ollama.apiKey or OLLAMA_API_KEY)";
+}
 
 type OllamaChatResponse = {
   model: string;
@@ -48,13 +82,13 @@ export async function listModels(options: OllamaClientOptions): Promise<OllamaTa
   const baseUrl = options.baseUrl.replace(/\/$/, "");
   let response: Response;
   try {
-    response = await fetchFn(`${baseUrl}/api/tags`, { signal: AbortSignal.timeout(LIST_MODELS_TIMEOUT_MS) });
+    response = await fetchFn(`${baseUrl}/api/tags`, { headers: authHeaders(options), signal: AbortSignal.timeout(LIST_MODELS_TIMEOUT_MS) });
   } catch (err) {
     const reason = err instanceof Error && err.name === "TimeoutError" ? "timed out" : "unreachable";
     throw new Error(`Ollama at ${baseUrl} is ${reason}`);
   }
   if (!response.ok) {
-    throw new Error(`Ollama listModels failed: HTTP ${response.status}`);
+    throw new Error(`Ollama listModels failed: HTTP ${response.status}${authHint(response.status, options)}`);
   }
   return (await response.json()) as OllamaTagsResponse;
 }
@@ -75,16 +109,24 @@ export async function chatComplete(
   const tools = toOllamaTools(params.tools);
   if (tools) body.tools = tools;
   if (params.temperature !== undefined) body.options = { temperature: params.temperature };
+  if (options.think !== undefined) body.think = options.think;
 
-  const response = await fetchFn(`${baseUrl}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const response = await sendWithRetry(
+    () =>
+      fetchFn(`${baseUrl}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders(options) },
+        body: JSON.stringify(body),
+        // Lets a cancelled turn drop the HTTP request instead of leaving the model generating for nobody.
+        signal: params.signal,
+      }),
+    withRetryCallback(options.retry, params.onRetry),
+    params.signal,
+  );
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`Ollama chat error: HTTP ${response.status} — ${text}`);
+    throw new Error(`Ollama chat error: HTTP ${response.status}${authHint(response.status, options)} — ${text}`);
   }
 
   const data = (await response.json()) as OllamaChatResponse;
@@ -128,16 +170,24 @@ export async function chatCompleteStream(
   const tools = toOllamaTools(params.tools);
   if (tools) body.tools = tools;
   if (params.temperature !== undefined) body.options = { temperature: params.temperature };
+  if (options.think !== undefined) body.think = options.think;
 
-  const response = await fetchFn(`${baseUrl}/api/chat`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(body),
-  });
+  const response = await sendWithRetry(
+    () =>
+      fetchFn(`${baseUrl}/api/chat`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", ...authHeaders(options) },
+        body: JSON.stringify(body),
+        // Lets a cancelled turn drop the HTTP request instead of leaving the model generating for nobody.
+        signal: params.signal,
+      }),
+    withRetryCallback(options.retry, params.onRetry),
+    params.signal,
+  );
 
   if (!response.ok) {
     const text = await response.text().catch(() => "");
-    throw new Error(`Ollama chat stream error: HTTP ${response.status} — ${text}`);
+    throw new Error(`Ollama chat stream error: HTTP ${response.status}${authHint(response.status, options)} — ${text}`);
   }
 
   if (!response.body) {

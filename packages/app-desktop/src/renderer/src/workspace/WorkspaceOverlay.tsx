@@ -1,10 +1,27 @@
 import { useCallback, useEffect, useState } from "react";
 import { Button, Modal } from "../ui/index.js";
 import type { WorkspaceAsk, WorkspaceNotice } from "../types.js";
+import { useI18n, type MessageKey } from "../i18n/index.js";
 
 const NOTICE_MS = 7000;
 
 type Toast = WorkspaceNotice & { key: number };
+
+const MARK = "\u0001";
+
+/** Renders a message whose named vars listed in `bold` are <strong>; the other vars are plain text. */
+function rich(
+  tr: (key: MessageKey, vars?: Record<string, string | number>) => string,
+  key: MessageKey,
+  vars: Record<string, string>,
+  bold: string[],
+) {
+  const marked: Record<string, string> = {};
+  for (const [name, value] of Object.entries(vars)) marked[name] = bold.includes(name) ? `${MARK}${name}${MARK}` : value;
+  return tr(key, marked)
+    .split(MARK)
+    .map((part, i) => (i % 2 === 1 ? <strong key={i}>{vars[part]}</strong> : part));
+}
 
 /**
  * The two renderer-side halves of the cross-project workspace
@@ -14,6 +31,7 @@ type Toast = WorkspaceNotice & { key: number };
  * Mounted once per window.
  */
 export function WorkspaceOverlay() {
+  const { t } = useI18n();
   const [asks, setAsks] = useState<WorkspaceAsk[]>([]);
   const [trust, setTrust] = useState(false);
   const [toasts, setToasts] = useState<Toast[]>([]);
@@ -51,49 +69,56 @@ export function WorkspaceOverlay() {
     <>
       {current && (
         <Modal
-          title="Otro proyecto"
+          title={t("workspace.title")}
           onClose={deny}
           footer={
             <>
               <Button variant="secondary" onClick={deny}>
-                Denegar
+                {t("workspace.deny")}
               </Button>
               <Button variant="primary" onClick={() => answer(true)}>
-                Permitir
+                {t("workspace.allow")}
               </Button>
             </>
           }
         >
           {current.action === "read" ? (
             <p>
-              Un agente de <strong>{current.fromName}</strong> quiere <strong>leer</strong> el pane{" "}
-              <strong>{current.paneTitle}</strong> de <strong>{current.toName}</strong>.
+              {rich(
+                t,
+                "workspace.askRead",
+                { from: current.fromName, action: t("workspace.verbRead"), pane: current.paneTitle, to: current.toName },
+                ["from", "action", "pane", "to"],
+              )}
             </p>
           ) : (
             <>
               <p>
-                Un agente de <strong>{current.fromName}</strong> quiere <strong>escribir</strong> en el pane{" "}
-                <strong>{current.paneTitle}</strong> de <strong>{current.toName}</strong>.
+                {rich(
+                  t,
+                  "workspace.askWrite",
+                  { from: current.fromName, action: t("workspace.verbWrite"), pane: current.paneTitle, to: current.toName },
+                  ["from", "action", "pane", "to"],
+                )}
               </p>
               <p className="workspace-warning">
-                El agente de {current.toName} recibirá este texto como una instrucción de otro proyecto:
+                {t("workspace.warning", { to: current.toName })}
               </p>
               <pre className="workspace-excerpt">{current.excerpt}</pre>
             </>
           )}
           <label className="workspace-trust">
             <input type="checkbox" checked={trust} onChange={(e) => setTrust(e.target.checked)} />
-            Confiar y no volver a preguntar para {current.action === "read" ? "leer" : "escribir en"} panes de{" "}
-            {current.toName}
+            {t(current.action === "read" ? "workspace.trustRead" : "workspace.trustWrite", { to: current.toName })}
           </label>
-          {asks.length > 1 && <p className="muted">{asks.length - 1} más en espera</p>}
+          {asks.length > 1 && <p className="muted">{t("workspace.more", { count: asks.length - 1 })}</p>}
         </Modal>
       )}
       {toasts.length > 0 && (
         <div className="workspace-toasts" role="status">
-          {toasts.map((t) => (
-            <div key={t.key} className="workspace-toast">
-              {t.action === "read" ? "Leído" : "Recibido"} de <strong>{t.fromName}</strong> (pane {t.paneTitle})
+          {toasts.map((toast) => (
+            <div key={toast.key} className="workspace-toast">
+              {rich(t, toast.action === "read" ? "workspace.toastRead" : "workspace.toastWrite", { from: toast.fromName, pane: toast.paneTitle }, ["from"])}
             </div>
           ))}
         </div>

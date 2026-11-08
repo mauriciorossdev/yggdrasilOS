@@ -67,6 +67,8 @@ export type YggdrasilConfig = {
     policy?: "auto" | "pinned";
     pinnedId?: string;
     maxToolIterations?: number;
+    /** Safety nets in the tool loop (retry an empty reply, nudge an announced-but-not-taken action, refuse repeated identical calls, summarize at the limit). Default true. */
+    loopGuards?: boolean;
     streaming?: boolean;
     compactBeforeTurn?: boolean;
     toolApproval?: ToolApprovalPolicy;

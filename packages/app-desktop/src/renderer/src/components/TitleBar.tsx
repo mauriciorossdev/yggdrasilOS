@@ -10,6 +10,7 @@ import {
 import { SettingsView } from "../settings/SettingsView.js";
 import { ClaudeUsage } from "./ClaudeUsage.js";
 import { useActiveTab, useExtraTabs, viewLabel } from "../ui/mainTabsStore.js";
+import { useI18n } from "../i18n/index.js";
 
 /**
  * Every project window is frameless (main/index.ts's createProjectBrowserWindow
@@ -19,6 +20,7 @@ import { useActiveTab, useExtraTabs, viewLabel } from "../ui/mainTabsStore.js";
  * have drawn.
  */
 export function TitleBar() {
+  const { t } = useI18n();
   const [maximized, setMaximized] = useState(false);
   const [borderColor, setBorderColor] = useState(window.yggdrasil.projectColor);
   // null = no IDE configured yet (button falls back to opening Settings on
@@ -71,9 +73,11 @@ export function TitleBar() {
     const root = document.documentElement.style;
     if (borderColor) {
       root.setProperty("--project-border-color", borderColor);
+      root.setProperty("--project-panel-border-color", borderColor);
       root.setProperty("--project-accent-color", borderColor);
     } else {
       root.removeProperty("--project-border-color");
+      root.removeProperty("--project-panel-border-color");
       root.removeProperty("--project-accent-color");
     }
   }, [borderColor]);
@@ -96,7 +100,7 @@ export function TitleBar() {
             <input
               type="color"
               className="title-bar-color-input"
-              title="Project border color"
+              title={t("title.borderColor")}
               value={borderColor || "#000000"}
               onChange={(e) => {
                 setBorderColor(e.target.value);
@@ -107,7 +111,7 @@ export function TitleBar() {
               <button
                 type="button"
                 className="title-bar-color-clear"
-                title="Clear border color"
+                title={t("title.clearBorderColor")}
                 onClick={() => {
                   setBorderColor(null);
                   void window.yggdrasil.projects.setColor(projectId, null);
@@ -125,7 +129,7 @@ export function TitleBar() {
           <button
             type="button"
             className="title-bar-btn"
-            title="Home — main window"
+            title={t("title.home")}
             onClick={() => void window.yggdrasil.projects.openHome()}
           >
             <HomeIcon className="hero-icon" />
@@ -145,7 +149,7 @@ export function TitleBar() {
         <button
           type="button"
           className="title-bar-btn"
-          title="Minimize"
+          title={t("title.minimize")}
           onClick={() => void window.yggdrasil.window.minimize()}
         >
           <MinusIcon className="hero-icon" />
@@ -161,7 +165,7 @@ export function TitleBar() {
         <button
           type="button"
           className="title-bar-btn title-bar-close"
-          title="Close"
+          title={t("ui.close")}
           onClick={() => void window.yggdrasil.window.close()}
         >
           <XMarkIcon className="hero-icon" />

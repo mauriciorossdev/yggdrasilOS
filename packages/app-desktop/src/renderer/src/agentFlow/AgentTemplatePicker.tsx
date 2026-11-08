@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { AGENT_TEMPLATES, GAME_DEV_TEMPLATES } from "./agentTemplates.js";
 import type { CustomFlowTemplate } from "../types.js";
+import { useI18n, type MessageKey } from "../i18n/index.js";
 
 type Props = {
   value: string;
@@ -35,6 +36,7 @@ function blockFor(label: string, prompt: string): string {
  * deletes that node (it may have been renamed/edited/extended since).
  */
 export function AgentTemplatePicker({ value, onChange, onCreateRoleNode }: Props) {
+  const { t: tr } = useI18n();
   const [customTemplates, setCustomTemplates] = useState<CustomFlowTemplate[]>([]);
   const [savingCustom, setSavingCustom] = useState(false);
   const [newCustomLabel, setNewCustomLabel] = useState("");
@@ -43,7 +45,7 @@ export function AgentTemplatePicker({ value, onChange, onCreateRoleNode }: Props
     void window.yggdrasil.flowTemplates.listCustom().then(setCustomTemplates);
   }, []);
 
-  type PickableTemplate = { id: string; label: string; summary?: string; prompt: string };
+  type PickableTemplate = { id: string; label: string; summaryKey?: MessageKey; prompt: string };
   const allTemplates: PickableTemplate[] = [...AGENT_TEMPLATES, ...GAME_DEV_TEMPLATES, ...customTemplates];
 
   const toggle = (id: string) => {
@@ -88,7 +90,7 @@ export function AgentTemplatePicker({ value, onChange, onCreateRoleNode }: Props
                 type="button"
                 className={`agent-template-chip${active ? " active" : ""}`}
                 onClick={() => toggle(t.id)}
-                title={t.summary}
+                title={t.summaryKey ? tr(t.summaryKey) : undefined}
               >
                 {t.label}
               </button>
@@ -101,9 +103,9 @@ export function AgentTemplatePicker({ value, onChange, onCreateRoleNode }: Props
 
   return (
     <div className="agent-template-picker-groups">
-      {renderChipRow("General", AGENT_TEMPLATES)}
-      {renderChipRow("Game Dev", GAME_DEV_TEMPLATES)}
-      {renderChipRow("Custom", customTemplates)}
+      {renderChipRow(tr("flow.picker.general"), AGENT_TEMPLATES)}
+      {renderChipRow(tr("flow.picker.gameDev"), GAME_DEV_TEMPLATES)}
+      {renderChipRow(tr("flow.picker.custom"), customTemplates)}
 
       {!savingCustom ? (
         <button
@@ -111,9 +113,9 @@ export function AgentTemplatePicker({ value, onChange, onCreateRoleNode }: Props
           className="agent-template-chip agent-template-chip-add"
           disabled={!value.trim()}
           onClick={() => setSavingCustom(true)}
-          title="Save the current Initial Prompt as a reusable custom role"
+          title={tr("flow.picker.saveCustomTitle")}
         >
-          + Custom role
+          {tr("flow.picker.addCustom")}
         </button>
       ) : (
         <div className="agent-template-custom-input-row">
@@ -121,7 +123,7 @@ export function AgentTemplatePicker({ value, onChange, onCreateRoleNode }: Props
             className="context-menu-input"
             value={newCustomLabel}
             onChange={(e) => setNewCustomLabel(e.target.value)}
-            placeholder="Role name, e.g. Combat Designer"
+            placeholder={tr("flow.picker.namePlaceholder")}
             autoFocus
             onKeyDown={(e) => {
               if (e.key === "Enter") {
@@ -135,7 +137,7 @@ export function AgentTemplatePicker({ value, onChange, onCreateRoleNode }: Props
             }}
           />
           <button type="button" onClick={() => void confirmSaveCustom()} disabled={!newCustomLabel.trim()}>
-            Save
+            {tr("flow.picker.save")}
           </button>
           <button
             type="button"
@@ -144,7 +146,7 @@ export function AgentTemplatePicker({ value, onChange, onCreateRoleNode }: Props
               setNewCustomLabel("");
             }}
           >
-            Cancel
+            {tr("flow.picker.cancel")}
           </button>
         </div>
       )}

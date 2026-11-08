@@ -1,26 +1,38 @@
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
-import type { PhoneLinkInfo } from "../../types.js";
+import { useI18n } from "../../i18n/index.js";
+import type { HubTestResult, HubUrlCheck, PhoneLinkInfo } from "../../types.js";
+import { EMPTY_WIZARD_DRAFT, LinkServerWizard, type WizardDraft } from "./LinkServerWizard.js";
+import { hubTestMessage } from "./phoneLinkMessages.js";
 
 type TrustedDevice = { deviceId: string; trustedAt: string };
 
-function ago(ms?: number): string {
-  if (!ms) return "nunca";
+function ago(t: ReturnType<typeof useI18n>["t"], ms?: number): string {
+  if (!ms) return t("set.phone.agoNever");
   const s = Math.max(0, Math.round((Date.now() - ms) / 1000));
-  if (s < 60) return `hace ${s} s`;
-  return `hace ${Math.round(s / 60)} min`;
+  if (s < 60) return t("set.phone.agoSec", { s });
+  return t("set.phone.agoMin", { m: Math.round(s / 60) });
 }
 
 /**
- * Settings → Teléfono: publish this desktop to the Railway gateway so the phone
+ * Settings → Teléfono: publish this desktop to the link server so the phone
  * finds it on its own (notes/asistente-personal/enlace-escritorio.md), and
- * show the one-time QR the phone scans to learn the Railway URL + key.
+ * show the one-time QR the phone scans to learn the server's URL + key.
  */
 export function PhoneLinkSection() {
+  const { t } = useI18n();
   const { call } = useGateway();
   const [info, setInfo] = useState<PhoneLinkInfo | null>(null);
   const [hubUrl, setHubUrl] = useState("");
   const [hubKey, setHubKey] = useState("");
+  // A just-generated key has to be readable: the user copies it to the server.
+  const [keyGenerated, setKeyGenerated] = useState(false);
+  const [copied, setCopied] = useState(false);
+  const [urlCheck, setUrlCheck] = useState<HubUrlCheck>("empty");
+  const [testing, setTesting] = useState(false);
+  const [testResult, setTestResult] = useState<HubTestResult | null>(null);
+  const [wizardOpen, setWizardOpen] = useState(false);
+  const [wizardDraft, setWizardDraft] = useState<WizardDraft>(EMPTY_WIZARD_DRAFT);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
@@ -52,12 +64,59 @@ export function PhoneLinkSection() {
     return () => clearInterval(timer);
   }, []);
 
+  // Asked to main, the one place that decides what a URL may receive.
+  useEffect(() => {
+    let current = true;
+    void window.yggdrasil.phoneLink.checkUrl(hubUrl).then((check) => {
+      if (current) setUrlCheck(check);
+    });
+    return () => {
+      current = false;
+    };
+  }, [hubUrl]);
+
+  // A result only describes the URL and key it was run with.
+  const testToken = useRef(0);
+  useEffect(() => {
+    testToken.current += 1;
+    setTesting(false);
+    setTestResult(null);
+  }, [hubUrl, hubKey]);
+
+  const testConnection = async () => {
+    const token = ++testToken.current;
+    setTesting(true);
+    setTestResult(null);
+    try {
+      const result = await window.yggdrasil.phoneLink.test({ hubUrl, hubKey });
+      if (token === testToken.current) setTestResult(result);
+    } catch (e) {
+      if (token === testToken.current) setTestResult({ ok: false, code: "unreachable", detail: e instanceof Error ? e.message : String(e) });
+    } finally {
+      if (token === testToken.current) setTesting(false);
+    }
+  };
+
+  const generateKey = async () => {
+    setError(null);
+    setCopied(false);
+    setHubKey(await window.yggdrasil.phoneLink.generateKey());
+    setKeyGenerated(true);
+  };
+
+  const copyKey = async () => {
+    await navigator.clipboard.writeText(hubKey);
+    setCopied(true);
+  };
+
   const run = async (fn: () => Promise<PhoneLinkInfo>) => {
     setBusy(true);
     setError(null);
     try {
       apply(await fn());
       setHubKey("");
+      setKeyGenerated(false);
+      setCopied(false);
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
@@ -74,102 +133,138 @@ export function PhoneLinkSection() {
     }
   };
 
-  if (!info) return <p className="muted">Cargando…</p>;
+  if (!info) return <p className="muted">{t("set.phone.loading")}</p>;
   const st = info.status;
+  const urlBlocked = urlCheck === "invalid" || urlCheck === "insecure-public";
+  // Same rule as main's savedKeyWouldMove, which is what actually enforces it.
+  const keyNeeded = info.hasHubKey && !!hubUrl.trim() && hubUrl.trim() !== info.hubUrl && !hubKey.trim();
 
   return (
     <section className="settings-section">
-      <h3>Teléfono</h3>
+      <h3>{t("set.phone.title")}</h3>
       <p className="muted">
-        Publica este equipo en tu gateway de Railway para que la app del teléfono lo encuentre sola, sin escribir IP, puerto ni
-        clave. Mientras esté publicado, los gateways de este equipo exigen una clave a cualquier conexión que no sea de este
-        mismo computador.
+        {t("set.phone.intro")}
       </p>
 
+      <div className="ide-option-row">
+        <button type="button" onClick={() => setWizardOpen(true)}>
+          {t("set.phone.wiz.open")}
+        </button>
+        <span className="muted">{t("set.phone.wiz.openHint")}</span>
+      </div>
+      {wizardOpen && (
+        <LinkServerWizard
+          info={info}
+          draft={wizardDraft}
+          onDraft={setWizardDraft}
+          onClose={() => setWizardOpen(false)}
+          onFinished={(next) => {
+            apply(next);
+            setWizardDraft(EMPTY_WIZARD_DRAFT);
+          }}
+        />
+      )}
+
       <label>
-        URL de Railway
-        <input type="text" value={hubUrl} placeholder="https://tu-gateway.up.railway.app" onChange={(e) => setHubUrl(e.target.value)} />
+        {t("set.phone.hubUrl")}
+        <input type="text" value={hubUrl} placeholder={t("set.phone.hubUrlPlaceholder")} onChange={(e) => setHubUrl(e.target.value)} />
       </label>
+      {urlCheck === "insecure-public" && <p className="error">{t("set.phone.urlInsecurePublic")}</p>}
+      {urlCheck === "invalid" && <p className="error">{t("set.phone.urlInvalid")}</p>}
+      {urlCheck === "insecure-local" && <p className="muted">{t("set.phone.urlInsecureLocal")}</p>}
       <label>
-        Clave de Railway (YGGDRASIL_API_KEY)
+        {t("set.phone.hubKey")}
         <input
-          type="password"
+          type={keyGenerated ? "text" : "password"}
           value={hubKey}
-          placeholder={info.hasHubKey ? "•••••••• (guardada; escribe otra para cambiarla)" : "Pega la clave"}
+          placeholder={info.hasHubKey ? t("set.phone.keySaved") : t("set.phone.keyPaste")}
           onChange={(e) => setHubKey(e.target.value)}
         />
       </label>
       <div className="ide-option-row">
-        <button disabled={busy} onClick={() => void run(() => window.yggdrasil.phoneLink.save({ hubUrl, hubKey }))}>
-          Guardar
+        <button type="button" disabled={busy} onClick={() => void generateKey()}>
+          {t("set.phone.generateKey")}
         </button>
-        <label>
+        {keyGenerated && (
+          <button type="button" onClick={() => void copyKey()}>
+            {copied ? t("set.phone.copied") : t("set.phone.copyKey")}
+          </button>
+        )}
+      </div>
+      {keyGenerated && <p className="muted">{t("set.phone.generatedHint")}</p>}
+      {keyNeeded && !urlBlocked && <p className="muted">{t("set.phone.keyNeededForUrl")}</p>}
+      <div className="ide-option-row">
+        <button disabled={busy || urlBlocked || keyNeeded} onClick={() => void run(() => window.yggdrasil.phoneLink.save({ hubUrl, hubKey }))}>
+          {t("set.phone.save")}
+        </button>
+        <button type="button" disabled={testing || urlBlocked || urlCheck === "empty"} onClick={() => void testConnection()}>
+          {testing ? t("set.phone.testing") : t("set.phone.test")}
+        </button>
+        <label className="settings-check">
           <input
             type="checkbox"
             checked={info.publish}
-            disabled={busy}
+            disabled={busy || urlBlocked || keyNeeded}
             onChange={(e) => void run(() => window.yggdrasil.phoneLink.save({ hubUrl, hubKey, publish: e.target.checked }))}
           />
-          Publicar este equipo en Railway
+          {t("set.phone.publish")}
         </label>
       </div>
+      {testResult && <p className={testResult.ok ? "muted" : "error"} role="status">{hubTestMessage(t, testResult)}</p>}
 
       <p className="muted">
-        Equipo: <strong>{info.desktopName}</strong> · red local: {info.addresses.lan ?? "—"} · Tailscale:{" "}
-        {info.addresses.tailscale ?? "no detectado"}
+        {t("set.phone.machine")} <strong>{info.desktopName}</strong> · {t("set.phone.lan")} {info.addresses.lan ?? "—"} · Tailscale:{" "}
+        {info.addresses.tailscale ?? t("set.phone.notDetected")}
       </p>
       <p className={st.state === "error" ? "error" : "muted"}>
-        {st.state === "disabled" && "Sin publicar."}
-        {st.state === "idle" && "Preparando…"}
-        {st.state === "ok" && `Publicado · último aviso ${ago(st.lastOkAt)}`}
-        {st.state === "error" && `No se pudo publicar: ${st.lastError} (último aviso correcto: ${ago(st.lastOkAt)})`}
+        {st.state === "disabled" && t("set.phone.stDisabled")}
+        {st.state === "idle" && t("set.phone.stIdle")}
+        {st.state === "ok" && t("set.phone.stOk", { ago: ago(t, st.lastOkAt) })}
+        {st.state === "error" && t("set.phone.stError", { error: st.lastError ?? "", ago: ago(t, st.lastOkAt) })}
       </p>
       <p className={info.tunnel.state === "error" ? "error" : "muted"}>
-        Túnel (acceso desde cualquier red):{" "}
-        {info.tunnel.state === "disabled" && "apagado"}
-        {info.tunnel.state === "connecting" && "conectando…"}
-        {info.tunnel.state === "connected" && "conectado"}
-        {info.tunnel.state === "error" && `sin conexión${info.tunnel.lastError ? ` (${info.tunnel.lastError})` : ""}, reintentando`}
+        {t("set.phone.tunnel")}{" "}
+        {info.tunnel.state === "disabled" && t("set.phone.tunOff")}
+        {info.tunnel.state === "connecting" && t("set.phone.tunConnecting")}
+        {info.tunnel.state === "connected" && t("set.phone.tunConnected")}
+        {info.tunnel.state === "error" && t("set.phone.tunError", { detail: info.tunnel.lastError ? ` (${info.tunnel.lastError})` : "" })}
       </p>
       {info.needsReopen.length > 0 && (
         <p className="error">
-          El teléfono no ve {info.needsReopen.join(", ")}: se abrieron antes de activar la publicación y no tienen clave.
-          Ciérralos y vuelve a abrirlos (o reinicia la app).
+          {t("set.phone.needsReopen", { names: info.needsReopen.join(", ") })}
         </p>
       )}
       <div className="ide-option-row">
         <button disabled={busy || !info.publish} onClick={() => void run(() => window.yggdrasil.phoneLink.publishNow())}>
-          Publicar ahora
+          {t("set.phone.publishNow")}
         </button>
-        <button disabled={!info.hasHubKey || !info.hubUrl} onClick={() => (qr ? setQr(null) : void showQr())}>
-          {qr ? "Ocultar QR" : "Mostrar QR para el teléfono"}
+        <button disabled={!info.hasHubKey || !info.hubUrl || info.hubUrlCheck === "insecure-public"} onClick={() => (qr ? setQr(null) : void showQr())}>
+          {qr ? t("set.phone.hideQr") : t("set.phone.showQr")}
         </button>
       </div>
       {qr && (
         <div style={{ marginTop: 12 }}>
-          <img src={qr} alt="QR con la URL y la clave de Railway" width={240} height={240} />
+          <img src={qr} alt={t("set.phone.qrAlt")} width={240} height={240} />
           <p className="muted">
-            Escanéalo una vez con la app (Perfiles → Escanear). Contiene la clave de Railway: no lo compartas ni lo dejes a la
-            vista.
+            {t("set.phone.qrHint")}
           </p>
         </div>
       )}
       {error && <p className="error">{error}</p>}
 
-      <h3 style={{ marginTop: 20 }}>Dispositivos confiables</h3>
+      <h3 style={{ marginTop: 20 }}>{t("set.phone.trustedTitle")}</h3>
       <p className="muted">
-        Un dispositivo marcado como confiable (desde el banner de "Confiar en este dispositivo" al abrir una aprobación) deja
-        de pedir aprobación para leer/escribir archivos de este proyecto. Solo aplica a este proyecto, no a los demás.
+        {t("set.phone.trustedIntro")}
       </p>
       {trustedDevices.length === 0 ? (
-        <p className="muted">Ningún dispositivo confiable para este proyecto todavía.</p>
+        <p className="muted">{t("set.phone.trustedNone")}</p>
       ) : (
         <ul className="trusted-devices-list">
           {trustedDevices.map((d) => (
             <li key={d.deviceId}>
               <span className="trusted-device-id">{d.deviceId}</span>
-              <span className="muted">confiado {ago(new Date(d.trustedAt).getTime())}</span>
-              <button onClick={() => revokeTrust(d.deviceId)}>Quitar confianza</button>
+              <span className="muted">{t("set.phone.trustedAgo", { ago: ago(t, new Date(d.trustedAt).getTime()) })}</span>
+              <button onClick={() => revokeTrust(d.deviceId)}>{t("set.phone.untrust")}</button>
             </li>
           ))}
         </ul>

@@ -8,6 +8,10 @@ import { previewKind } from "./filePreviewKind.js";
 import { DiskConflictBar } from "../documents/DiskConflictBar.js";
 import { reconcileExternalChange } from "../documents/reconcileExternalChange.js";
 import type { FsReadResult } from "../types.js";
+import { useI18n } from "../i18n/index.js";
+import { contentToSave } from "./contentToSave.js";
+import { registerFileOpener } from "./openFileBus.js";
+import { releaseModel } from "./lsp/service.js";
 
 type TabState = {
   content: string;
@@ -33,6 +37,7 @@ function basename(path: string): string {
  * Documents-only extras (feature docs, Drive sharing, persisted layout).
  */
 export function FilesView() {
+  const { t } = useI18n();
   const { call, onEvent } = useGateway();
   const [openPaths, setOpenPaths] = useState<string[]>([]);
   const [activePath, setActivePath] = useState<string | null>(null);
@@ -141,14 +146,27 @@ export function FilesView() {
     setActivePath(path);
   };
 
+  useEffect(
+    () =>
+      registerFileOpener({
+        contains: (element) => rootRef.current?.contains(element) === true,
+        open: (path) => {
+          setOpenPaths((prev) => (prev.includes(path) ? prev : [...prev, path]));
+          setActivePath(path);
+        },
+      }),
+    [],
+  );
+
   const save = useCallback(
     async (path: string) => {
       const tab = tabs[path];
       // Never write back a truncated read — it would drop the rest of the file on disk.
       if (!tab || tab.content === tab.savedContent || previewKind(path) !== "text" || tab.truncated) return;
       try {
-        await call("fs.write", { relativePath: path, content: tab.content });
-        setTabs((prev) => ({ ...prev, [path]: { ...prev[path]!, savedContent: tab.content, diskConflict: undefined } }));
+        const content = await contentToSave(path, tab.content);
+        await call("fs.write", { relativePath: path, content });
+        setTabs((prev) => ({ ...prev, [path]: { ...prev[path]!, savedContent: content, diskConflict: undefined } }));
       } catch (err) {
         setTabs((prev) => ({
           ...prev,
@@ -175,9 +193,10 @@ export function FilesView() {
 
   const closeTab = (path: string) => {
     const tab = tabs[path];
-    if (tab && tab.content !== tab.savedContent && !window.confirm(`Discard unsaved changes to "${basename(path)}"?`)) {
+    if (tab && tab.content !== tab.savedContent && !window.confirm(t("doc.discardConfirmFile", { name: basename(path) }))) {
       return;
     }
+    releaseModel(path);
     setOpenPaths((prev) => {
       const next = prev.filter((p) => p !== path);
       if (activePath === path) setActivePath(next.length > 0 ? next[next.length - 1]! : null);
@@ -210,7 +229,7 @@ export function FilesView() {
                     {dirty ? "● " : ""}
                     {basename(path)}
                   </button>
-                  <button type="button" className="documents-tab-close" title="Close" onClick={() => closeTab(path)}>
+                  <button type="button" className="documents-tab-close" title={t("doc.close")} onClick={() => closeTab(path)}>
                     <XMarkIcon className="hero-icon" />
                   </button>
                 </div>
@@ -225,16 +244,18 @@ export function FilesView() {
           />
         )}
         <div className="documents-editor">
-          {!activePath && <p className="muted documents-empty">Select a file to open it.</p>}
+          {!activePath && <p className="muted documents-empty">{t("doc.selectFile")}</p>}
           {activePath && activeKind && activeKind !== "text" && <FileViewer relativePath={activePath} kind={activeKind} />}
-          {activePath && activeKind === "text" && activeTab?.loading && <p className="muted documents-empty">Loading…</p>}
+          {activePath && activeKind === "text" && activeTab?.loading && <p className="muted documents-empty">{t("doc.loading")}</p>}
           {activePath && activeKind === "text" && activeTab?.error && (
             <p className="error documents-empty">{activeTab.error}</p>
           )}
           {activePath && activeKind === "text" && activeTab?.truncated && (
             <p className="muted documents-empty">
-              Truncated — showing {activeTab.content.length.toLocaleString()} of{" "}
-              {activeTab.totalLength?.toLocaleString()} characters. Too large to edit here.
+              {t("docs.view.truncated", {
+                shown: activeTab.content.length.toLocaleString(),
+                total: activeTab.totalLength?.toLocaleString() ?? "",
+              })}
             </p>
           )}
           {activePath && activeKind === "text" && activeTab && !activeTab.loading && !activeTab.error && (

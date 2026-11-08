@@ -5,7 +5,7 @@ void main() {
   group('describeApproval', () {
     test('turns a tool call into a short readable line', () {
       expect(describeApproval('phone_set_alarm', {'hour': 7, 'minute': 30}), 'set alarm: 7, 30');
-      expect(describeApproval('phone_send_sms', {'to': '+56911112222', 'body': 'llego tarde'}), 'send sms: +56911112222, llego tarde');
+      expect(describeApproval('phone_send_sms', {'to': '+15550001111', 'body': 'llego tarde'}), 'send sms: +15550001111, llego tarde');
     });
 
     test('handles missing args and truncates very long ones', () {

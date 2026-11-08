@@ -184,7 +184,7 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
   context.channelManager = channelManager;
 
   // Push, reminders and the offline-action queue need a persistent workspace
-  // (the Railway volume) — they only run for the real long-lived gateway.
+  // (the deployment's volume) — they only run for the real long-lived gateway.
   let assistantServices: AssistantServices | null = null;
   if (options.workspaceRoot) {
     assistantServices = await createAssistantServices({
@@ -236,7 +236,7 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
 
   wss.on("connection", (ws, req: IncomingMessage) => {
     const url = new URL(req.url ?? "/", `http://${req.headers.host ?? "localhost"}`);
-    // Traffic the desktop relays from the Railway tunnel arrives from 127.0.0.1
+    // Traffic the desktop relays from the link server's tunnel arrives from 127.0.0.1
     // but is a remote phone: the desktop marks it, and it gets no local trust
     // (must send the key; no loopback exemptions).
     const viaTunnel = req.headers["x-yggdrasil-tunnel"] === "1";
@@ -280,6 +280,15 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
     });
     const unsubProviderLatency = context.events.on("provider.latency", (payload) => {
       sendJson(ws, { type: "event", event: "provider.latency", payload });
+    });
+    // A tool-loop guard stepped in (empty reply retried, announced action nudged, repeat refused…): clients and
+    // the agentic evals use it to see how often the model needed help.
+    const unsubLoopGuard = context.events.on("loop.guard", (payload) => {
+      sendJson(ws, { type: "event", event: "loop.guard", payload });
+    });
+    // The provider is retrying a failed request (rate limit, 5xx, dropped connection): shown by the TUI, counted by the evals.
+    const unsubProviderRetry = context.events.on("provider.retry", (payload) => {
+      sendJson(ws, { type: "event", event: "provider.retry", payload });
     });
     const unsubApprovalModeChanged = context.events.on("tools.approvalMode.changed", (payload) => {
       sendJson(ws, { type: "event", event: "tools.approvalMode.changed", payload });
@@ -393,6 +402,8 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
       unsubTurnEnd();
       unsubToolExec();
       unsubProviderLatency();
+      unsubLoopGuard();
+      unsubProviderRetry();
       unsubApprovalModeChanged();
       unsubDelegateStart();
       unsubDeviceInvokeReq();

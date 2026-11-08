@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import '../l10n/app_strings.dart';
 import '../services/yggdrasil_client.dart';
 import '../theme/ygg_theme.dart';
+import '../ui/ui.dart';
 
 /// Workflows tab for a project — list + run + cancel + run history, molded
 /// on agent_flow_tab.dart's read-only/Map-based structure (no typed Dart
@@ -38,6 +39,7 @@ class _WorkflowsTabState extends State<WorkflowsTab> {
   String? _error;
   String? _expandedId;
   final Map<String, List<Map>> _runsByWorkflow = {};
+  final Map<String, Map> _lastRun = {};
 
   String? _runningWorkflowId;
   String? _runningRunId;
@@ -70,6 +72,7 @@ class _WorkflowsTabState extends State<WorkflowsTab> {
         _summaries = summaries.cast<Map>();
         _loading = false;
       });
+      unawaited(_loadLastRuns());
     } catch (e) {
       if (!mounted) return;
       setState(() {
@@ -85,9 +88,30 @@ class _WorkflowsTabState extends State<WorkflowsTab> {
     try {
       final runs = await client.listWorkflowRuns(workflowId: workflowId, limit: 10);
       if (!mounted) return;
-      setState(() => _runsByWorkflow[workflowId] = runs.cast<Map>());
+      setState(() {
+        _runsByWorkflow[workflowId] = runs.cast<Map>();
+        if (runs.isNotEmpty && runs.first is Map) _lastRun[workflowId] = runs.first as Map;
+      });
     } catch (_) {
       // Best-effort — the expanded row still shows without history on failure.
+    }
+  }
+
+  /// One run per workflow (the newest), so each card can say how it last went. Capped
+  /// so a project with many workflows doesn't fire a burst of requests.
+  Future<void> _loadLastRuns() async {
+    final client = widget.client;
+    if (client == null) return;
+    for (final summary in _summaries.take(12)) {
+      final id = ((summary['workflow'] as Map?)?['id'])?.toString();
+      if (id == null || id.isEmpty) continue;
+      try {
+        final runs = await client.listWorkflowRuns(workflowId: id, limit: 1);
+        if (!mounted) return;
+        if (runs.isNotEmpty && runs.first is Map) setState(() => _lastRun[id] = runs.first as Map);
+      } catch (_) {
+        // The card just shows no last run.
+      }
     }
   }
 
@@ -159,51 +183,64 @@ class _WorkflowsTabState extends State<WorkflowsTab> {
     await client.cancelWorkflowRun(runId);
   }
 
-  Widget _statusChip(String? status) {
-    Color color;
+  YggChipTone _runTone(String? status) {
     switch (status) {
       case 'succeeded':
-        color = YggColors.accent;
-        break;
+        return YggChipTone.ready;
       case 'failed':
-        color = Colors.redAccent;
-        break;
+        return YggChipTone.danger;
       case 'running':
-        color = Colors.amber;
-        break;
+        return YggChipTone.working;
       default:
-        color = YggColors.textFaint;
+        return YggChipTone.neutral;
     }
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-      decoration: BoxDecoration(border: Border.all(color: color), borderRadius: BorderRadius.circular(4)),
-      child: Text(status ?? '?', style: TextStyle(fontSize: 11, color: color)),
-    );
   }
+
+  String _runLabel(String? status) {
+    switch (status) {
+      case 'succeeded':
+        return AppStrings.t('workflows.statusSucceeded');
+      case 'failed':
+        return AppStrings.t('workflows.statusFailed');
+      case 'running':
+        return AppStrings.t('workflows.statusRunning');
+      case 'pending':
+      case 'queued':
+        return AppStrings.t('workflows.statusPending');
+      default:
+        return status ?? '?';
+    }
+  }
+
+  Widget _statusChip(String? status) => YggChip(_runLabel(status), tone: _runTone(status), dot: true, pulse: status == 'running');
+
+  /// "manual · hace 1 min" for a run map.
+  String _runWhen(Map run) {
+    final trigger = (run['trigger'] is Map ? (run['trigger'] as Map)['type'] : null)?.toString() ?? '';
+    final startedAt = yggEpochFromIso(run['startedAt']);
+    final when = startedAt > 0 ? yggTimeAgo(startedAt) : '';
+    return [trigger, when].where((p) => p.isNotEmpty).join(' · ');
+  }
+
+  TextStyle get _monoMuted => TextStyle(fontFamily: YggFonts.mono, fontSize: 11, color: YggColors.textMuted);
 
   Widget _runHistory(String workflowId) {
     final runs = _runsByWorkflow[workflowId];
     if (runs == null) return const SizedBox.shrink();
     if (runs.isEmpty) {
-      return Text(AppStrings.t('projects.workflowNoRuns'), style: const TextStyle(fontSize: 12.5, color: YggColors.textFaint));
+      return Text(AppStrings.t('projects.workflowNoRuns'), style: TextStyle(fontSize: 12.5, color: YggColors.textMuted));
     }
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         for (final run in runs)
           Padding(
-            padding: const EdgeInsets.only(bottom: 6),
+            padding: const EdgeInsets.only(bottom: 8),
             child: Row(
               children: [
                 _statusChip(run['status']?.toString()),
-                const SizedBox(width: 8),
-                Expanded(
-                  child: Text(
-                    '${run['trigger']?['type'] ?? ''} · ${run['startedAt'] ?? ''}',
-                    style: const TextStyle(fontSize: 12, color: YggColors.textFaint),
-                    overflow: TextOverflow.ellipsis,
-                  ),
-                ),
+                const SizedBox(width: 10),
+                Expanded(child: Text(_runWhen(run), style: _monoMuted, overflow: TextOverflow.ellipsis)),
               ],
             ),
           ),
@@ -211,25 +248,43 @@ class _WorkflowsTabState extends State<WorkflowsTab> {
     );
   }
 
+  Color _nodeColor(String? status) {
+    switch (status) {
+      case 'succeeded':
+        return YggColors.ready;
+      case 'failed':
+        return YggColors.danger;
+      case 'running':
+        return YggColors.working;
+      default:
+        return YggColors.textFainter;
+    }
+  }
+
   Widget _nodeStatuses(Map<String, dynamic>? run) {
     final nodes = run?['nodes'];
     if (nodes is! Map || nodes.isEmpty) return const SizedBox.shrink();
-    return Padding(
-      padding: const EdgeInsets.only(top: 8),
+    return Container(
+      margin: const EdgeInsets.only(top: 12),
+      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+      decoration: BoxDecoration(color: YggColors.cardFillHighest, borderRadius: BorderRadius.circular(YggRadius.md)),
       child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           for (final entry in nodes.entries)
-            Padding(
-              padding: const EdgeInsets.only(bottom: 4),
-              child: Row(
-                children: [
-                  _statusChip((entry.value as Map?)?['status']?.toString()),
-                  const SizedBox(width: 8),
-                  Text(entry.key.toString(), style: const TextStyle(fontSize: 12.5, color: YggColors.text)),
-                ],
-              ),
-            ),
+            Builder(builder: (context) {
+              final status = (entry.value as Map?)?['status']?.toString();
+              return Padding(
+                padding: const EdgeInsets.symmetric(vertical: 3),
+                child: Row(
+                  children: [
+                    YggDot(color: _nodeColor(status), pulse: status == 'running'),
+                    const SizedBox(width: 8),
+                    Expanded(child: Text(entry.key.toString(), style: TextStyle(fontFamily: YggFonts.mono, fontSize: 12, color: YggColors.text))),
+                    Text(_runLabel(status), style: TextStyle(fontFamily: YggFonts.mono, fontSize: 12, color: _nodeColor(status))),
+                  ],
+                ),
+              );
+            }),
         ],
       ),
     );
@@ -244,15 +299,18 @@ class _WorkflowsTabState extends State<WorkflowsTab> {
     final grantStatus = summary['grantStatus']?.toString();
     final expanded = _expandedId == id;
     final isRunningThis = _runningWorkflowId == id;
+    final last = _lastRun[id];
+    final canRun = enabled && allowRemoteTrigger && _runningWorkflowId == null;
 
     return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+      padding: const EdgeInsets.only(bottom: 12),
       child: Container(
         decoration: BoxDecoration(
-          border: Border.all(color: YggColors.hairline),
-          borderRadius: BorderRadius.circular(8),
+          color: YggColors.surface,
+          border: Border.all(color: isRunningThis ? YggColors.borderStrong : YggColors.border),
+          borderRadius: BorderRadius.circular(YggRadius.lg),
         ),
-        padding: const EdgeInsets.all(12),
+        padding: const EdgeInsets.all(14),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -261,57 +319,72 @@ class _WorkflowsTabState extends State<WorkflowsTab> {
               child: Row(
                 children: [
                   Expanded(
-                    child: Text(name, style: const TextStyle(fontSize: 14.5, fontWeight: FontWeight.w600, color: YggColors.text)),
+                    child: Text(name, style: TextStyle(fontSize: 15, fontWeight: FontWeight.w600, color: enabled ? YggColors.text : YggColors.text2)),
                   ),
-                  if (!enabled)
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Text(AppStrings.t('projects.workflowDisabled'), style: const TextStyle(fontSize: 11, color: YggColors.textFaint)),
-                    ),
-                  if (grantStatus != null && grantStatus != 'not_required')
-                    Padding(
-                      padding: const EdgeInsets.only(right: 8),
-                      child: Text(grantStatus, style: TextStyle(fontSize: 11, color: grantStatus == 'granted' ? YggColors.accent : Colors.amber)),
-                    ),
-                  Icon(expanded ? Icons.expand_less : Icons.expand_more, color: YggColors.textFaint, size: 18),
+                  Icon(expanded ? Icons.expand_less : Icons.expand_more, color: YggColors.textFaint, size: 20),
                 ],
               ),
             ),
-            if (expanded) ...[
+            const SizedBox(height: 10),
+            Wrap(
+              spacing: 8,
+              runSpacing: 6,
+              crossAxisAlignment: WrapCrossAlignment.center,
+              children: [
+                if (!enabled) YggChip(AppStrings.t('projects.workflowDisabled')),
+                if (grantStatus != null && grantStatus != 'not_required')
+                  grantStatus == 'granted'
+                      ? YggChip(AppStrings.t('workflows.granted'), tone: YggChipTone.ready)
+                      : YggChip(AppStrings.t('workflows.grantPending'), tone: YggChipTone.working),
+              ],
+            ),
+            if (isRunningThis || last != null) ...[
               const SizedBox(height: 10),
-              if (!allowRemoteTrigger)
-                Padding(
-                  padding: const EdgeInsets.only(bottom: 8),
-                  child: Text(
-                    AppStrings.t('projects.workflowRemoteTriggerOff'),
-                    style: const TextStyle(fontSize: 12, color: Colors.amber),
-                  ),
-                ),
               Row(
                 children: [
-                  if (isRunningThis && _runningRunId != null)
-                    OutlinedButton(onPressed: _cancel, child: Text(AppStrings.t('projects.workflowCancel')))
-                  else
-                    ElevatedButton(
-                      onPressed: (enabled && allowRemoteTrigger && _runningWorkflowId == null) ? () => _run(id) : null,
-                      child: Text(AppStrings.t('projects.workflowRun')),
-                    ),
-                  if (isRunningThis) ...[
-                    const SizedBox(width: 10),
-                    _statusChip(_runningRun?['status']?.toString() ?? 'running'),
-                  ],
+                  _statusChip(isRunningThis ? (_runningRun?['status']?.toString() ?? 'running') : last!['status']?.toString()),
+                  const SizedBox(width: 10),
+                  Expanded(child: Text(_runWhen(isRunningThis ? (_runningRun ?? last ?? const {}) : last!), style: _monoMuted, overflow: TextOverflow.ellipsis)),
                 ],
               ),
-              if (isRunningThis) _nodeStatuses(_runningRun),
+            ] else if (enabled) ...[
+              const SizedBox(height: 10),
+              Text(AppStrings.t('workflows.noRunsYet'), style: TextStyle(fontSize: 12.5, color: YggColors.textMuted)),
+            ],
+            if (isRunningThis) _nodeStatuses(_runningRun),
+            if (!enabled) ...[
+              const SizedBox(height: 10),
+              Text(AppStrings.t('workflows.disabledHint'), style: TextStyle(fontSize: 12.5, height: 1.45, color: YggColors.textMuted)),
+            ] else if (!allowRemoteTrigger) ...[
+              const SizedBox(height: 10),
+              Text(AppStrings.t('projects.workflowRemoteTriggerOff'), style: TextStyle(fontSize: 12.5, height: 1.45, color: YggColors.working)),
+            ],
+            const SizedBox(height: 14),
+            Align(
+              alignment: Alignment.centerRight,
+              child: isRunningThis && _runningRunId != null
+                  ? OutlinedButton(
+                      onPressed: _cancel,
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: YggColors.danger,
+                        side: BorderSide(color: YggColors.danger.withValues(alpha: 0.5)),
+                      ),
+                      child: Text(AppStrings.t('projects.workflowCancel')),
+                    )
+                  : FilledButton.icon(
+                      onPressed: canRun ? () => _run(id) : null,
+                      icon: const Icon(Icons.play_arrow, size: 18),
+                      label: Text(AppStrings.t('projects.workflowRun')),
+                    ),
+            ),
+            if (expanded) ...[
+              const SizedBox(height: 14),
+              Divider(height: 1, color: YggColors.border),
               const SizedBox(height: 12),
-              Text(
-                AppStrings.t('projects.workflowRunHistory'),
-                style: const TextStyle(fontSize: 12, letterSpacing: 1.2, color: YggColors.textFainter),
-              ),
-              const SizedBox(height: 6),
+              YggSectionLabel(AppStrings.t('projects.workflowRunHistory'), padding: const EdgeInsets.only(bottom: 8)),
               _runHistory(id),
-              const SizedBox(height: 8),
-              Text(AppStrings.t('projects.workflowArtifactsNote'), style: const TextStyle(fontSize: 11, color: YggColors.textFainter)),
+              const SizedBox(height: 4),
+              Text(AppStrings.t('projects.workflowArtifactsNote'), style: TextStyle(fontSize: 11, color: YggColors.textFainter)),
             ],
           ],
         ),
@@ -322,33 +395,24 @@ class _WorkflowsTabState extends State<WorkflowsTab> {
   @override
   Widget build(BuildContext context) {
     if (widget.client == null) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(AppStrings.t('projects.notOpenOnComputer'), style: const TextStyle(color: YggColors.textFaint)),
-        ),
-      );
+      return YggEmptyState(icon: Icons.bolt_outlined, message: AppStrings.t('projects.notOpenOnComputer'));
     }
-    if (_loading) return const Center(child: CircularProgressIndicator(color: YggColors.accent));
+    if (_loading) return Center(child: CircularProgressIndicator(color: YggColors.accent));
     if (_error != null) {
-      return Padding(
-        padding: const EdgeInsets.all(24),
-        child: Text('${AppStrings.t('common.errorPrefix')}: $_error', style: const TextStyle(color: YggColors.textMuted)),
+      return YggEmptyState(
+        icon: Icons.error_outline,
+        message: '${AppStrings.t('common.errorPrefix')}: $_error',
+        action: OutlinedButton(onPressed: _load, child: Text(AppStrings.t('common.retry'))),
       );
     }
     if (_summaries.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(24),
-          child: Text(AppStrings.t('projects.noWorkflows'), style: const TextStyle(color: YggColors.textFaint)),
-        ),
-      );
+      return YggEmptyState(icon: Icons.bolt_outlined, message: AppStrings.t('projects.noWorkflows'));
     }
     return RefreshIndicator(
       onRefresh: _load,
       color: YggColors.accent,
       child: ListView(
-        padding: const EdgeInsets.all(16),
+        padding: const EdgeInsets.fromLTRB(16, 8, 16, 28),
         children: [for (final summary in _summaries) _workflowRow(summary)],
       ),
     );

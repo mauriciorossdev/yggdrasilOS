@@ -117,6 +117,26 @@ describe("updateAgent", () => {
     expect(raw.agents.find((a) => a.id === "other")).toEqual({ id: "other" });
   });
 
+  it("keeps tools and contextProviders that the update did not send", async () => {
+    await createAgent({
+      agent: { id: "reviewer", label: "Old", tools: { allow: ["fs_*"] }, contextProviders: ["git"] },
+      scope: "local",
+      workspaceRoot,
+    });
+    const result = await updateAgent({ agent: { id: "reviewer", label: "New" }, scope: "local", workspaceRoot });
+    expect(result).toMatchObject({ label: "New", tools: { allow: ["fs_*"] }, contextProviders: ["git"] });
+    const raw = JSON.parse(await readFile(join(workspaceRoot, "yggdrasil.config.json"), "utf8")) as { agents: Array<Record<string, unknown>> };
+    expect(raw.agents.find((a) => a.id === "reviewer")).toMatchObject({ label: "New", tools: { allow: ["fs_*"] }, contextProviders: ["git"] });
+  });
+
+  it("replaces tools when the update sends them, and keeps the global ones too", async () => {
+    await createAgent({ agent: { id: "reviewer", tools: { allow: ["a"] } }, scope: "global", workspaceRoot });
+    await updateAgent({ agent: { id: "reviewer", label: "L" }, scope: "global", workspaceRoot });
+    expect((await readGlobalAgents())[0]).toMatchObject({ tools: { allow: ["a"] } });
+    await updateAgent({ agent: { id: "reviewer", tools: { allow: ["b_*"] } }, scope: "global", workspaceRoot });
+    expect((await readGlobalAgents())[0]).toMatchObject({ tools: { allow: ["b_*"] } });
+  });
+
   it("edits a global agent in place", async () => {
     await createAgent({ agent: { id: "reviewer", label: "Old" }, scope: "global", workspaceRoot });
 

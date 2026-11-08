@@ -179,7 +179,7 @@ class _ConfigPageState extends State<ConfigPage> {
                       alignment: Alignment.centerLeft,
                       child: Text(
                         AppStrings.tp('config.providerUnavailable', {'error': _providerError!}),
-                        style: const TextStyle(color: YggColors.errorRed, fontSize: 12.5),
+                        style: TextStyle(color: YggColors.errorRed, fontSize: 12.5),
                       ),
                     ),
                   ],

@@ -53,17 +53,17 @@ class _LocalFileViewerScreenState extends State<LocalFileViewerScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(fileName)),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: YggColors.accent))
+          ? Center(child: CircularProgressIndicator(color: YggColors.accent))
           : _error != null
               ? Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text('${AppStrings.t('common.errorPrefix')}: $_error', style: const TextStyle(color: YggColors.textMuted)),
+                  child: Text('${AppStrings.t('common.errorPrefix')}: $_error', style: TextStyle(color: YggColors.textMuted)),
                 )
               : SingleChildScrollView(
                   padding: const EdgeInsets.all(16),
                   child: SelectableText(
                     _content ?? '',
-                    style: const TextStyle(fontFamily: 'monospace', fontSize: 12.5, color: YggColors.text),
+                    style: TextStyle(fontFamily: YggFonts.mono, fontSize: 12.5, color: YggColors.text),
                   ),
                 ),
     );

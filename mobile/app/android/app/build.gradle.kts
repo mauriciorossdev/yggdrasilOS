@@ -26,9 +26,16 @@ android {
         targetSdk = flutter.targetSdkVersion
         versionCode = flutter.versionCode
         versionName = flutter.versionName
+        manifestPlaceholders["appLabel"] = "Yggdrasil"
     }
 
     buildTypes {
+        debug {
+            // Lets a debug build install next to the release app (different signing key).
+            // src/debug/google-services.json carries the matching Firebase client.
+            applicationIdSuffix = ".dev"
+            manifestPlaceholders["appLabel"] = "Yggdrasil Dev"
+        }
         release {
             // TODO: Add your own signing config for the release build.
             // Signing with the debug keys for now, so `flutter run --release` works.
@@ -46,3 +53,4 @@ kotlin {
 flutter {
     source = "../.."
 }
+

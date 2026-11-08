@@ -67,14 +67,14 @@ class _FileContentViewState extends State<FileContentView> {
   @override
   Widget build(BuildContext context) {
     if (_loading) {
-      return const Center(child: CircularProgressIndicator(color: YggColors.accent));
+      return Center(child: CircularProgressIndicator(color: YggColors.accent));
     }
     if (_error != null) {
       return Padding(
         padding: const EdgeInsets.all(24),
         child: Text(
           '${AppStrings.t('common.errorPrefix')}: $_error',
-          style: const TextStyle(color: YggColors.textMuted),
+          style: TextStyle(color: YggColors.textMuted),
         ),
       );
     }
@@ -88,12 +88,12 @@ class _FileContentViewState extends State<FileContentView> {
               padding: const EdgeInsets.only(bottom: 10),
               child: Text(
                 AppStrings.t('projects.fileTruncated'),
-                style: const TextStyle(color: YggColors.textFaint, fontSize: 12),
+                style: TextStyle(color: YggColors.textFaint, fontSize: 12),
               ),
             ),
           SelectableText(
             _content ?? '',
-            style: const TextStyle(fontFamily: 'monospace', fontSize: 12.5, color: YggColors.text, height: 1.4),
+            style: TextStyle(fontFamily: YggFonts.mono, fontSize: 12.5, color: YggColors.text, height: 1.4),
           ),
         ],
       ),

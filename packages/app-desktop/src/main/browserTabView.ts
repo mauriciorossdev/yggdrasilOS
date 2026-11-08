@@ -2,11 +2,23 @@ import { join } from "node:path";
 import { shell, WebContentsView, type BrowserWindow, type DownloadItem, type Input } from "electron";
 import { normalizeBrowserUrl, resolveBrowserInput } from "./browserUrl.js";
 import { buildClickScript, buildReadScript, buildTypeScript, clampMaxChars } from "./browserPageScripts.js";
+import { buildAssetUrlScript, buildExtractScript, type ExtractedPage, type ExtractMode } from "./browserExtract.js";
+import { AssetError, decodeDataUrl, MAX_ASSET_BYTES, readLimited, type FetchedAsset } from "./browserAssets.js";
 import { matchBrowserShortcut, nextZoomFactor, type BrowserShortcutAction } from "./browserShortcuts.js";
+import type { BrowserComment, CommentStatus, NewBrowserComment } from "./browserComments.js";
 
 export { normalizeBrowserUrl, resolveBrowserInput };
 
-export type BrowserTabBounds = { x: number; y: number; width: number; height: number };
+/** `emulate` makes the page lay out at that CSS viewport and scale down into `width`×`height` (the renderer's "Responsive" mode omits it). */
+export type BrowserTabBounds = {
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  emulate?: { width: number; height: number; mobile: boolean };
+  /** The page's own layout size when the view is narrower because a panel covers the rest: it keeps its layout and is cut off, as if under the panel. */
+  crop?: { width: number; height: number };
+};
 
 export type PickedElement = {
   tag: string;
@@ -18,6 +30,34 @@ export type PickedElement = {
   rect: { x: number; y: number; width: number; height: number };
   pageUrl: string;
   pageTitle: string;
+};
+
+/** Where a batch of comments gets delegated: an already-running pane, or a fresh pane for a provider's CLI. */
+export type CommentSendTarget = { kind: "pane"; paneId: string; name?: string } | { kind: "new"; command: string; label: string };
+
+export type CommentTargets = {
+  panes: Array<{ id: string; title: string; command?: string }>;
+  providers: Array<{ id: string; label: string; command: string }>;
+};
+
+/**
+ * Everything the in-page comments overlay (browserTabPickerPreload.ts) needs
+ * from the rest of the app. Injected (main/index.ts owns the project id, the
+ * store and the pane-control server) so this file stays free of those imports.
+ */
+export type BrowserCommentsHost = {
+  list: (pageUrl: string) => Promise<BrowserComment[]>;
+  add: (input: NewBrowserComment) => Promise<BrowserComment>;
+  update: (pageUrl: string, id: string, text: string) => Promise<void>;
+  remove: (pageUrl: string, id: string) => Promise<void>;
+  /** Manual status change from the overlay (Mark done / Reopen). */
+  setStatus: (ids: string[], status: CommentStatus) => Promise<void>;
+  targets: () => Promise<CommentTargets>;
+  /** `ids` omitted = every comment of the page. `page` is the page the request came from — captures are extracted from it. */
+  send: (
+    req: { pageUrl: string; ids?: string[]; target: CommentSendTarget },
+    page: { extract: (opts: { mode: ExtractMode; selector?: string; maxChars?: number }) => Promise<ExtractedPage> },
+  ) => Promise<{ ok: boolean; error?: string }>;
 };
 
 /** One entry of the tab strip. */
@@ -83,6 +123,10 @@ export type BrowserTabHandle = {
   showDownload: (path: string) => void;
   /** Throws if no page is loaded. */
   readPage: (maxChars?: number) => Promise<BrowserPageRead>;
+  /** Full-fidelity Markdown of an element, the page's main article, or the whole page (browser_extract). Throws if no page is loaded or the selector matches nothing. */
+  extract: (opts: { mode: ExtractMode; selector?: string; maxChars?: number }) => Promise<ExtractedPage>;
+  /** Downloads an asset (by URL, or the element at a selector) through the active page's session — see browserAssets.ts for what may then be written. */
+  fetchAsset: (input: { url?: string; selector?: string }) => Promise<FetchedAsset>;
   /** PNG of what the view currently shows, downscaled to at most 1280px wide. Throws if no page is loaded. */
   screenshot: () => Promise<{ base64: string; mimeType: "image/png"; width: number; height: number }>;
   /** Clicks the first element matching `selector`; resolves once any navigation it caused has settled. */
@@ -96,6 +140,10 @@ export type BrowserTabHandle = {
   getUrl: () => string;
   /** Arms the loaded page's own hover-highlight + click-to-select overlay (browserTabPickerPreload.ts). Resolves with the picked element, or null if the user hits Escape / never picks anything within `timeoutMs`. */
   startPick: (timeoutMs?: number) => Promise<PickedElement | null>;
+  /** Turns the active page's "click an element to comment on it" mode on/off (the page's overlay shows its comment list regardless). */
+  setCommentMode: (on: boolean) => void;
+  /** Tells every page's overlay to re-read its comments (statuses changed in main). */
+  refreshComments: () => void;
   destroy: () => void;
 };
 
@@ -108,6 +156,9 @@ type PageHooks = {
   onFirstNavigation: () => void;
   onDownload: (download: BrowserDownload) => void;
   onShortcut: (action: BrowserShortcutAction) => void;
+  comments: BrowserCommentsHost;
+  /** The page left comment mode on its own (Escape) — the toolbar toggle must follow. */
+  onCommentMode: (on: boolean) => void;
 };
 
 /**
@@ -170,6 +221,10 @@ function createPage(win: BrowserWindow, hooks: PageHooks) {
     if (!result.ok) throw new Error(result.error ?? "page script failed");
     return result;
   }
+  async function extractPage(opts: { mode: ExtractMode; selector?: string; maxChars?: number }): Promise<ExtractedPage> {
+    const { ok: _ok, ...page } = await runPageScript<{ ok: true } & ExtractedPage>(buildExtractScript(opts));
+    return page;
+  }
   /** After an action that may navigate: give it a beat to start, then wait (bounded) for loading to finish. */
   async function settle(): Promise<void> {
     await new Promise((resolve) => setTimeout(resolve, 350));
@@ -216,6 +271,30 @@ function createPage(win: BrowserWindow, hooks: PageHooks) {
   wc.ipc.on("browserTab:elementPicked", (_event, data) => resolvePick(data as PickedElement));
   wc.ipc.on("browserTab:pickCancelled", () => resolvePick(null));
 
+  // Comments overlay (browserTabPickerPreload.ts). The page only ever talks to
+  // its own view's ipc scope; the host decides what the project/store behind it is.
+  let commentMode = false;
+  wc.ipc.handle("browserTab:comments:getMode", () => commentMode);
+  wc.ipc.on("browserTab:comments:modeOff", () => {
+    commentMode = false;
+    hooks.onCommentMode(false);
+  });
+  wc.ipc.handle("browserTab:comments:list", (_e, pageUrl: string) => hooks.comments.list(String(pageUrl)));
+  wc.ipc.handle("browserTab:comments:add", (_e, input: NewBrowserComment) => hooks.comments.add(input));
+  wc.ipc.handle("browserTab:comments:update", (_e, pageUrl: string, id: string, text: string) =>
+    hooks.comments.update(String(pageUrl), String(id), String(text)),
+  );
+  wc.ipc.handle("browserTab:comments:remove", (_e, pageUrl: string, id: string) =>
+    hooks.comments.remove(String(pageUrl), String(id)),
+  );
+  wc.ipc.handle("browserTab:comments:setStatus", (_e, ids: string[], status: CommentStatus) =>
+    hooks.comments.setStatus(Array.isArray(ids) ? ids.map(String) : [], status === "done" ? "done" : status === "sent" ? "sent" : "idle"),
+  );
+  wc.ipc.handle("browserTab:comments:targets", () => hooks.comments.targets());
+  wc.ipc.handle("browserTab:comments:send", (_e, req: { pageUrl: string; ids?: string[]; target: CommentSendTarget }) =>
+    hooks.comments.send(req, { extract: extractPage }),
+  );
+
   // Shortcuts while focus is inside the page (the app window's own input goes
   // through the manager's win.webContents listener instead).
   wc.on("before-input-event", (event, input: Input) => {
@@ -236,6 +315,59 @@ function createPage(win: BrowserWindow, hooks: PageHooks) {
   };
   session.on("will-download", onWillDownload);
 
+  // What the page should be emulating, kept apart from what it has now: every
+  // new document drops the emulation (even a same-site load in the same process),
+  // and enableDeviceEmulation crashes the app while there is no document at all
+  // (a new tab that hasn't navigated, a renderer that died).
+  let wantedEmulation: Parameters<typeof wc.enableDeviceEmulation>[0] | null = null;
+  let wantedKey = "";
+  let appliedKey = "";
+  let hasDocument = false;
+  const syncEmulation = () => {
+    // Skip re-sending identical emulation: the renderer repeats bounds every 500ms
+    // and each enableDeviceEmulation call can trigger a relayout of the page.
+    if (!hasDocument || wantedKey === appliedKey || wc.isDestroyed()) return;
+    appliedKey = wantedKey;
+    if (wantedEmulation) wc.enableDeviceEmulation(wantedEmulation);
+    else wc.disableDeviceEmulation();
+  };
+  wc.on("did-navigate", () => {
+    hasDocument = true;
+    appliedKey = "";
+    syncEmulation();
+  });
+  wc.on("render-process-gone", () => {
+    hasDocument = false;
+  });
+  const applyBounds = ({ emulate, crop, ...rect }: BrowserTabBounds) => {
+    view.setBounds(rect);
+    if (crop) {
+      wantedKey = `crop:${crop.width}x${crop.height}`;
+      wantedEmulation = {
+        screenPosition: "desktop",
+        screenSize: crop,
+        viewPosition: { x: 0, y: 0 },
+        viewSize: crop,
+        deviceScaleFactor: 0,
+        scale: 1,
+      };
+    } else if (emulate) {
+      wantedKey = `${emulate.width}x${emulate.height}:${emulate.mobile}:${rect.width}`;
+      wantedEmulation = {
+        screenPosition: emulate.mobile ? "mobile" : "desktop",
+        screenSize: { width: emulate.width, height: emulate.height },
+        viewPosition: { x: 0, y: 0 },
+        viewSize: { width: emulate.width, height: emulate.height },
+        deviceScaleFactor: 0,
+        scale: rect.width / emulate.width,
+      };
+    } else {
+      wantedKey = "";
+      wantedEmulation = null;
+    }
+    syncEmulation();
+  };
+
   let attached = false;
   // A tab that never navigated stays unattached: its native view is an opaque
   // blank rectangle that would cover the renderer's "enter a URL" placeholder.
@@ -251,7 +383,7 @@ function createPage(win: BrowserWindow, hooks: PageHooks) {
         win.contentView.addChildView(view);
         attached = true;
       }
-      if (bounds) view.setBounds(bounds);
+      if (bounds) applyBounds(bounds);
       // Re-focus even if already attached — this runs every time the renderer
       // switches back to the Browser tab, and mouse wheel/trackpad scroll into
       // a WebContentsView is a known no-op in Electron until its webContents
@@ -264,7 +396,7 @@ function createPage(win: BrowserWindow, hooks: PageHooks) {
       win.contentView.removeChildView(view);
       attached = false;
     },
-    setBounds: (bounds: BrowserTabBounds) => view.setBounds(bounds),
+    setBounds: (bounds: BrowserTabBounds) => applyBounds(bounds),
     focus: () => wc.focus(),
     async navigate(url: string): Promise<void> {
       // The page a pick was armed on is about to be gone either way.
@@ -319,6 +451,24 @@ function createPage(win: BrowserWindow, hooks: PageHooks) {
         elements: r.elements,
       };
     },
+    extract: extractPage,
+    /** Downloads what `url` (or the element at `selector`) points to with this page's own session, so cookies/login apply. */
+    async fetchAsset(input: { url?: string; selector?: string }): Promise<FetchedAsset> {
+      requireLoadedPage();
+      let url = input.url?.trim();
+      if (url) {
+        url = /^data:/i.test(url) ? url : new URL(url, wc.getURL()).href;
+      } else if (input.selector) {
+        url = (await runPageScript<{ ok: true; url: string }>(buildAssetUrlScript(input.selector))).url;
+      } else {
+        throw new AssetError("url or selector is required");
+      }
+      if (/^data:/i.test(url)) return decodeDataUrl(url, MAX_ASSET_BYTES);
+      if (!/^https?:\/\//i.test(url)) throw new AssetError("only http(s) and data: URLs can be saved");
+      const res = await session.fetch(url, { headers: { Referer: wc.getURL() } });
+      if (!res.ok) throw new AssetError(`download failed: HTTP ${res.status}`);
+      return { data: await readLimited(res, MAX_ASSET_BYTES), contentType: res.headers.get("content-type") ?? "", url: res.url || url };
+    },
     async screenshot() {
       requireLoadedPage();
       const image = await wc.capturePage();
@@ -357,6 +507,14 @@ function createPage(win: BrowserWindow, hooks: PageHooks) {
         }, timeoutMs);
       });
     },
+    /** Statuses changed behind the page's back (an agent finished a comment) — it re-reads its list. */
+    refreshComments(): void {
+      if (!wc.isDestroyed()) wc.send("browserTab:comments:changed");
+    },
+    setCommentMode(on: boolean): void {
+      commentMode = on;
+      if (!wc.isDestroyed()) wc.send("browserTab:comments:mode", on);
+    },
     destroy(): void {
       resolvePick(null);
       this.detach();
@@ -385,7 +543,7 @@ const EMPTY_PAGE_STATE: BrowserPageState = {
  * which only the active one is attached to the window, and only while the
  * Browser tab is the section on screen.
  */
-export function createBrowserTabView(win: BrowserWindow): BrowserTabHandle {
+export function createBrowserTabView(win: BrowserWindow, comments: BrowserCommentsHost): BrowserTabHandle {
   const pages = new Map<string, Page>();
   let order: string[] = [];
   let activeId: string | null = null;
@@ -437,6 +595,10 @@ export function createBrowserTabView(win: BrowserWindow): BrowserTabHandle {
         if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("browserTab:download", download);
       },
       onShortcut: (action) => runShortcut(action),
+      comments,
+      onCommentMode: (on) => {
+        if (!win.isDestroyed() && !win.webContents.isDestroyed()) win.webContents.send("browserTab:commentMode", on);
+      },
     });
     pages.set(id, page);
     order.push(id);
@@ -549,6 +711,8 @@ export function createBrowserTabView(win: BrowserWindow): BrowserTabHandle {
     },
     readPage: (maxChars) => requireActive().readPage(maxChars),
     screenshot: () => requireActive().screenshot(),
+    extract: (opts) => requireActive().extract(opts),
+    fetchAsset: (input) => requireActive().fetchAsset(input),
     click: (selector) => requireActive().click(selector),
     type: (selector, text, submit) => requireActive().type(selector, text, submit),
     setBounds: (next) => {
@@ -568,6 +732,10 @@ export function createBrowserTabView(win: BrowserWindow): BrowserTabHandle {
       const page = ensureActive();
       handle.show();
       return page.startPick(timeoutMs);
+    },
+    setCommentMode: (on) => active()?.setCommentMode(on),
+    refreshComments: () => {
+      for (const page of pages.values()) page.refreshComments();
     },
     destroy: () => {
       if (!win.isDestroyed() && !win.webContents.isDestroyed()) {

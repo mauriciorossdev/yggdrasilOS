@@ -215,7 +215,7 @@ class _ComplementoWebViewScreenState extends State<ComplementoWebViewScreen> {
       body: Stack(
         children: [
           WebViewWidget(controller: _controller),
-          if (_loading) const Center(child: CircularProgressIndicator(color: YggColors.accent)),
+          if (_loading) Center(child: CircularProgressIndicator(color: YggColors.accent)),
           if (_error != null)
             Container(
               color: YggColors.surface,
@@ -227,11 +227,11 @@ class _ComplementoWebViewScreenState extends State<ComplementoWebViewScreen> {
                   children: [
                     Text(
                       AppStrings.t('projects.complementoLoadError'),
-                      style: const TextStyle(color: YggColors.textMuted),
+                      style: TextStyle(color: YggColors.textMuted),
                       textAlign: TextAlign.center,
                     ),
                     const SizedBox(height: 8),
-                    Text(_error!, style: const TextStyle(color: YggColors.textFaint, fontSize: 12)),
+                    Text(_error!, style: TextStyle(color: YggColors.textFaint, fontSize: 12)),
                     const SizedBox(height: 12),
                     ElevatedButton(onPressed: _loadComplemento, child: Text(AppStrings.t('common.retry'))),
                   ],

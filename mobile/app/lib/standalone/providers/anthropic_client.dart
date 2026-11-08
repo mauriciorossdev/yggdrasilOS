@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../local_message.dart';
+import '../token_usage.dart';
 import 'provider_client.dart';
 
 /// Anthropic Messages API. No provider plugin exists for this server-side
@@ -12,8 +13,17 @@ import 'provider_client.dart';
 class AnthropicClient implements ProviderClient {
   static const _baseUrl = 'https://api.anthropic.com/v1/messages';
   static const _apiVersion = '2023-06-01';
-  static const _defaultModel = 'claude-sonnet-5';
+  static const _defaultModel = 'claude-sonnet-5-5';
   static const _maxTokens = 4096;
+
+  final http.Client _http;
+
+  /// [httpClient] is injectable so the response parsing can be tested without
+  /// the network.
+  AnthropicClient({http.Client? httpClient}) : _http = httpClient ?? http.Client();
+
+  @override
+  String get defaultModel => _defaultModel;
 
   @override
   Future<ProviderChatResult> chat({
@@ -21,6 +31,7 @@ class AnthropicClient implements ProviderClient {
     required String? model,
     required List<LocalMessage> history,
     required List<Map<String, dynamic>> toolSpecs,
+    String? systemPrompt,
   }) async {
     final messages = _toWireMessages(history);
     final tools = toolSpecs
@@ -31,7 +42,7 @@ class AnthropicClient implements ProviderClient {
             })
         .toList();
 
-    final response = await http.post(
+    final response = await _http.post(
       Uri.parse(_baseUrl),
       headers: {
         'x-api-key': apiKey,
@@ -41,6 +52,7 @@ class AnthropicClient implements ProviderClient {
       body: jsonEncode({
         'model': model?.isNotEmpty == true ? model : _defaultModel,
         'max_tokens': _maxTokens,
+        if (systemPrompt != null && systemPrompt.isNotEmpty) 'system': systemPrompt,
         'messages': messages,
         'tools': tools,
       }),
@@ -66,7 +78,22 @@ class AnthropicClient implements ProviderClient {
         ));
       }
     }
-    return ProviderChatResult(text: textBuffer.toString(), toolCalls: toolCalls);
+    return ProviderChatResult(text: textBuffer.toString(), toolCalls: toolCalls, usage: _parseUsage(decoded));
+  }
+
+  // `input_tokens` is the uncached input only; cache writes and reads come in
+  // their own fields and are billed at different rates.
+  TokenUsage? _parseUsage(Map<String, dynamic> decoded) {
+    final usage = decoded['usage'];
+    if (usage is! Map) return null;
+    int n(String key) => (usage[key] as num?)?.toInt() ?? 0;
+    return TokenUsage(
+      inTokens: n('input_tokens'),
+      outTokens: n('output_tokens'),
+      cacheRead: n('cache_read_input_tokens'),
+      cacheWrite: n('cache_creation_input_tokens'),
+      model: decoded['model']?.toString(),
+    );
   }
 
   // Anthropic has no separate "tool" role — a tool result is a "user"

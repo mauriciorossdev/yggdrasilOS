@@ -1,15 +1,16 @@
 import { randomUUID } from "node:crypto";
-import { writeFile } from "node:fs/promises";
-import { join } from "node:path";
 import React, { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Box, Text, useApp } from "ink";
 import { buildSessionKey } from "@yggdrasil/config";
 import { theme } from "../render/theme.js";
-import { GatewayClient } from "../client/gateway-client.js";
+import { ConnectionLostError, GatewayClient } from "../client/gateway-client.js";
+import { friendlyError } from "../client/errors.js";
+import { useReconnectRecovery } from "../hooks/useReconnectRecovery.js";
 import type { AgentInfo, ApprovalMode, ConfigGetResult, ProviderInfo, SessionInfo } from "../client/types.js";
 import { initialState, tuiReducer } from "../state/store.js";
 import { useGatewayEvents } from "../hooks/useGatewayEvents.js";
 import { useKeybinds } from "../hooks/useKeybinds.js";
+import { toChatMessages } from "../state/sessionMessages.js";
 import { MessageList } from "./MessageList.js";
 import { InputBox } from "./InputBox.js";
 import { StatusBar } from "./StatusBar.js";
@@ -17,6 +18,10 @@ import { ApprovalPrompt } from "./ApprovalPrompt.js";
 import { CommandPalette, type Command } from "./CommandPalette.js";
 import { ConfigMenu } from "./config/ConfigMenu.js";
 import { SessionList } from "./SessionList.js";
+import { buildPaletteCommands, runSlash, type CommandContext } from "../commands/index.js";
+import { ToolsList } from "./ToolsList.js";
+import { TurnsList } from "./TurnsList.js";
+import { loadInputHistory, saveInputHistory } from "../state/inputHistoryStore.js";
 import { AgentsList } from "./AgentsList.js";
 import { AgentForm } from "./AgentForm.js";
 import { useTerminalSize } from "../hooks/useTerminalSize.js";
@@ -36,6 +41,12 @@ type Props = {
   initialSessionKey?: string;
   /** Autonomous run owns this session — block a human from sending a second, concurrent chat.send into it. */
   readOnly?: boolean;
+  /** Approval mode to start the session in; applied on the gateway right after connecting. */
+  initialMode?: ApprovalMode;
+  /** Model id sent with every chat.send as the override for the agent's own. */
+  modelOverride?: string;
+  /** Gateway API key; falls back to YGGDRASIL_API_KEY. */
+  apiKey?: string;
 };
 
 export function App({
@@ -45,6 +56,9 @@ export function App({
   initialAgentId,
   initialSessionKey,
   readOnly,
+  initialMode,
+  modelOverride,
+  apiKey,
 }: Props): React.ReactElement {
   const { exit } = useApp();
   const [state, dispatch] = useReducer(tuiReducer, undefined, initialState);
@@ -58,7 +72,7 @@ export function App({
   const clientRef = useRef<GatewayClient | null>(null);
 
   if (!clientRef.current) {
-    clientRef.current = new GatewayClient(gatewayUrl);
+    clientRef.current = new GatewayClient(gatewayUrl, { apiKey });
   }
   const client = clientRef.current;
 
@@ -66,6 +80,7 @@ export function App({
   setMarkdownWidth(termSize.columns - 4);
 
   useGatewayEvents(client, dispatch, state.sessionKey);
+  useReconnectRecovery(client, dispatch, state.sessionKey, state.mode);
 
   const handleCycleMode = useCallback(() => {
     const next = MODE_ORDER[(MODE_ORDER.indexOf(state.mode) + 1) % MODE_ORDER.length]!;
@@ -80,10 +95,35 @@ export function App({
     }
   }, [client, state.mode, state.sessionKey]);
 
-  useKeybinds(dispatch, state.viewMode, () => {
-    client.disconnect();
-    exit();
-  }, handleCycleMode);
+  const canCancel = !readOnly && (state.isTurnActive || state.isStreaming) && !state.isCancelling;
+  const handleCancel = useCallback(() => {
+    if (!state.sessionKey) return;
+    dispatch({ type: "CANCEL_REQUESTED" });
+    client.call<{ cancelled: boolean }>("chat.cancel", { sessionKey: state.sessionKey }).then(
+      (res) => {
+        // Nothing was running server-side (the turn finished a moment ago): don't stay stuck on "cancelling…".
+        if (!res.cancelled) dispatch({ type: "CANCEL_SETTLED" });
+      },
+      (err) => {
+        dispatch({
+          type: "ADD_SYSTEM_MESSAGE",
+          text: `Failed to cancel: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      },
+    );
+  }, [client, state.sessionKey]);
+
+  useKeybinds(
+    dispatch,
+    state.viewMode,
+    () => {
+      client.disconnect();
+      exit();
+    },
+    handleCycleMode,
+    handleCancel,
+    canCancel,
+  );
 
   useEffect(() => {
     let disposed = false;
@@ -107,12 +147,7 @@ export function App({
             session: { messages: Array<{ role: string; content: string; timestamp?: number }> } | null;
           }>("sessions.get", { sessionKey });
           if (session) {
-            resumedMessages = session.messages.map((m, i) => ({
-              id: `resumed-${i}`,
-              role: (m.role === "user" || m.role === "assistant" || m.role === "tool" ? m.role : "system") as ChatMessage["role"],
-              text: m.content,
-              timestamp: m.timestamp ?? Date.now(),
-            }));
+            resumedMessages = toChatMessages(session.messages);
           }
         } else if (continueSession) {
           const { sessions } = await client.call<{ sessions: SessionInfo[] }>("sessions.list");
@@ -123,12 +158,7 @@ export function App({
             }>("sessions.get", { sessionKey: match.sessionKey });
             if (session) {
               sessionKey = match.sessionKey;
-              resumedMessages = session.messages.map((m, i) => ({
-                id: `resumed-${i}`,
-                role: (m.role === "user" || m.role === "assistant" || m.role === "tool" ? m.role : "system") as ChatMessage["role"],
-                text: m.content,
-                timestamp: m.timestamp ?? Date.now(),
-              }));
+              resumedMessages = toChatMessages(session.messages);
             }
           }
         }
@@ -144,8 +174,13 @@ export function App({
         }
 
         try {
-          const { mode } = await client.call<{ mode: ApprovalMode }>("tools.approvalMode", { sessionKey });
-          dispatch({ type: "SET_MODE", mode });
+          if (initialMode) {
+            await client.call("tools.setApprovalMode", { sessionKey, mode: initialMode });
+            dispatch({ type: "SET_MODE", mode: initialMode });
+          } else {
+            const { mode } = await client.call<{ mode: ApprovalMode }>("tools.approvalMode", { sessionKey });
+            dispatch({ type: "SET_MODE", mode });
+          }
         } catch {
           // non-fatal — keep the local "auto" default
         }
@@ -173,13 +208,13 @@ export function App({
           config: configResult.config,
           configPath: configResult.configPath,
         });
+        dispatch({ type: "SET_WORKSPACE", workspaceRoot: configResult.workspaceRoot });
         if (!disposed && skillCmdsResult.commands.length > 0) {
           setSkillCommands(skillCmdsResult.commands);
         }
       } catch (err) {
         if (!disposed) {
-          const msg = err instanceof Error ? err.message : String(err);
-          dispatch({ type: "SET_CONNECTION_ERROR", error: msg });
+          dispatch({ type: "SET_CONNECTION_ERROR", error: friendlyError(err) });
         }
       }
     }
@@ -192,10 +227,27 @@ export function App({
     };
   }, [client]);
 
+  // Input history survives restarts: loaded once, then written back whenever it changes.
+  const historyLoaded = useRef(false);
+  useEffect(() => {
+    let cancelled = false;
+    void loadInputHistory().then((entries) => {
+      if (cancelled) return;
+      historyLoaded.current = true;
+      dispatch({ type: "LOAD_INPUT_HISTORY", entries });
+    });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+  useEffect(() => {
+    if (historyLoaded.current) void saveInputHistory(state.inputHistory);
+  }, [state.inputHistory]);
+
   const handleSendMessage = useCallback(
     async (text: string) => {
       if (text.startsWith("/")) {
-        handleSlashCommand(text);
+        void runSlash(text, commandContextRef.current);
         return;
       }
 
@@ -215,6 +267,7 @@ export function App({
             sessionKey: state.sessionKey,
             agentId: state.activeAgentId,
             channelId: "tui",
+            ...(modelOverride ? { model: modelOverride } : {}),
           },
           // Local/slow models can take minutes per turn — the RPC ack just
           // confirms the gateway accepted the message; the actual reply
@@ -223,166 +276,33 @@ export function App({
           10 * 60_000,
         );
       } catch (err) {
+        if (err instanceof ConnectionLostError) {
+          // The gateway may well still be working on the turn; the reconnect handler reloads the session.
+          dispatch({ type: "ADD_SYSTEM_MESSAGE", text: "Connection lost while waiting for the reply — reconnecting…" });
+          return;
+        }
         dispatch({
           type: "ADD_SYSTEM_MESSAGE",
-          text: `Failed to send message: ${err instanceof Error ? err.message : String(err)}`,
+          text: `Failed to send message: ${friendlyError(err)}`,
         });
       }
     },
-    [client, state.sessionKey, state.activeAgentId],
+    [client, state.sessionKey, state.activeAgentId, modelOverride],
   );
 
-  const handleSlashCommand = useCallback(
-    (text: string) => {
-      const parts = text.slice(1).split(/\s+/);
-      const cmd = parts[0]?.toLowerCase();
-
-      switch (cmd) {
-        case "reset":
-          void client.call("sessions.reset", { sessionKey: state.sessionKey }).then(() => {
-            dispatch({ type: "RESET_MESSAGES" });
-          });
-          break;
-        case "agent": {
-          const agentId = parts[1];
-          if (agentId) {
-            dispatch({ type: "SET_ACTIVE_AGENT", agentId });
-          }
-          break;
-        }
-        case "sessions":
-          void client
-            .call<{ sessions: SessionInfo[] }>("sessions.list")
-            .then(({ sessions }) => {
-              dispatch({ type: "SET_SESSIONS", sessions });
-              dispatch({ type: "PUSH_VIEW", mode: "sessions" });
-            });
-          break;
-        case "config":
-          dispatch({ type: "PUSH_VIEW", mode: "config" });
-          break;
-        case "agents":
-          void client
-            .call<{ agents: AgentInfo[]; defaultAgent: string }>("agents.list")
-            .then(({ agents, defaultAgent }) => {
-              dispatch({ type: "SET_AGENTS", agents, defaultAgent });
-              setShowAgentForm(false);
-              dispatch({ type: "PUSH_VIEW", mode: "agents" });
-            });
-          break;
-        case "model": {
-          const agent = state.agents.find(
-            (a) => a.id === (state.activeAgentId ?? state.defaultAgent),
-          );
-          if (agent?.provider) {
-            setConfigInitialView({ view: "model", providerId: agent.provider });
-          }
-          dispatch({ type: "PUSH_VIEW", mode: "config" });
-          break;
-        }
-        case "compact": {
-          if (!state.sessionKey) break;
-          void client
-            .call<{ compacted: boolean; before: number; after: number }>("sessions.compact", {
-              sessionKey: state.sessionKey,
-              agentId: state.activeAgentId,
-            })
-            .then(({ compacted, before, after }) => {
-              dispatch({
-                type: "ADD_SYSTEM_MESSAGE",
-                text: compacted
-                  ? `✓ Compacted: ${before} → ${after} messages`
-                  : "Nothing to compact",
-              });
-            })
-            .catch((err) => {
-              dispatch({
-                type: "ADD_SYSTEM_MESSAGE",
-                text: `✗ Compact failed: ${err instanceof Error ? err.message : String(err)}`,
-              });
-            });
-          break;
-        }
-        case "export": {
-          if (!state.sessionKey) break;
-          const sessionKey = state.sessionKey;
-          void client
-            .call<{
-              session: { messages: Array<{ role: string; content: string; timestamp?: number }> } | null;
-            }>("sessions.get", { sessionKey })
-            .then(async ({ session }) => {
-              if (!session) {
-                dispatch({ type: "ADD_SYSTEM_MESSAGE", text: "✗ No session to export" });
-                return;
-              }
-              const lines = session.messages.map(
-                (m) => `## ${m.role}\n\n${m.content}\n`,
-              );
-              const filename = `yggdrasil-session-${sessionKey.slice(-8)}-${Date.now()}.md`;
-              const path = join(process.cwd(), filename);
-              await writeFile(path, lines.join("\n"), "utf8");
-              dispatch({ type: "ADD_SYSTEM_MESSAGE", text: `✓ Exported to ${path}` });
-            })
-            .catch((err) => {
-              dispatch({
-                type: "ADD_SYSTEM_MESSAGE",
-                text: `✗ Export failed: ${err instanceof Error ? err.message : String(err)}`,
-              });
-            });
-          break;
-        }
-        case "new": {
-          const prefix = senderIdPrefix ?? "local";
-          const newKey = buildSessionKey("tui", "default", `${prefix}-${randomUUID()}`);
-          dispatch({ type: "SET_SESSION_KEY", sessionKey: newKey });
-          dispatch({ type: "RESET_MESSAGES" });
-          dispatch({ type: "SET_MODE", mode: "auto" });
-          break;
-        }
-        case "status": {
-          const agent = state.agents.find(
-            (a) => a.id === (state.activeAgentId ?? state.defaultAgent),
-          );
-          dispatch({
-            type: "ADD_SYSTEM_MESSAGE",
-            text: [
-              `gateway: ${gatewayUrl}`,
-              `session: ${state.sessionKey ?? "none"}`,
-              `agent: ${agent?.id ?? "none"} (${agent?.provider ?? "?"}/${agent?.model ?? "?"})`,
-              `connected: ${state.connected ? "yes" : "no"}`,
-            ].join("\n"),
-          });
-          break;
-        }
-        case "help":
-          dispatch({
-            type: "ADD_SYSTEM_MESSAGE",
-            text: [
-              "/reset — Clear session history",
-              "/config — Open configuration menu",
-              "/sessions — List all sessions",
-              "/agents — Manage agents (view, switch, create)",
-              "/agent <id> — Switch active agent",
-              "/model — Jump to model selector",
-              "/compact — Force session compaction now",
-              "/export — Export session transcript to markdown",
-              "/new — Start a new isolated session",
-              "/status — Show connection/session/agent status",
-              "/help — Show this list",
-              "/exit — Quit TUI",
-            ].join("\n"),
-          });
-          break;
-        case "exit":
-        case "quit":
-          client.disconnect();
-          exit();
-          break;
-        default:
-          break;
+  const renameSession = useCallback(
+    async (sessionKey: string, title: string) => {
+      try {
+        await client.call("sessions.patch", { sessionKey, title });
+        if (sessionKey === state.sessionKey) dispatch({ type: "SET_SESSION_TITLE", title });
+        const { sessions } = await client.call<{ sessions: SessionInfo[] }>("sessions.list");
+        dispatch({ type: "SET_SESSIONS", sessions });
+        dispatch({ type: "ADD_SYSTEM_MESSAGE", text: `Session renamed to "${title}".` });
+      } catch (err) {
+        dispatch({ type: "ADD_SYSTEM_MESSAGE", text: `Rename failed: ${friendlyError(err)}` });
       }
     },
-    [client, state.sessionKey, state.agents, state.activeAgentId, state.defaultAgent, state.connected, gatewayUrl, senderIdPrefix, exit],
+    [client, state.sessionKey],
   );
 
   const handleShellCommand = useCallback((text: string) => {
@@ -423,79 +343,33 @@ export function App({
     [client],
   );
 
+  // Slash commands are plain functions over this context (see ../commands); the ref keeps
+  // handlers that were created earlier pointed at the latest state.
+  const commandContext: CommandContext = {
+    client,
+    state,
+    dispatch,
+    gatewayUrl,
+    senderIdPrefix,
+    cwd: process.cwd(),
+    skills: skillCommands,
+    exit: () => {
+      client.disconnect();
+      exit();
+    },
+    renameSession,
+    showAgentForm: setShowAgentForm,
+    openModelPicker: (providerId) => setConfigInitialView({ view: "model", providerId }),
+    sendMessage: (text) => void handleSendMessage(text),
+  };
+  const commandContextRef = useRef(commandContext);
+  commandContextRef.current = commandContext;
+
   const commands: Command[] = useMemo(
-    () => [
-      {
-        name: "reset",
-        description: "Clear session history",
-        action: () => handleSlashCommand("/reset"),
-      },
-      {
-        name: "config",
-        description: "Open configuration menu",
-        shortcut: "/config",
-        action: () => dispatch({ type: "PUSH_VIEW", mode: "config" }),
-      },
-      {
-        name: "sessions",
-        description: "List all sessions",
-        action: () => handleSlashCommand("/sessions"),
-      },
-      {
-        name: "agents",
-        description: "Manage agents (view, switch, create)",
-        action: () => handleSlashCommand("/agents"),
-      },
-      {
-        name: "new",
-        description: "Start a new isolated session",
-        action: () => handleSlashCommand("/new"),
-      },
-      {
-        name: "status",
-        description: "Show connection/session/agent status",
-        action: () => handleSlashCommand("/status"),
-      },
-      {
-        name: "help",
-        description: "List all commands",
-        action: () => handleSlashCommand("/help"),
-      },
-      {
-        name: "export",
-        description: "Export session transcript to markdown",
-        action: () => handleSlashCommand("/export"),
-      },
-      {
-        name: "compact",
-        description: "Force session compaction now",
-        action: () => handleSlashCommand("/compact"),
-      },
-      {
-        name: "model",
-        description: "Jump to model selector",
-        action: () => handleSlashCommand("/model"),
-      },
-      ...state.agents.map((a) => ({
-        name: `agent ${a.id}`,
-        description: `Switch to ${a.id} (${a.provider}/${a.model})`,
-        action: () => dispatch({ type: "SET_ACTIVE_AGENT", agentId: a.id }),
-      })),
-      ...skillCommands.map((cmd) => ({
-        name: cmd.name,
-        description: cmd.description,
-        action: () => handleSendMessage(cmd.prompt.replace(/\{\{args\}\}/g, "")),
-      })),
-      {
-        name: "exit",
-        description: "Quit TUI",
-        action: () => {
-          client.disconnect();
-          exit();
-        },
-      },
-    ],
-    [state.agents, skillCommands, handleSlashCommand, handleSendMessage, client, exit],
+    () => buildPaletteCommands(commandContextRef.current),
+    // The palette only needs rebuilding when what it lists changes; actions read the ref.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [state.agents, skillCommands],
   );
 
   const slashSuggestions = useMemo(
@@ -534,7 +408,9 @@ export function App({
   }
 
   return (
-    <Box flexDirection="column" width="100%" height="100%">
+    // Fixed to the terminal height so the message list takes the free space and the input + status bar
+    // stay pinned to the bottom ("100%" gave no height at all: Ink's root has no definite size).
+    <Box flexDirection="column" width="100%" height={termSize.rows}>
       {state.viewMode === "command-palette" && (
         <Box justifyContent="center" paddingY={1}>
           <CommandPalette
@@ -557,6 +433,7 @@ export function App({
               dispatch({ type: "POP_VIEW" });
             }}
             onConfigChanged={handleConfigChanged}
+            onNotice={(text) => dispatch({ type: "ADD_SYSTEM_MESSAGE", text })}
           />
         </Box>
       )}
@@ -572,21 +449,24 @@ export function App({
               )
               .then(({ session }) => {
                 if (!session) return;
-                const messages: ChatMessage[] = session.messages.map((m, i) => ({
-                  id: `loaded-${i}`,
-                  role: (m.role === "user" || m.role === "assistant" || m.role === "tool" ? m.role : "system") as ChatMessage["role"],
-                  text: m.content,
-                  timestamp: m.timestamp ?? Date.now(),
-                }));
-                dispatch({ type: "LOAD_SESSION", sessionKey, messages });
+                const messages = toChatMessages(session.messages, "loaded");
+                const title = state.sessions.find((s) => s.sessionKey === sessionKey)?.title ?? null;
+                dispatch({ type: "LOAD_SESSION", sessionKey, messages, title });
                 void client
                   .call<{ mode: ApprovalMode }>("tools.approvalMode", { sessionKey })
                   .then(({ mode }) => dispatch({ type: "SET_MODE", mode }))
                   .catch(() => {});
               });
           }}
+          onRename={(sessionKey, title) => void renameSession(sessionKey, title)}
           onClose={() => dispatch({ type: "POP_VIEW" })}
         />
+      )}
+
+      {state.viewMode === "tools" && <ToolsList tools={state.tools} onClose={() => dispatch({ type: "POP_VIEW" })} />}
+
+      {state.viewMode === "turns" && (
+        <TurnsList turns={state.turns} currentSessionKey={state.sessionKey} onClose={() => dispatch({ type: "POP_VIEW" })} />
       )}
 
       {state.viewMode === "agents" && (

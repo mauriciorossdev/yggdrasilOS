@@ -96,7 +96,7 @@ class _LocalCompanionSettingsScreenState extends State<LocalCompanionSettingsScr
                     const SizedBox(height: 2),
                     Text(
                       AppStrings.t('localCompanion.enableSubtitle'),
-                      style: const TextStyle(fontSize: 12, color: YggColors.textFainter),
+                      style: TextStyle(fontSize: 12, color: YggColors.textFainter),
                     ),
                   ],
                 ),
@@ -127,7 +127,7 @@ class _LocalCompanionSettingsScreenState extends State<LocalCompanionSettingsScr
           ),
           if (_testResult != null) ...[
             const SizedBox(height: 8),
-            Text(_testResult!, style: const TextStyle(color: YggColors.textMuted)),
+            Text(_testResult!, style: TextStyle(color: YggColors.textMuted)),
           ],
           const SizedBox(height: 24),
           ElevatedButton(onPressed: _save, child: Text(AppStrings.t('common.save'))),

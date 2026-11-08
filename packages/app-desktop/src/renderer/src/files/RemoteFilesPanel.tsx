@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ArrowPathIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import type { GitFileEntry, GitDiffResult, GitStatusResult } from "../types.js";
+import { useI18n } from "../i18n/index.js";
 
 const STATUS_BADGE: Record<GitFileEntry["status"], string> = {
   modified: "M",
@@ -31,6 +32,7 @@ function DiffLines({ diff }: { diff: string }) {
 }
 
 export function RemoteFilesPanel() {
+  const { t } = useI18n();
   const { call, onEvent } = useGateway();
   const [status, setStatus] = useState<GitStatusResult | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -91,15 +93,15 @@ export function RemoteFilesPanel() {
     <div className="git-remote-panel">
       <div className="git-remote-header">
         <span className="git-branch-label">{status?.isRepo ? status.branch || "(detached)" : ""}</span>
-        <button type="button" className="icon-btn" title="Refresh" onClick={() => void reload()}>
+        <button type="button" className="icon-btn" title={t("doc.refresh")} onClick={() => void reload()}>
           <ArrowPathIcon className="hero-icon" />
         </button>
       </div>
 
       {error && <p className="error">{error}</p>}
-      {!error && !status && <p className="muted">Loading…</p>}
-      {!error && status && !status.isRepo && <p className="muted">This project is not a git repository.</p>}
-      {!error && status?.isRepo && status.files.length === 0 && <p className="muted">No changes.</p>}
+      {!error && !status && <p className="muted">{t("doc.loading")}</p>}
+      {!error && status && !status.isRepo && <p className="muted">{t("doc.remote.notRepo")}</p>}
+      {!error && status?.isRepo && status.files.length === 0 && <p className="muted">{t("doc.remote.noChanges")}</p>}
 
       {status?.isRepo &&
         status.files.map((entry) => (
@@ -110,7 +112,7 @@ export function RemoteFilesPanel() {
             </button>
             {expandedPath === entry.path && (
               <>
-                {diffLoading === entry.path && <p className="muted">Loading diff…</p>}
+                {diffLoading === entry.path && <p className="muted">{t("doc.remote.loadingDiff")}</p>}
                 {diffError && diffLoading !== entry.path && <p className="error">{diffError}</p>}
                 {diffs[entry.path] !== undefined && <DiffLines diff={diffs[entry.path]!} />}
               </>

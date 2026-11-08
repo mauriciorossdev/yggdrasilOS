@@ -88,11 +88,11 @@ class _SessionTranscriptScreenState extends State<SessionTranscriptScreen> {
     return Scaffold(
       appBar: AppBar(title: Text(widget.sessionKey, overflow: TextOverflow.ellipsis)),
       body: _loading
-          ? const Center(child: CircularProgressIndicator(color: YggColors.accent))
+          ? Center(child: CircularProgressIndicator(color: YggColors.accent))
           : _error != null
               ? Padding(
                   padding: const EdgeInsets.all(24),
-                  child: Text('${AppStrings.t('common.errorPrefix')}: $_error', style: const TextStyle(color: YggColors.textMuted)),
+                  child: Text('${AppStrings.t('common.errorPrefix')}: $_error', style: TextStyle(color: YggColors.textMuted)),
                 )
               : ListView.builder(
                   padding: const EdgeInsets.all(16),
@@ -111,7 +111,7 @@ class _SessionTranscriptScreenState extends State<SessionTranscriptScreen> {
                           borderRadius: BorderRadius.circular(14),
                         ),
                         child: isUser
-                            ? Text(m.text, style: const TextStyle(color: YggColors.surface, fontSize: 14.5))
+                            ? Text(m.text, style: TextStyle(color: YggColors.surface, fontSize: 14.5))
                             : AssistantMarkdown(data: m.text),
                       ),
                     );

@@ -5,6 +5,8 @@ import { networkInterfaces } from "node:os";
 import { join } from "node:path";
 import { access, readFile, writeFile } from "node:fs/promises";
 import { logCaughtError } from "./crashLogging.js";
+import { pickAddresses } from "./phoneLinkCore.js";
+import { reconcilePluginPaths } from "./pluginPaths.js";
 
 const require = createRequire(import.meta.url);
 
@@ -40,22 +42,17 @@ export type GatewayHandle = {
 };
 
 /**
- * The machine's own LAN-reachable IPv4 address — first non-internal
- * interface found (Wi-Fi/Ethernet), matching how the gateway subprocess
- * already binds (GATEWAY_BIND_HOST "0.0.0.0" covers this same address).
+ * The machine's own LAN-reachable IPv4 address (see pickAddresses), or its
+ * Tailscale one without a LAN, matching how the gateway subprocess already
+ * binds (GATEWAY_BIND_HOST "0.0.0.0" covers this same address).
  * Purely for display (window title, Settings "Gateway:" line) so a human can
  * type it into a phone — falls back to loopback if no LAN interface is up
  * (e.g. offline), which is at least honestly non-functional rather than a
  * crash.
  */
 export function getLanAddress(): string {
-  const nets = networkInterfaces();
-  for (const name of Object.keys(nets)) {
-    for (const net of nets[name] ?? []) {
-      if (net.family === "IPv4" && !net.internal) return net.address;
-    }
-  }
-  return HOST;
+  const { lan, tailscale } = pickAddresses(networkInterfaces());
+  return lan ?? tailscale ?? HOST;
 }
 
 async function probeGateway(port: number): Promise<boolean> {
@@ -161,9 +158,12 @@ async function seedWorkspaceConfig(workspaceRoot: string, pluginSearchDir: strin
       [key: string]: unknown;
     };
     const existingPaths = raw.plugins?.load?.paths ?? [];
-    if (existingPaths.includes(pluginSearchDir)) return;
+    // Also drops other installs' bundled dirs (packaged app vs dev checkout):
+    // their native modules target a different Electron ABI.
+    const paths = reconcilePluginPaths(existingPaths, pluginSearchDir);
+    if (paths.length === existingPaths.length && paths.every((p, i) => p === existingPaths[i])) return;
 
-    raw.plugins = { ...raw.plugins, load: { ...raw.plugins?.load, paths: [...existingPaths, pluginSearchDir] } };
+    raw.plugins = { ...raw.plugins, load: { ...raw.plugins?.load, paths } };
     await writeFile(configPath, JSON.stringify(raw, null, 2), "utf8");
   } catch {
     // Malformed/unreadable config — leave it alone rather than risk
@@ -222,7 +222,7 @@ function spawnGatewaySubprocess(
       // automationSettings.ts/settingsFile.ts.
       YGGDRASIL_DESKTOP_SETTINGS_PATH: desktopSettingsPath,
       // Phone link (main/phoneLink.ts): while this desktop is published to the
-      // Railway hub, its gateways require a key from anything that isn't this
+      // link server, its gateways require a key from anything that isn't this
       // machine — this window keeps connecting over 127.0.0.1 without it.
       ...(auth ? { YGGDRASIL_API_KEY: auth.apiKey, YGGDRASIL_TRUST_LOOPBACK: "1" } : {}),
     },

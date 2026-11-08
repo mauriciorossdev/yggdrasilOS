@@ -127,18 +127,18 @@ class _LocalProjectDetailScreenState extends State<LocalProjectDetailScreen> {
           const Divider(height: 1),
           Expanded(
             child: _loading
-                ? const Center(child: CircularProgressIndicator(color: YggColors.accent))
+                ? Center(child: CircularProgressIndicator(color: YggColors.accent))
                 : _error != null
                     ? Padding(
                         padding: const EdgeInsets.all(24),
-                        child: Text('${AppStrings.t('common.errorPrefix')}: $_error', style: const TextStyle(color: YggColors.textMuted)),
+                        child: Text('${AppStrings.t('common.errorPrefix')}: $_error', style: TextStyle(color: YggColors.textMuted)),
                       )
                     : ListView(
                         padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
                         children: [
                           if (_path != '.')
                             ListTile(
-                              leading: const Icon(Icons.arrow_upward, color: YggColors.textFaint, size: 18),
+                              leading: Icon(Icons.arrow_upward, color: YggColors.textFaint, size: 18),
                               title: const Text('..'),
                               onTap: _ascend,
                             ),
@@ -155,7 +155,7 @@ class _LocalProjectDetailScreenState extends State<LocalProjectDetailScreen> {
                           if (_entries.isEmpty && _path == '.')
                             Padding(
                               padding: const EdgeInsets.all(24),
-                              child: Text(AppStrings.t('localProjects.emptyFiles'), style: const TextStyle(color: YggColors.textFaint)),
+                              child: Text(AppStrings.t('localProjects.emptyFiles'), style: TextStyle(color: YggColors.textFaint)),
                             ),
                         ],
                       ),

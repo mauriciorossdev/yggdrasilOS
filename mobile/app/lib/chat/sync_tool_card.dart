@@ -2,13 +2,14 @@ import 'package:flutter/material.dart';
 
 import '../capabilities/capability_registry.dart';
 import '../l10n/app_strings.dart';
+import '../ui/ui.dart';
 
 /// Sync device-tool progress card (open_app/list_installed_apps) — states
 /// per mobile-chat-ux-flows.md §3. Shared between gateway and standalone
 /// chat screens for the same reason as InteractiveToolCard: same 2 tools,
 /// same visual contract, only how "retry" is wired differs.
 class SyncToolCard extends StatelessWidget {
-  final String status; // running|ok|error|timeout
+  final String status; // running|ok|error|timeout|denied
   final String? toolName;
   final String? detail;
   final VoidCallback? onRetry;
@@ -42,66 +43,48 @@ class SyncToolCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final name = toolName ?? '';
     switch (status) {
       case 'running':
-        return _pill(context, [
-          const SizedBox(width: 14, height: 14, child: CircularProgressIndicator(strokeWidth: 2)),
-          const SizedBox(width: 6),
-          Flexible(child: Text('${_verb(toolName)}…')),
-        ]);
+        return YggToolCard(
+          name: name,
+          detail: '${_verb(toolName)}…',
+          statusLabel: AppStrings.t('tool.statusRunning'),
+          tone: YggChipTone.working,
+          pulse: true,
+        );
       case 'ok':
-        return _pill(context, [
-          const Icon(Icons.check_circle_outline, size: 18),
-          const SizedBox(width: 6),
-          Flexible(child: Text(_okLabel(toolName, detail))),
-        ]);
+        return YggToolCard(
+          name: name,
+          detail: _okLabel(toolName, detail),
+          statusLabel: AppStrings.t('tool.statusDone'),
+          tone: YggChipTone.ready,
+        );
       case 'timeout':
-        return _pill(
-          context,
-          [
-            const Icon(Icons.error_outline, size: 18),
-            const SizedBox(width: 6),
-            Flexible(child: Text(AppStrings.t('tool.syncNoResponse'))),
-          ],
+        return YggToolCard(
+          name: name,
+          detail: AppStrings.t('tool.syncNoResponse'),
+          statusLabel: AppStrings.t('tool.statusTimeout'),
+          tone: YggChipTone.danger,
           action: TextButton(onPressed: onRetry, child: Text(AppStrings.t('common.retry'))),
         );
       case 'denied':
         // Standalone-only local gate (Architect's ruling) — the user tapped
         // Rechazar on the confirmation dialog, never reached execution, so
         // there's no per-tool detail to show, just the generic reason.
-        return _pill(context, [
-          const Icon(Icons.block_outlined, size: 18),
-          const SizedBox(width: 6),
-          Flexible(child: Text(AppStrings.t('tool.deniedByUser'))),
-        ]);
+        return YggToolCard(
+          name: name,
+          detail: AppStrings.t('tool.deniedByUser'),
+          statusLabel: AppStrings.t('tool.statusDenied'),
+          tone: YggChipTone.neutral,
+        );
       default: // error
-        return _pill(context, [
-          const Icon(Icons.error_outline, size: 18),
-          const SizedBox(width: 6),
-          Flexible(child: Text(_errorLabel(toolName, detail))),
-        ]);
+        return YggToolCard(
+          name: name,
+          detail: _errorLabel(toolName, detail),
+          statusLabel: AppStrings.t('tool.statusFailed'),
+          tone: YggChipTone.danger,
+        );
     }
-  }
-
-  Widget _pill(BuildContext context, List<Widget> content, {Widget? action}) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 4),
-      child: Center(
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            borderRadius: BorderRadius.circular(12),
-          ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Row(mainAxisSize: MainAxisSize.min, children: content),
-              ?action,
-            ],
-          ),
-        ),
-      ),
-    );
   }
 }

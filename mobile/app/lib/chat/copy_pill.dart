@@ -17,7 +17,7 @@ class CopyPill extends StatelessWidget {
       child: Container(
         padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
         decoration: BoxDecoration(borderRadius: BorderRadius.circular(999), border: Border.all(color: YggColors.hairline)),
-        child: Text(AppStrings.t('common.copy'), style: const TextStyle(fontSize: 11.5, color: YggColors.textMuted)),
+        child: Text(AppStrings.t('common.copy'), style: TextStyle(fontSize: 11.5, color: YggColors.textMuted)),
       ),
     );
   }

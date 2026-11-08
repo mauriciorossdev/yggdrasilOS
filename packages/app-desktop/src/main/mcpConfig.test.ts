@@ -27,6 +27,8 @@ describe("feature-doc handoff guidance", () => {
     expect(guide).toContain("specPath");
     expect(guide).toContain("show_pane");
     expect(guide).toContain("pass `specPath` to `create_pane`");
+    expect(guide).toContain("worktree: true");
+    expect(guide).toContain(".yggdrasil/worktrees/<name>");
     const claudeMd = await readFile(join(dir, "CLAUDE.md"), "utf8");
     expect(claudeMd.match(/yggdrasil-panes-guide\.md/g)?.length).toBe(2); // description line + @import, once
   });

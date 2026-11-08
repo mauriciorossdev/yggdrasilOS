@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
+import { useI18n } from "../i18n/index.js";
 import type { AgentFlow, AgentFlowEdge, AgentFlowNode, AgentInfo, AgentTeam, ChatSendResult } from "../types.js";
 import { AgentFlowCanvas } from "./AgentFlowCanvas.js";
 import { NodeConfigDrawer } from "./NodeConfigDrawer.js";
@@ -14,6 +15,7 @@ import type { LeafPane } from "../terminal/paneTree.js";
 import { requestTerminalTab } from "../chat/mainTabsBridge.js";
 import { buildFlowLinks, setFlowLinks } from "../terminal/flowLinks.js";
 import { buildFlowLeaves } from "../terminal/buildFlowLeaves.js";
+import { createNodeWorktrees } from "../worktrees/nodeWorktrees.js";
 
 function emptyFlow(): AgentFlow {
   return { version: 1, name: "Default Flow", nodes: [], edges: [], supervisor: { type: "human" }, updatedAt: Date.now() };
@@ -64,6 +66,7 @@ function appendRosterLine(initialPrompt: string | undefined, childName: string, 
 
 export function AgentFlowView() {
   const { call, onEvent } = useGateway();
+  const { t } = useI18n();
   const [flow, setFlow] = useState<AgentFlow | null>(null);
   const [agents, setAgents] = useState<AgentInfo[]>([]);
   const [teams, setTeams] = useState<AgentTeam[]>([]);
@@ -330,7 +333,7 @@ export function AgentFlowView() {
 
   useEffect(() => refreshAgents(), [refreshAgents]);
 
-  if (!flow) return <p className="muted">Loading Agent Flow…</p>;
+  if (!flow) return <p className="muted">{t("flow.view.loading")}</p>;
 
   // Functional updater — AgentTemplatePicker's toggle() calls this (via
   // onChange) and createRoleNode below back-to-back in the same handler.
@@ -404,7 +407,7 @@ export function AgentFlowView() {
 
   const deleteAgentInline = (id: string) => {
     const agent = agents.find((a) => a.id === id);
-    if (!window.confirm(`Delete agent "${agent?.label ?? id}"? This can't be undone.`)) return;
+    if (!window.confirm(t("flow.view.deleteAgentConfirm", { name: agent?.label ?? id }))) return;
     void call("agents.delete", { id, scope: agent?.scope ?? "local" })
       .then(() => {
         refreshAgents();
@@ -446,7 +449,7 @@ export function AgentFlowView() {
       await window.yggdrasil.agentFlow.save(toSave);
       setFlow(toSave);
       savedSnapshotRef.current = snapshotFlow(toSave);
-      setSaveMessage("Saved");
+      setSaveMessage(t("flow.view.saved"));
       setTimeout(() => setSaveMessage(null), 2000);
       return undefined;
     } catch (err) {
@@ -518,7 +521,7 @@ export function AgentFlowView() {
     try {
       await window.yggdrasil.agentTeams.save({ id, name: trimmed, nodes: flow.nodes });
       setOpenedTeamId(id);
-      setSaveMessage(`Saved as team "${trimmed}"`);
+      setSaveMessage(t("flow.view.savedAsTeam", { name: trimmed }));
       setTimeout(() => setSaveMessage(null), 2000);
       refreshTeams();
     } catch (err) {
@@ -544,12 +547,31 @@ export function AgentFlowView() {
     });
   };
 
-  const loadIntoTerminal = () => {
+  const loadIntoTerminal = async () => {
     if (flow.nodes.length === 0) return;
-    if (!window.confirm("This replaces your current Terminal layout with one pane per Agent Flow node. Continue?")) {
-      return;
+    const isolated = flow.nodes.filter((n) => n.worktree).length;
+    const confirmText = [
+      t("flow.view.loadConfirm"),
+      isolated > 0
+        ? isolated > 1
+          ? t("flow.view.loadConfirmWorktreeMany", { count: isolated })
+          : t("flow.view.loadConfirmWorktreeOne")
+        : "",
+      t("flow.view.continue"),
+    ]
+      .filter(Boolean)
+      .join(" ");
+    if (!window.confirm(confirmText)) return;
+    let cwdByNode = new Map<string, string>();
+    if (isolated > 0) {
+      try {
+        cwdByNode = await createNodeWorktrees(call, flow.nodes);
+      } catch (err) {
+        setError(err instanceof Error ? err.message : String(err));
+        return;
+      }
     }
-    const { leaves, nodeIdToLeafId } = buildFlowLeaves(flow.nodes, projectPath, flow.edges);
+    const { leaves, nodeIdToLeafId } = buildFlowLeaves(flow.nodes, projectPath, flow.edges, flow.nodes, cwdByNode);
     requestLoadFlow(leaves);
     setFlowLinks(buildFlowLinks(flow, nodeIdToLeafId));
     requestTerminalTab();
@@ -560,10 +582,10 @@ export function AgentFlowView() {
   const runFlow = async () => {
     if (!canRunFlow) return;
     if (!flow.supervisor.initialPrompt?.trim()) {
-      setError('Add an "Initial prompt" in the Supervisor panel before running the flow.');
+      setError(t("flow.view.runNeedsPrompt"));
       return;
     }
-    if (!window.confirm("This replaces your current Terminal layout with live panes for this run. Continue?")) {
+    if (!window.confirm(t("flow.view.runConfirm"))) {
       return;
     }
     setError(null);
@@ -587,7 +609,7 @@ export function AgentFlowView() {
       {
         type: "leaf",
         id: crypto.randomUUID(),
-        title: "Supervisor",
+        title: t("flow.supervisor.title"),
         cwd,
         yggdrasilAgentId: flow.supervisor.agentId,
         sessionKey,
@@ -626,7 +648,7 @@ export function AgentFlowView() {
       );
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
-      if (!msg.startsWith("Timeout:")) setError(`Run Flow failed: ${msg}`);
+      if (!msg.startsWith("Timeout:")) setError(t("flow.view.runFailed", { message: msg }));
     } finally {
       setRunning(false);
     }
@@ -636,13 +658,13 @@ export function AgentFlowView() {
     <div className="agent-flow-view">
       <div className="agent-flow-toolbar">
         <button type="button" className="agent-flow-toolbar-btn" onClick={newFlow}>
-          + New Agent Flow
+          {t("flow.view.newFlow")}
         </button>
         <button type="button" className="agent-flow-toolbar-btn" onClick={addNode}>
-          + Add Node
+          {t("flow.view.addNode")}
         </button>
         <button type="button" className="agent-flow-toolbar-btn" onClick={() => void save()} disabled={saving}>
-          {saving ? "Saving…" : "Save Flow"}
+          {saving ? t("flow.view.saving") : t("flow.view.save")}
         </button>
         <button
           type="button"
@@ -650,7 +672,7 @@ export function AgentFlowView() {
           onClick={loadIntoTerminal}
           disabled={flow.nodes.length === 0}
         >
-          Load into Terminal
+          {t("flow.view.loadTerminal")}
         </button>
         {teamNameDraft === null ? (
           <button
@@ -659,7 +681,7 @@ export function AgentFlowView() {
             onClick={() => setTeamNameDraft(flow.name || "New Team")}
             disabled={flow.nodes.length === 0}
           >
-            Save as Team…
+            {t("flow.view.saveAsTeam")}
           </button>
         ) : (
           <input
@@ -685,16 +707,16 @@ export function AgentFlowView() {
             }}
           />
         )}
-        <TeamsMenu teams={teams} label="Open Team" title="Open a saved team on this canvas" onLoad={openTeam} onDeleted={setTeams} />
+        <TeamsMenu teams={teams} label={t("flow.view.openTeam")} title={t("flow.view.openTeamTitle")} onLoad={openTeam} onDeleted={setTeams} />
         {SHOW_RUN_FLOW && (
           <button
             type="button"
             className="agent-flow-toolbar-btn"
             onClick={() => void runFlow()}
             disabled={!canRunFlow || running}
-            title={canRunFlow ? undefined : "Needs a yggdrasil supervisor with an agent selected"}
+            title={canRunFlow ? undefined : t("flow.view.runNeedsSupervisor")}
           >
-            {running ? "Running…" : "Run Flow"}
+            {running ? t("flow.view.running") : t("flow.view.run")}
           </button>
         )}
         {saveMessage && <span className="mcp-status-ok">{saveMessage}</span>}
@@ -704,12 +726,12 @@ export function AgentFlowView() {
 
       <div className="agent-flow-body">
         <div className="agent-flow-canvas-area">
-          <div className="agent-flow-team-label" title={openedTeamId ? "Open team" : "Unsaved flow — no team open"}>
-            {openedTeamId ? flow.name : `${flow.name} (unsaved)`}
+          <div className="agent-flow-team-label" title={openedTeamId ? t("flow.view.teamOpen") : t("flow.view.teamUnsavedTitle")}>
+            {openedTeamId ? flow.name : t("flow.view.unsavedSuffix", { name: flow.name })}
           </div>
           {flow.nodes.length === 0 ? (
             <div className="agent-flow-canvas-empty">
-              <p className="muted">No nodes yet — add one to get started.</p>
+              <p className="muted">{t("flow.view.empty")}</p>
             </div>
           ) : (
             <AgentFlowCanvas
