@@ -6,6 +6,12 @@ on:
   push:
     tags:
       - "app-desktop-v*"
+  # Builds the installers from any branch without a tag, to check the build.
+  # It only uploads them as artifacts, like a tag push.
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 jobs:
   build:
@@ -23,6 +29,17 @@ jobs:
         with:
           node-version: "22"
           cache: pnpm
+
+      # better-sqlite3 has no prebuilt binaries and compiles on install. The
+      # node-gyp bundled with pnpm doesn't recognise the runner's Visual Studio
+      # 2026 (version 18), so point installs at one that does (13.0.1+).
+      # @electron/rebuild gets the same version from the root pnpm.overrides.
+      - name: Use a node-gyp that knows Visual Studio 2026
+        if: runner.os == 'Windows'
+        shell: bash
+        run: |
+          npm install -g node-gyp@13.1.0
+          echo "npm_config_node_gyp=$(npm prefix -g)/node_modules/node-gyp/bin/node-gyp.js" >> "$GITHUB_ENV"
 
       - run: pnpm install --frozen-lockfile
 

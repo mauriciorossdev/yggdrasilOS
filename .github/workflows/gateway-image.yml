@@ -44,13 +44,15 @@ jobs:
       # The wizard derives the image tag from the app's version, so a tag that
       # doesn't match it would publish an image no wizard asks for.
       - name: Check the tag matches the app version
+        id: version
         if: github.event_name == 'push'
         run: |
-          want="app-desktop-v$(node -p "require('./packages/app-desktop/package.json').version")"
-          if [ "$GITHUB_REF_NAME" != "$want" ]; then
-            echo "Tag $GITHUB_REF_NAME doesn't match packages/app-desktop/package.json ($want)." >&2
+          version="$(node -p "require('./packages/app-desktop/package.json').version")"
+          if [ "$GITHUB_REF_NAME" != "app-desktop-v$version" ]; then
+            echo "Tag $GITHUB_REF_NAME doesn't match packages/app-desktop/package.json (app-desktop-v$version)." >&2
             exit 1
           fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
 
       - uses: docker/setup-qemu-action@v4
       - uses: docker/setup-buildx-action@v4
@@ -90,7 +92,7 @@ jobs:
           # app-desktop-v0.2.0 → 0.2.0, plus latest unless it's a prerelease (0.2.0-beta.1).
           tags: |
             type=match,pattern=app-desktop-v(.*),group=1
-            type=raw,value=latest,enable=${{ !contains(github.ref_name, '-') }}
+            type=raw,value=latest,enable=${{ !contains(steps.version.outputs.version, '-') }}
 
       - name: Log in to GHCR
         if: github.event_name == 'push'

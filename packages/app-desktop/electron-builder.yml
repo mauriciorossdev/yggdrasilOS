@@ -75,3 +75,9 @@ linux:
     - deb
   icon: resources/icon.png
   category: Development
+
+# The default name comes from package.json ("@yggdrasil/app-desktop"), whose
+# scope turns into a folder that doesn't exist and makes fpm fail.
+deb:
+  packageName: yggdrasil-desktop
+  artifactName: yggdrasil-desktop_${version}_${arch}.${ext}
