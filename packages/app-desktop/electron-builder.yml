@@ -9,6 +9,13 @@ executableName: yggdrasil-desktop
 # so electron-builder's own rebuild pass is turned off.
 npmRebuild: false
 
+# electron-builder's pnpm collector skips the children of packages it reports
+# as "duplicate dependency references", so some transitive deps never reach the
+# app. That's why package.json lists @yggdrasil/context-runtime,
+# @yggdrasil/tool-builtin and chokidar directly, though the app doesn't import
+# them. This hook fails the build if any packaged package is still missing one.
+afterPack: build/check-packaged-deps.mjs
+
 directories:
   output: release
   buildResources: resources

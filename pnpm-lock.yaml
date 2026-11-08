@@ -350,6 +350,9 @@ importers:
       '@yggdrasil/context-memory-db':
         specifier: workspace:*
         version: link:../context-memory-db
+      '@yggdrasil/context-runtime':
+        specifier: workspace:*
+        version: link:../context-runtime
       '@yggdrasil/git-worktrees':
         specifier: workspace:*
         version: link:../git-worktrees
@@ -371,6 +374,9 @@ importers:
       '@yggdrasil/tool-agents':
         specifier: workspace:*
         version: link:../tool-agents
+      '@yggdrasil/tool-builtin':
+        specifier: workspace:*
+        version: link:../tool-builtin
       '@yggdrasil/tool-cli-delegate':
         specifier: workspace:*
         version: link:../tool-cli-delegate
@@ -398,6 +404,9 @@ importers:
       '@yggdrasil/tools-sdk':
         specifier: workspace:*
         version: link:../tools-sdk
+      chokidar:
+        specifier: ^5.0.0
+        version: 5.0.0
       electron-updater:
         specifier: ^6.8.11
         version: 6.8.11
