@@ -2,6 +2,43 @@
 
 Infra/build gotchas that aren't feature work — not tracked in `roadmap.md`.
 
+## `pnpm desktop` fails with `Error: Electron uninstall`
+
+**Symptom:** the app-desktop build finishes, then electron-vite throws
+`Error: Electron uninstall` before opening a window.
+
+**Root cause:** the `electron` package has no `postinstall`. Its binary is
+downloaded only by its `install-electron` bin, or lazily the first time
+something calls `require("electron")`. electron-vite doesn't do either: it reads
+`node_modules/electron/path.txt`, which doesn't exist until the binary is there.
+So a fresh `pnpm install` leaves nothing to start, even with `electron` in
+`onlyBuiltDependencies`.
+
+**Fix:** `packages/app-desktop`'s `postinstall` runs `install-electron` before
+rebuilding `better-sqlite3`. To repair an existing checkout by hand:
+`pnpm --filter @yggdrasil/app-desktop run postinstall`.
+
+## `pnpm i` fails with ENOENT on `@istanbuljs\schema`
+
+**Symptom:** `electron-builder install-app-deps` (app-desktop's `postinstall`
+at the time) died with
+`ENOENT: no such file or directory, stat '...\node_modules\.pnpm\node_modules\@istanbuljs\schema'`.
+
+**Root cause:** a dangling junction left in pnpm's hoisted folder by an older
+`@vitest/coverage-v8`. The lockfile no longer references it, so `pnpm i` says
+"Already up to date" and never cleans it, but electron-builder stats it. Only
+checkouts installed before that upgrade have it, and only tools that walk the
+hoisted folder trip on it.
+
+**Fix:** delete the stale junction and reinstall:
+
+```powershell
+Remove-Item node_modules\.pnpm\node_modules\@istanbuljs -Recurse -Force
+pnpm i
+```
+
+If other junctions are broken, remove `node_modules` entirely and run `pnpm i`.
+
 ## `better-sqlite3` ABI flips between Node and Electron (TODO: permanent fix)
 
 **Symptom:** `context-memory-db` fails to load with:
