@@ -252,7 +252,7 @@ export type WhisperSettings = {
 };
 
 // Mirrors main/whisperSettings.ts's STT cloud dispatcher.
-export type SttCloudProvider = "openai" | "custom";
+export type SttCloudProvider = "openai" | "replicate" | "custom";
 
 export type SttCloudSettings = {
   provider: SttCloudProvider;

@@ -14,6 +14,7 @@ type Props = {
 // since main/renderer don't share modules across the Electron process boundary.
 const STT_CLOUD_PRESETS: Record<SttCloudProvider, { baseUrl: string; model: string }> = {
   openai: { baseUrl: "https://api.openai.com/v1", model: "whisper-1" },
+  replicate: { baseUrl: "https://api.replicate.com/v1", model: "openai/gpt-4o-transcribe" },
   custom: { baseUrl: "", model: "" },
 };
 
@@ -135,6 +136,7 @@ export function WhisperSection({ settings, setSettings, sttSettings, setSttSetti
               onChange={(e) => switchCloudProvider(e.target.value as SttCloudProvider)}
             >
               <option value="openai">OpenAI</option>
+              <option value="replicate">Replicate</option>
               <option value="custom">{t("set.whisper.providerCustom")}</option>
             </select>
           </label>
