@@ -105,6 +105,12 @@ declare global {
         onClosed: (handler: (payload: unknown) => void) => () => void;
         onTrustChanged: (handler: (payload: unknown) => void) => () => void;
       };
+      update: {
+        get: () => Promise<{ version: string; url: string } | null>;
+        openRelease: () => Promise<void>;
+        dismiss: () => Promise<void>;
+        onChange: (handler: (update: { version: string; url: string } | null) => void) => () => void;
+      };
       editorSettings: {
         get: () => Promise<import("./files/editorPrefs.js").EditorPrefs>;
         set: (settings: import("./files/editorPrefs.js").EditorPrefs) => Promise<import("./files/editorPrefs.js").EditorPrefs>;

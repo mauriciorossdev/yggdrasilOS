@@ -169,6 +169,7 @@ import { resolveShellPath } from "./resolveShellPath.js";
 import { installAboutMenu } from "./aboutPanel.js";
 import { mt, resolveMainLanguage, setMainLanguage } from "./i18n.js";
 import { installAutoUpdater } from "./autoUpdate.js";
+import { installUpdateCheck } from "./updateCheck.js";
 
 // Loads packages/app-desktop/.env (gitignored, `.env*` in the root
 // .gitignore) into process.env before anything else runs — this is where
@@ -1753,6 +1754,7 @@ app.whenReady().then(async () => {
   setMainLanguage(resolveMainLanguage(savedOnboarding?.language, app.getLocale()));
   installAboutMenu();
   installAutoUpdater();
+  installUpdateCheck();
   registerIpc();
   registerTerminalIpc(
     (projectId) => projectWindows.get(projectId)?.window,

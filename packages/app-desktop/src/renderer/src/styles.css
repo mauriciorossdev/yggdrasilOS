@@ -88,6 +88,19 @@ body {
   border-bottom: 1px solid color-mix(in srgb, var(--ygg-status-working) 35%, transparent);
 }
 
+/* "New version available" strip (components/UpdateBanner.tsx). */
+.update-banner {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 4px 12px;
+  font-size: 12px;
+  background: color-mix(in srgb, var(--ygg-accent) 10%, transparent);
+  border-bottom: 1px solid color-mix(in srgb, var(--ygg-accent) 30%, transparent);
+}
+
 /* Frameless window (main/index.ts: frame:false on every platform) — this
    replaces the native title bar entirely, including its own close/minimize/
    maximize buttons (TitleBar.tsx). -webkit-app-region:drag makes the bar
