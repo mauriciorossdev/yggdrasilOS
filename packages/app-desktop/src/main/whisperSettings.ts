@@ -41,12 +41,12 @@ export async function saveWhisperSettings(userDataDir: string, settings: Whisper
 
 // --- STT: local (whisper, above) vs cloud dispatcher ---------------------
 //
-// Cloud providers speak the OpenAI /audio/transcriptions multipart shape —
-// OpenAI itself does, and "custom" covers any self-hosted server that mimics
-// it (e.g. faster-whisper-server) — one implementation (sttCloud.ts) serves
-// both, just with a different baseUrl/model.
+// OpenAI and "custom" speak the OpenAI /audio/transcriptions multipart shape
+// ("custom" covers any self-hosted server that mimics it, e.g.
+// faster-whisper-server). Replicate runs a model as a prediction instead
+// (model = "owner/name", e.g. openai/gpt-4o-transcribe). See sttCloud.ts.
 
-export type SttCloudProvider = "openai" | "custom";
+export type SttCloudProvider = "openai" | "replicate" | "custom";
 
 export type SttCloudSettings = {
   provider: SttCloudProvider;
@@ -64,6 +64,7 @@ export type SttSettings = {
 
 export const STT_CLOUD_PRESETS: Record<SttCloudProvider, { baseUrl: string; model: string }> = {
   openai: { baseUrl: "https://api.openai.com/v1", model: "whisper-1" },
+  replicate: { baseUrl: "https://api.replicate.com/v1", model: "openai/gpt-4o-transcribe" },
   custom: { baseUrl: "", model: "" },
 };
 
