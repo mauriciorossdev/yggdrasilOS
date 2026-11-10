@@ -8,6 +8,8 @@ export type RepoInfo = {
   name: string;
   branch?: string;
   relation: RepoRelation;
+  /** Only on "parent": where the project sits inside the repo ("packages/x"). */
+  prefix?: string;
 };
 
 export type GitChange = {

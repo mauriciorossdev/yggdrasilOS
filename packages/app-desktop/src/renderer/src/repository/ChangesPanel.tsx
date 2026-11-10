@@ -1,7 +1,11 @@
 import { useState } from "react";
 import { ArrowUturnLeftIcon, MinusIcon, PlusIcon } from "@heroicons/react/20/solid";
 import { splitPath } from "./format.js";
+import { ChangeList, TREE_INDENT, type ChangeRowContext } from "./ChangeList.js";
+import type { ChangeViewMode } from "./changeTree.js";
 import type { DiffSelection, GitChange, RepoStatus } from "./types.js";
+
+const changePath = (c: GitChange) => c.path;
 import { useI18n, type MessageKey } from "../i18n/index.js";
 
 const LETTER_TITLE: Record<string, MessageKey> = {
@@ -22,6 +26,7 @@ type Props = {
   branch?: string;
   selected: DiffSelection | null;
   disabled: boolean;
+  viewMode: ChangeViewMode;
   onSelect: (sel: DiffSelection) => void;
   onStage: (paths: string[]) => void;
   onUnstage: (paths: string[]) => void;
@@ -39,6 +44,7 @@ function Row({
   disabled,
   onClick,
   actions,
+  ctx,
 }: {
   change: GitChange;
   letter: string;
@@ -46,12 +52,21 @@ function Row({
   disabled: boolean;
   onClick: () => void;
   actions: React.ReactNode;
+  ctx: ChangeRowContext;
 }) {
   const { t } = useI18n();
-  const { dir, file } = splitPath(change.path);
+  const split = splitPath(change.path);
+  const dir = ctx.tree ? "" : split.dir;
+  const file = split.file;
   return (
     <li className={`repo-change${active ? " active" : ""}`}>
-      <button type="button" className="repo-change-main" onClick={onClick} title={change.origPath ? `${change.origPath} → ${change.path}` : change.path}>
+      <button
+        type="button"
+        className={`repo-change-main${ctx.tree ? " tree" : ""}`}
+        style={ctx.tree ? { paddingLeft: ctx.depth * TREE_INDENT + 8 } : undefined}
+        onClick={onClick}
+        title={change.origPath ? `${change.origPath} → ${change.path}` : change.path}
+      >
         <span className={`repo-letter l-${letter === "?" ? "u" : letter}`} title={LETTER_TITLE[letter] ? t(LETTER_TITLE[letter]) : letter}>
           {letter === "?" ? "U" : letter}
         </span>
@@ -102,9 +117,10 @@ export function ChangesPanel(p: Props) {
             <span className="repo-count danger">{conflicts.length}</span>
           </div>
           <ul className="repo-list">
-            {conflicts.map((c) => (
+            <ChangeList items={conflicts} getPath={changePath} mode={p.viewMode} renderRow={(c, ctx) => (
               <Row
                 key={c.path}
+                ctx={ctx}
                 change={c}
                 letter="U"
                 active={isActive(c.path, "unstaged")}
@@ -116,7 +132,7 @@ export function ChangesPanel(p: Props) {
                   </button>
                 }
               />
-            ))}
+            )} />
           </ul>
         </section>
       )}
@@ -132,9 +148,10 @@ export function ChangesPanel(p: Props) {
           )}
         </div>
         <ul className="repo-list">
-          {staged.map((c) => (
+          <ChangeList items={staged} getPath={changePath} mode={p.viewMode} renderRow={(c, ctx) => (
             <Row
               key={`s:${c.path}`}
+              ctx={ctx}
               change={c}
               letter={c.index}
               active={isActive(c.path, "staged")}
@@ -146,7 +163,7 @@ export function ChangesPanel(p: Props) {
                 </button>
               }
             />
-          ))}
+          )} />
           {staged.length === 0 && <li className="repo-muted">{t("repo.changes.nothingStaged")}</li>}
         </ul>
       </section>
@@ -162,9 +179,10 @@ export function ChangesPanel(p: Props) {
           )}
         </div>
         <ul className="repo-list">
-          {unstaged.map((c) => (
+          <ChangeList items={unstaged} getPath={changePath} mode={p.viewMode} renderRow={(c, ctx) => (
             <Row
               key={`u:${c.path}`}
+              ctx={ctx}
               change={c}
               letter={c.worktree}
               active={isActive(c.path, "unstaged")}
@@ -181,7 +199,7 @@ export function ChangesPanel(p: Props) {
                 </>
               }
             />
-          ))}
+          )} />
           {unstaged.length === 0 && <li className="repo-muted">{t("repo.changes.clean")}</li>}
         </ul>
       </section>

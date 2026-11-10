@@ -233,7 +233,6 @@ export type FsMutationResult = { ok: true; path: string };
 export type GitFileStatus = "modified" | "added" | "deleted" | "renamed" | "untracked" | "unmerged";
 export type GitFileEntry = { path: string; status: GitFileStatus };
 export type GitStatusResult = { isRepo: boolean; branch?: string; files: GitFileEntry[] };
-export type GitDiffResult = { diff: string };
 
 // Main-process whisper concepts (packages/app-desktop/src/main/whisper.ts,
 // whisperSettings.ts) — mirrored here structurally, same convention as
