@@ -181,7 +181,7 @@ describe("git.* repository methods", () => {
     const sub = join(top, "packages", "x");
     await mkdir(sub, { recursive: true });
     const r = await call(sub, "git.repos");
-    expect(r.repos[0]).toMatchObject({ path: "../..", relation: "parent" });
+    expect(r.repos[0]).toMatchObject({ path: "../..", relation: "parent", prefix: "packages/x" });
     // and it is addressable
     const status = await call(sub, "git.status2", { repo: "../.." });
     expect(status.branch).toBe("main");
@@ -233,6 +233,25 @@ describe("git.* repository methods", () => {
     ]);
     const cd = await call(root, "git.diff2", { path: "a.txt", mode: "commit", sha: log.commits[0].sha });
     expect(cd).toEqual({ original: "one\n", modified: "one\ntwo\n" });
+  });
+
+  it("diff2 head mode: HEAD against the working tree, staged or not", async () => {
+    const root = await tmp();
+    await newRepo(root);
+    await writeFile(join(root, "a.txt"), "one\ntwo\n");
+    git(root, "add", "a.txt");
+    await writeFile(join(root, "a.txt"), "one\ntwo\nthree\n");
+    expect(await call(root, "git.diff2", { path: "a.txt", mode: "head" })).toEqual({
+      original: "one\n",
+      modified: "one\ntwo\nthree\n",
+    });
+
+    await mkdir(join(root, "dir"));
+    await writeFile(join(root, "dir", "new.txt"), "x\n");
+    expect(await call(root, "git.diff2", { path: "dir/new.txt", mode: "head" })).toEqual({ original: "", modified: "x\n" });
+
+    await rm(join(root, "a.txt"));
+    expect(await call(root, "git.diff2", { path: "a.txt", mode: "head" })).toEqual({ original: "one\n", modified: "" });
   });
 
   it("commit requires a message; empty repo log is empty", async () => {

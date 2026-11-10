@@ -11,6 +11,8 @@ import { ComposerToolbar } from "./ComposerToolbar.js";
 import { AgentManager } from "../agents/AgentManager.js";
 import { SettingsView } from "../settings/SettingsView.js";
 import { FileContentPanel } from "../files/FileContentPanel.js";
+import { DiffContentPanel } from "../files/DiffContentPanel.js";
+import type { DiffTarget } from "../files/RemoteFilesPanel.js";
 import { registerFallbackFileOpener } from "../files/openFileBus.js";
 import { DocumentsView } from "../documents/DocumentsView.js";
 import { FilesView } from "../files/FilesView.js";
@@ -75,6 +77,10 @@ export function ChatView() {
     dispatchPanel({ type: "open", panel: { kind: "file", path: relativePath } });
   }, []);
   useEffect(() => registerFallbackFileOpener(openFile), [openFile]);
+  const openDiff = useCallback((target: DiffTarget) => {
+    setPanelWidth(window.innerWidth * 0.6);
+    dispatchPanel({ type: "open", panel: { kind: "diff", ...target } });
+  }, []);
   const openPluginPanel = useCallback((key: string) => {
     setPanelWidth(window.innerWidth * 0.6);
     dispatchPanel({ type: "open", panel: { kind: "plugin", key } });
@@ -484,6 +490,20 @@ export function ChatView() {
         />
       );
     }
+    if (sidePanel.kind === "diff") {
+      return (
+        <DiffContentPanel
+          key={`diff:${sidePanel.path}`}
+          path={sidePanel.path}
+          filePath={sidePanel.filePath}
+          onOpenFile={openFile}
+          headerActions={headerActions}
+          onClose={() => dispatchPanel({ type: "close" })}
+          className={className}
+          style={{ width: panelWidth }}
+        />
+      );
+    }
     const plugin = pluginsByKey.get(sidePanel.key);
     if (!plugin) return null;
     return (
@@ -515,6 +535,8 @@ export function ChatView() {
         activeAgentId={state.activeAgentId}
         onSelectAgent={(agentId) => dispatch({ type: "SET_ACTIVE_AGENT", agentId })}
         onOpenFile={openFile}
+        onOpenDiff={openDiff}
+        activeDiffPath={sidePanel?.kind === "diff" && panelPhase !== "exit" ? sidePanel.path : undefined}
         plugins={plugins}
         onOpenPlugin={openPlugin}
         onOpenPluginTab={openPluginTab}

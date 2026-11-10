@@ -15,7 +15,7 @@ import type { AgentInfo, PluginRecord, ProjectRecord, SessionInfo } from "../typ
 import { SessionContextMenu } from "./SessionContextMenu.js";
 import { ProjectContextMenu } from "./ProjectContextMenu.js";
 import { FileTree } from "../files/FileTree.js";
-import { RemoteFilesPanel } from "../files/RemoteFilesPanel.js";
+import { RemoteFilesPanel, type DiffTarget } from "../files/RemoteFilesPanel.js";
 import { BranchIcon } from "../files/FileIcons.js";
 import { useGitChanges } from "../files/useGitChanges.js";
 import { ScriptsSection } from "../files/ScriptsSection.js";
@@ -43,6 +43,10 @@ type Props = {
   activeAgentId: string | null;
   onSelectAgent: (agentId: string) => void;
   onOpenFile: (relativePath: string) => void;
+  /** Remote Diff: show one changed file's diff in the side panel. */
+  onOpenDiff: (target: DiffTarget) => void;
+  /** Repo path of the diff open in the side panel, if any. */
+  activeDiffPath?: string;
   plugins: PluginRecord[];
   onOpenPlugin: (key: string) => void;
   onOpenPluginTab: (key: string) => void;
@@ -66,6 +70,8 @@ export function SessionSidebar({
   activeAgentId,
   onSelectAgent,
   onOpenFile,
+  onOpenDiff,
+  activeDiffPath,
   plugins,
   onOpenPlugin,
   onOpenPluginTab,
@@ -350,7 +356,7 @@ export function SessionSidebar({
               />
             </>
           ) : (
-            <RemoteFilesPanel />
+            <RemoteFilesPanel onOpenDiff={onOpenDiff} activePath={activeDiffPath} />
           )}
         </CollapsibleSection>
 

@@ -435,7 +435,14 @@ export function registerGitMethods(deps: GitMethodsDeps): void {
 
   deps.register("git.repos", async (_params, ctx, connectionId) => {
     const root = await authorize("git.repos", ctx.workspaceRoot, connectionId);
-    const repos: Array<{ path: string; name: string; branch?: string; relation: "root" | "parent" | "child" }> = [];
+    const repos: Array<{
+      path: string;
+      name: string;
+      branch?: string;
+      relation: "root" | "parent" | "child";
+      /** Only on "parent": where the project sits inside the repo ("packages/x"), to turn repo paths into project paths. */
+      prefix?: string;
+    }> = [];
 
     async function branchOf(dir: string): Promise<string | undefined> {
       const res = await execGitRaw(dir, ["rev-parse", "--abbrev-ref", "HEAD"], { readOnly: true });
@@ -457,6 +464,7 @@ export function registerGitMethods(deps: GitMethodsDeps): void {
         name: basename(topAbs),
         branch: await branchOf(topAbs),
         relation: rel === "." ? "root" : "parent",
+        ...(rel === "." ? {} : { prefix: toPosix(relative(topAbs, root)) }),
       });
     }
 
@@ -750,6 +758,10 @@ export function registerGitMethods(deps: GitMethodsDeps): void {
       modified = await blob(`${sha}:${path}`);
     } else if (mode === "unstaged") {
       original = await blob(`:${path}`);
+      modified = await worktree();
+    } else if (mode === "head") {
+      // Everything not committed yet, staged or not, in one diff (the sidebar's view).
+      original = await blob(`HEAD:${path}`);
       modified = await worktree();
     } else {
       throw new Error(`git.diff2: unknown mode "${mode}"`);

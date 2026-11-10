@@ -25,6 +25,17 @@ export function initials(name: string): string {
   return (first + second).toUpperCase();
 }
 
+/**
+ * A repo-relative path as a project-relative one. `prefix` is where the
+ * project sits inside the repo ("" when the project is the repo root).
+ * undefined when the file is outside the project.
+ */
+export function repoToProjectPath(path: string, prefix: string): string | undefined {
+  if (!prefix || prefix === ".") return path;
+  const base = prefix.endsWith("/") ? prefix : `${prefix}/`;
+  return path.startsWith(base) ? path.slice(base.length) : undefined;
+}
+
 /** Splits a path into its directory (with trailing slash) and file name. */
 export function splitPath(path: string): { dir: string; file: string } {
   const slash = path.lastIndexOf("/");

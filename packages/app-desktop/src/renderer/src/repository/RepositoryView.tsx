@@ -2,23 +2,17 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { ArrowDownIcon, ArrowDownTrayIcon, ArrowPathIcon, ArrowUpIcon } from "@heroicons/react/20/solid";
 import { BranchesPanel } from "./BranchesPanel.js";
 import { ChangesPanel } from "./ChangesPanel.js";
+import { ChangeViewToggle } from "./ChangeList.js";
+import { useChangeViewMode } from "./useChangeViewMode.js";
 import { CommitLog } from "./CommitLog.js";
 import { DiffViewer } from "./DiffViewer.js";
+import { readDiffLayout, writeDiffLayout } from "./diffLayout.js";
 import { RepoSelector } from "./RepoSelector.js";
 import { splitPath } from "./format.js";
 import { useRepo } from "./useRepo.js";
 import type { CommitDetail, DiffContent, DiffSelection, GitChange } from "./types.js";
 import { useI18n } from "../i18n/index.js";
 
-const DIFF_LAYOUT_KEY = "ygg.repo.diffLayout";
-
-function readDiffLayout(): "unified" | "split" {
-  try {
-    return localStorage.getItem(DIFF_LAYOUT_KEY) === "split" ? "split" : "unified";
-  } catch {
-    return "unified";
-  }
-}
 
 /**
  * "Repositorio" main tab — a small git client (branches, changes, history,
@@ -38,12 +32,9 @@ export function RepositoryView() {
   const [diffLayout, setDiffLayout] = useState<"unified" | "split">(readDiffLayout);
   const chooseDiffLayout = (next: "unified" | "split") => {
     setDiffLayout(next);
-    try {
-      localStorage.setItem(DIFF_LAYOUT_KEY, next);
-    } catch {
-      // storage unavailable — choice just won't persist
-    }
+    writeDiffLayout(next);
   };
+  const [viewMode, setViewMode] = useChangeViewMode();
   const [commitSha, setCommitSha] = useState<string | null>(null);
   const [detail, setDetail] = useState<CommitDetail | null>(null);
   const lastCheckout = useRef<{ branch: string; remote: boolean } | null>(null);
@@ -289,6 +280,7 @@ export function RepositoryView() {
             <button type="button" role="tab" aria-selected={tab === "history"} className={`repo-tab${tab === "history" ? " active" : ""}`} onClick={() => setTab("history")}>
               {t("repo.view.tabHistory")}
             </button>
+            {tab === "changes" && <ChangeViewToggle mode={viewMode} onChange={setViewMode} />}
           </div>
           <div className="repo-center-body">
             {tab === "changes" && status && (
@@ -297,6 +289,7 @@ export function RepositoryView() {
                 branch={status.detached ? undefined : status.branch}
                 selected={selection}
                 disabled={disabled}
+                viewMode={viewMode}
                 onSelect={setSelection}
                 onStage={(paths) => void run("git.stage", { paths })}
                 onUnstage={(paths) => void run("git.unstage", { paths })}
