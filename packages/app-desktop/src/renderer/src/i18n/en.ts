@@ -246,7 +246,7 @@ export const en = {
   "set.nav.general": "General",
   "set.nav.appearance": "Appearance",
   "set.nav.workspace": "Workspace",
-  "set.nav.agent": "Agent",
+  "set.nav.agent": "Agents",
   "set.nav.providers": "Providers",
   "set.nav.mcp": "MCP",
   "set.nav.harness": "Harness",

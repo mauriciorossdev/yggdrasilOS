@@ -40,3 +40,10 @@ describe("theme persistence", () => {
     expect(await loadThemeSettings(dir)).toEqual(saved);
   });
 });
+
+describe("paneCorners", () => {
+  it("keeps only the square value", () => {
+    expect(sanitizeThemeSettings({ presetId: "warm-dark", overrides: {}, paneCorners: "square" }).paneCorners).toBe("square");
+    expect(sanitizeThemeSettings({ presetId: "warm-dark", overrides: {}, paneCorners: "round" })).toEqual(defaultThemeSettings());
+  });
+});

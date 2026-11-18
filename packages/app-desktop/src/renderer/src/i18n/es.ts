@@ -246,7 +246,7 @@ export const es: Record<MessageKey, string> = {
   "set.nav.general": "General",
   "set.nav.appearance": "Apariencia",
   "set.nav.workspace": "Workspace",
-  "set.nav.agent": "Agente",
+  "set.nav.agent": "Agentes",
   "set.nav.providers": "Proveedores",
   "set.nav.mcp": "MCP",
   "set.nav.harness": "Harness",

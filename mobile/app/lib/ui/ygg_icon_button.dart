@@ -50,7 +50,7 @@ class YggIconButton extends StatelessWidget {
         circle ? CircleBorder(side: side) : RoundedRectangleBorder(borderRadius: BorderRadius.circular(YggRadius.lg), side: side);
     final enabled = onTap != null;
 
-    return Semantics(
+    final Widget button = Semantics(
       button: true,
       enabled: enabled,
       label: tooltip,
@@ -68,5 +68,11 @@ class YggIconButton extends StatelessWidget {
         ),
       ),
     );
+    // Long-press shows the label, like Flutter's own IconButton. The
+    // Semantics above already announces it, so the tooltip stays out of the
+    // semantics tree (no double announcement).
+    final label = tooltip;
+    if (label == null || label.isEmpty) return button;
+    return Tooltip(message: label, excludeFromSemantics: true, child: button);
   }
 }

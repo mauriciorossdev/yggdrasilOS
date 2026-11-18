@@ -3,7 +3,8 @@ import { createPortal } from "react-dom";
 import { PencilIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { useI18n } from "../i18n/index.js";
 import type { AgentTeam, PaneNode } from "../types.js";
-import { collectLeaves, newLeaf, paneReducer, projectReflowedTree, REFLOW_ID_PREFIX, type LeafPane } from "./paneTree.js";
+import { collectLeaves, newLeaf, paneReducer, projectReflowedTree, REFLOW_ID_PREFIX, SCRIPT_PANE_PREFIX, type LeafPane } from "./paneTree.js";
+import { getScriptRuns, markExit, markStarted, onScriptCommand, syncOpenPanes } from "../scripts/scriptRuns.js";
 import { TerminalPane } from "./TerminalPane.js";
 import { liveOrphans } from "./liveOrphans.js";
 import { requestTab } from "../chat/mainTabsBridge.js";
@@ -16,7 +17,6 @@ import { useGateway } from "@yggdrasil/client-web";
 import { createNodeWorktrees } from "../worktrees/nodeWorktrees.js";
 import { buildFlowLeaves, selectTeamRootNodes } from "./buildFlowLeaves.js";
 import { TerminalNavbar } from "./TerminalNavbar.js";
-import { PaneBranchProvider } from "./paneBranchContext.js";
 import { terminalLaunchClis } from "../onboarding/harnessFilter.js";
 import { useOnboarding } from "../onboarding/store.js";
 import { FeatureHeader } from "./FeatureHeader.js";
@@ -101,12 +101,9 @@ function PaneNodeView({
   );
 }
 
+/** Needs a PaneBranchProvider above it (ChatView mounts it around the whole shell). */
 export function TerminalContainer() {
-  return (
-    <PaneBranchProvider>
-      <TerminalContainerBody />
-    </PaneBranchProvider>
-  );
+  return <TerminalContainerBody />;
 }
 
 function TerminalContainerBody() {
@@ -270,7 +267,12 @@ function TerminalContainerBody() {
         // saved Team if this project has any) via the empty state below.
         setSavedTeams(teams);
       }
-      const orphans = liveOrphans([], livePanes);
+      // A script's pty can outlive a window reload but its pane is not restored
+      // (HYDRATE), and it has no name or status in the sidebar any more: end it
+      // rather than leave a dev server running out of sight.
+      const isScript = (p: { id: string }) => p.id.startsWith(SCRIPT_PANE_PREFIX);
+      for (const p of livePanes.filter(isScript)) void window.yggdrasil.terminals.dispose(p.id);
+      const orphans = liveOrphans([], livePanes.filter((p) => !isScript(p)));
       if (orphans.length > 0) dispatch({ type: "ADOPT_LIVE", leaves: orphans });
       setHydrated(true);
     });
@@ -412,6 +414,53 @@ function TerminalContainerBody() {
         }
       }),
     [projectPath, state.root, state.activePaneId, leaves],
+  );
+
+  // package.json scripts started from the sidebar (ScriptsSection): each one
+  // gets its own pane running `<pm> run <script>` directly, not wrapped in a
+  // shell, so the pane keeps the output and shows the exit code and the
+  // sidebar can tell done/failed apart. They start in the background (no tab
+  // switch); only "focus"/re-running a live one brings the pane into view.
+  useEffect(() => window.yggdrasil.terminals.onExit((id, code) => markExit(id, code)), []);
+  useEffect(() => {
+    syncOpenPanes(new Set(leaves.map((l) => l.id)));
+  }, [leaves]);
+  useEffect(
+    () =>
+      onScriptCommand((cmd) => {
+        const existing = getScriptRuns().get(cmd.name);
+        const open = existing !== undefined && leaves.some((l) => l.id === existing.paneId);
+        if (cmd.type === "focus") {
+          if (open) {
+            restorePane(existing.paneId);
+            requestTab("terminal");
+          }
+          return;
+        }
+        if (!hydrated) return;
+        if (open && cmd.type === "run" && existing.status === "running") {
+          restorePane(existing.paneId);
+          requestTab("terminal");
+          return;
+        }
+        // Finished or restarting: its old pane goes (closing it kills a live process).
+        if (open) dispatch({ type: "CLOSE", id: existing.paneId });
+        const leaf: LeafPane = {
+          ...newLeaf(cmd.cwd, `${cmd.packageManager} run ${cmd.name}`),
+          id: `${SCRIPT_PANE_PREFIX}${crypto.randomUUID()}`,
+          command: cmd.packageManager,
+          args: ["run", cmd.name],
+        };
+        markStarted(cmd.name, leaf.id);
+        const others = leaves.filter((l) => l.id !== (open ? existing.paneId : undefined));
+        if (others.length === 0) {
+          dispatch({ type: "ADD_ROOT", leaf });
+        } else {
+          const target = others.find((l) => l.id === state.activePaneId) ?? others[0]!;
+          dispatch({ type: "SPLIT", targetId: target.id, direction: "row", newLeaf: leaf });
+        }
+      }),
+    [hydrated, state.activePaneId, leaves],
   );
 
   // An agent used the create_pane MCP tool (paneControlServer.ts) — its pty

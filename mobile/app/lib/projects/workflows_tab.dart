@@ -37,6 +37,10 @@ class _WorkflowsTabState extends State<WorkflowsTab> {
   List<Map> _summaries = [];
   bool _loading = true;
   String? _error;
+
+  /// The gateway doesn't serve workflows.* at all (no workflows plugin, e.g.
+  /// a headless CLI gateway) — an empty state, not an error.
+  bool _unsupported = false;
   String? _expandedId;
   final Map<String, List<Map>> _runsByWorkflow = {};
   final Map<String, Map> _lastRun = {};
@@ -64,6 +68,7 @@ class _WorkflowsTabState extends State<WorkflowsTab> {
     setState(() {
       _loading = true;
       _error = null;
+      _unsupported = false;
     });
     try {
       final summaries = await client.listWorkflows();
@@ -75,8 +80,11 @@ class _WorkflowsTabState extends State<WorkflowsTab> {
       unawaited(_loadLastRuns());
     } catch (e) {
       if (!mounted) return;
+      // Gateway errors arrive as the raw {code, message} map.
+      final code = e is Map ? e['code'] : null;
       setState(() {
-        _error = '$e';
+        _unsupported = code == 'METHOD_NOT_FOUND';
+        _error = e is Map ? (e['message']?.toString() ?? '$e') : '$e';
         _loading = false;
       });
     }
@@ -398,6 +406,9 @@ class _WorkflowsTabState extends State<WorkflowsTab> {
       return YggEmptyState(icon: Icons.bolt_outlined, message: AppStrings.t('projects.notOpenOnComputer'));
     }
     if (_loading) return Center(child: CircularProgressIndicator(color: YggColors.accent));
+    if (_unsupported) {
+      return YggEmptyState(icon: Icons.bolt_outlined, message: AppStrings.t('projects.workflowsUnsupported'));
+    }
     if (_error != null) {
       return YggEmptyState(
         icon: Icons.error_outline,

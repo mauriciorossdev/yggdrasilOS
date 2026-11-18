@@ -3,8 +3,8 @@ import { mkdtemp, readFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { deleteGithubAccount, getGithubAccount, saveGithubAccount } from "./account.js";
-import { pollForToken } from "./oauth.js";
-import { listRepos } from "./github-api.js";
+import { DEFAULT_GITHUB_OAUTH_CLIENT_ID, getGithubClientId, pollForToken } from "./oauth.js";
+import { githubFetch, listRepos } from "./github-api.js";
 import { cloneRepo } from "./clone.js";
 
 function mockFetch(body: unknown, init: { status?: number; headers?: Record<string, string> } = {}) {
@@ -30,6 +30,41 @@ describe("tool-github", () => {
     expect(JSON.parse(await readFile(process.env.YGGDRASIL_GITHUB_ACCOUNT_FILE!, "utf8")).accessToken).toBe("t");
     await deleteGithubAccount();
     expect(await getGithubAccount()).toBeNull();
+  });
+
+  it("uses the shipped Client ID unless GITHUB_OAUTH_CLIENT_ID overrides it", () => {
+    const saved = process.env.GITHUB_OAUTH_CLIENT_ID;
+    try {
+      delete process.env.GITHUB_OAUTH_CLIENT_ID;
+      expect(getGithubClientId()).toBe(DEFAULT_GITHUB_OAUTH_CLIENT_ID);
+      process.env.GITHUB_OAUTH_CLIENT_ID = "   ";
+      expect(getGithubClientId()).toBe(DEFAULT_GITHUB_OAUTH_CLIENT_ID);
+      process.env.GITHUB_OAUTH_CLIENT_ID = " Ov23customForkApp ";
+      expect(getGithubClientId()).toBe("Ov23customForkApp");
+    } finally {
+      if (saved === undefined) delete process.env.GITHUB_OAUTH_CLIENT_ID;
+      else process.env.GITHUB_OAUTH_CLIENT_ID = saved;
+    }
+  });
+
+  it("retries a GET when the network drops the connection, but not HTTP errors", async () => {
+    const dropped = Object.assign(new TypeError("fetch failed"), { cause: { code: "UND_ERR_SOCKET" } });
+    const ok = () => new Response(JSON.stringify({ login: "me" }), { status: 200 });
+
+    const flaky = vi.fn().mockRejectedValueOnce(dropped).mockResolvedValueOnce(ok());
+    vi.stubGlobal("fetch", flaky);
+    expect((await githubFetch("/user", "t", { retryDelayMs: 0 })).data).toEqual({ login: "me" });
+    expect(flaky).toHaveBeenCalledTimes(2);
+
+    const down = vi.fn().mockRejectedValue(dropped);
+    vi.stubGlobal("fetch", down);
+    await expect(githubFetch("/user", "t", { retryDelayMs: 0 })).rejects.toThrow(/Couldn't reach GitHub \(UND_ERR_SOCKET\) after 3 attempts/);
+    expect(down).toHaveBeenCalledTimes(3);
+
+    const serverError = vi.fn(async () => new Response("boom", { status: 500 }));
+    vi.stubGlobal("fetch", serverError);
+    await expect(githubFetch("/user", "t", { retryDelayMs: 0 })).rejects.toThrow(/GitHub API 500/);
+    expect(serverError).toHaveBeenCalledTimes(1);
   });
 
   it("maps device-flow poll responses", async () => {

@@ -20,6 +20,24 @@ export type BrowserTabBounds = {
   crop?: { width: number; height: number };
 };
 
+/**
+ * The renderer measures in its own CSS px; the native view is placed in window DIPs.
+ * They differ by the host window's zoom (View → Zoom In), so scale by it. `emulate`
+ * is the device's own CSS size and stays as is.
+ */
+export function scaleBrowserTabBounds(bounds: BrowserTabBounds, zoom: number): BrowserTabBounds {
+  if (!Number.isFinite(zoom) || zoom <= 0 || zoom === 1) return bounds;
+  const s = (n: number) => Math.round(n * zoom);
+  return {
+    ...bounds,
+    x: s(bounds.x),
+    y: s(bounds.y),
+    width: s(bounds.width),
+    height: s(bounds.height),
+    crop: bounds.crop && { width: s(bounds.crop.width), height: s(bounds.crop.height) },
+  };
+}
+
 export type PickedElement = {
   tag: string;
   id?: string;
@@ -393,8 +411,16 @@ function createPage(win: BrowserWindow, hooks: PageHooks) {
     detach(): void {
       resolvePick(null);
       if (!attached) return;
-      win.contentView.removeChildView(view);
       attached = false;
+      // On window close the BrowserWindow (and its contentView) is already
+      // destroyed by the time destroy() runs — touching it throws
+      // "Object has been destroyed" as an uncaught main-process exception.
+      if (win.isDestroyed()) return;
+      try {
+        win.contentView.removeChildView(view);
+      } catch {
+        /* window torn down mid-call — nothing left to detach from */
+      }
     },
     setBounds: (bounds: BrowserTabBounds) => applyBounds(bounds),
     focus: () => wc.focus(),

@@ -18,6 +18,7 @@ import 'profiles/profile_store.dart';
 import 'services/locale_store.dart';
 import 'services/voice_notification_channel.dart';
 import 'services/voice_trigger_bus.dart';
+import 'services/gateway_scope.dart';
 import 'services/yggdrasil_client.dart';
 import 'theme/ygg_theme.dart';
 import 'workflows_local/background_entry.dart';
@@ -36,6 +37,10 @@ void workflowBackgroundMain() => runAutomationBackground();
 /// Engine entrypoint for the quick-access bubble's UI-less brain (BubbleBrain.kt).
 @pragma('vm:entry-point')
 void bubbleAssistantMain() => runBubbleAssistant();
+
+/// Where the app looks for a gateway before any profile is saved: the
+/// gateway's own default port (packages/config, `gateway.port`).
+const defaultGatewayUrl = 'http://127.0.0.1:18789';
 
 /// App shell: owns the single YggdrasilClient/WS connection and fans out
 /// every gateway event ({type:"event",...}, per server.ts) to whichever
@@ -87,7 +92,7 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
   @override
   void initState() {
     super.initState();
-    _client = YggdrasilClient(baseUrl: 'http://127.0.0.1:18889', apiKey: '');
+    _client = YggdrasilClient(baseUrl: defaultGatewayUrl, apiKey: '');
     _connectFuture = _syncToActiveProfile();
     LocaleStore.get().then((saved) {
       if (saved != null && saved.isNotEmpty) AppStrings.current = saved;
@@ -126,7 +131,7 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
   // it is now and switch over without the user retyping anything.
   bool _refreshingHub = false;
   Future<void> _onConnectionLost() async {
-    if (_refreshingHub) return;
+    if (_refreshingHub || !mounted) return;
     _refreshingHub = true;
     try {
       final active = await ProfileStore.getActive();
@@ -181,6 +186,10 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
   void dispose() {
     _voiceLinkSub?.cancel();
     _pushOpenSub?.cancel();
+    // Without this the client outlives the widget: it keeps reconnecting with
+    // backoff, re-registers the device on the gateway and pushes events into
+    // the closed controller below.
+    _client.disconnect();
     _eventsController.close();
     YggThemeController.instance.removeListener(_onThemeChanged);
     super.dispose();
@@ -261,7 +270,7 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
     // profile == null (no profiles saved yet) falls back to the same default
     // a fresh install always used — treated as gateway-eligible, matching
     // the settings screen's "Conectar a un gateway" CTA for this state.
-    final baseUrl = (profile?.baseUrl?.isNotEmpty ?? false) ? profile!.baseUrl! : 'http://127.0.0.1:18889';
+    final baseUrl = (profile?.baseUrl?.isNotEmpty ?? false) ? profile!.baseUrl! : defaultGatewayUrl;
     final apiKey = profile?.apiKey ?? '';
     setState(() {
       _client = YggdrasilClient(baseUrl: baseUrl, apiKey: apiKey);
@@ -285,6 +294,7 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
         // request/response pairs are resolved inside YggdrasilClient.call,
         // and device.tool.invoke.requested is handled there too.
         if (message is Map<String, dynamic> && message['type'] == 'event') {
+          if (_eventsController.isClosed) return;
           _eventsController.add(message);
           _trackPending(message);
         }
@@ -293,11 +303,13 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
       await _client.refreshConfig();
       final cmds = await _client.getSlashCommands();
 
+      if (!mounted) return;
       setState(() {
         _slashCommands = cmds;
         _status = 'Connected to ${_client.baseUrl}';
       });
     } catch (e) {
+      if (!mounted) return;
       unawaited(_onConnectionLost());
       setState(() {
         _status = 'Error: $e';
@@ -307,7 +319,11 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
 
   Future<void> _onProfileChanged() async {
     final future = _syncToActiveProfile();
-    setState(() => _connectFuture = future);
+    // Block body on purpose: an arrow would return the Future from the
+    // setState callback, which asserts in debug builds.
+    setState(() {
+      _connectFuture = future;
+    });
     await future;
   }
 
@@ -342,7 +358,12 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
     // needed the way onProfileChanged required.
     return ValueListenableBuilder<String>(
       valueListenable: AppStrings.localeNotifier,
-      builder: (context, _, _) => MaterialApp(
+      // GatewayScope above the Navigator: pushed routes follow _client when a
+      // profile switch replaces it.
+      builder: (context, _, _) => GatewayScope(
+        client: _client,
+        connected: _connectFuture,
+        child: MaterialApp(
         navigatorKey: _navigatorKey,
         title: 'Yggdrasil',
         theme: buildYggTheme(),
@@ -361,6 +382,7 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
           pendingSessions: _pendingSessions,
           onOpenSession: _clearPending,
         ),
+      ),
       ),
     );
   }

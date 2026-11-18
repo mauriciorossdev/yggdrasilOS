@@ -33,7 +33,7 @@ import { WorkspaceSection } from "./sections/WorkspaceSection.js";
 import type { IdeSettings, SttSettings, SyncSettings, WhisperSettings } from "../types.js";
 import { useI18n, type MessageKey } from "../i18n/index.js";
 
-type Section =
+export type SettingsSection =
   | "onboarding"
   | "general"
   | "appearance"
@@ -55,7 +55,7 @@ type Section =
   | "voice"
   | "transfer";
 
-const SECTIONS: Array<{ id: Section; label: MessageKey }> = [
+const SECTIONS: Array<{ id: SettingsSection; label: MessageKey }> = [
   { id: "general", label: "set.nav.general" },
   { id: "appearance", label: "set.nav.appearance" },
   { id: "editor", label: "set.nav.editor" },
@@ -81,7 +81,7 @@ const SECTIONS: Array<{ id: Section; label: MessageKey }> = [
 type Props = {
   onClose: () => void;
   /** Jumps straight to a section instead of "general" — e.g. the title bar's IDE button opening Settings pre-scrolled to "ide" when no IDE is configured yet. */
-  initialSection?: Section;
+  initialSection?: SettingsSection;
 };
 
 export function SettingsView({ onClose, initialSection }: Props) {
@@ -91,7 +91,7 @@ export function SettingsView({ onClose, initialSection }: Props) {
   const [harnesses, setHarnesses] = useState<HarnessInfo[]>([]);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [mcpStatus, setMcpStatus] = useState<McpServerStatus[]>([]);
-  const [section, setSection] = useState<Section>(initialSection ?? "general");
+  const [section, setSection] = useState<SettingsSection>(initialSection ?? "general");
   const [saved, setSaved] = useState(false);
   const [savedRequiresRestart, setSavedRequiresRestart] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -245,6 +245,7 @@ export function SettingsView({ onClose, initialSection }: Props) {
                 {t(s.label)}
               </button>
             ))}
+            <span className="settings-nav-version">Yggdrasil v{__APP_VERSION__}</span>
           </nav>
 
           <div className="settings-panel">

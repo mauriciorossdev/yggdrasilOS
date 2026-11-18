@@ -18,6 +18,23 @@ So a fresh `pnpm install` leaves nothing to start, even with `electron` in
 rebuilding `better-sqlite3`. To repair an existing checkout by hand:
 `pnpm --filter @yggdrasil/app-desktop run postinstall`.
 
+## Terminals fail with `Error: posix_spawnp failed.` (macOS/Linux)
+
+**Symptom:** the app starts, but every terminal (Terminal tab, panes) fails to
+open; the main process logs
+`Error occurred in handler for 'terminal:create': Error: posix_spawnp failed.`
+from `node-pty/lib/unixTerminal.js`.
+
+**Root cause:** node-pty 1.1.0's `prebuilds/darwin-*/spawn-helper` lands on
+disk without the executable bit after a fresh `pnpm install`, so node-pty can't
+exec it to start the shell.
+
+**Fix:** `packages/app-desktop`'s `postinstall` runs
+`scripts/fix-node-pty-perms.mjs`, which restores `+x` on any `spawn-helper` it
+finds (no-op on Windows). To repair an existing checkout by hand:
+`node packages/app-desktop/scripts/fix-node-pty-perms.mjs`. No app restart
+needed — just open a new terminal.
+
 ## `pnpm i` fails with ENOENT on `@istanbuljs\schema`
 
 **Symptom:** `electron-builder install-app-deps` (app-desktop's `postinstall`

@@ -163,7 +163,6 @@ export const enGroupJ = {
   "agents.role.sound-designer.summary": "SFX, music integration, audio feedback",
   "agents.manager.idRequired": "Agent id is required",
   "agents.manager.deleteConfirm": "Delete agent \"{name}\"? This can't be undone.",
-  "agents.manager.title": "Agents",
   "agents.manager.edit": "Edit agent",
   "agents.manager.delete": "Delete agent",
   "agents.manager.none": "No agents configured",

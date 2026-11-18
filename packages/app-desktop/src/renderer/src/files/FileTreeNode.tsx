@@ -21,6 +21,8 @@ type Props = {
   relativePath: string;
   depth: number;
   onOpenFile: (relativePath: string) => void;
+  /** Show a folder's contents as a tab; omitted = no "Open folder" menu item. */
+  onOpenFolder?: (relativePath: string) => void;
   /** Reload the listing this node lives in (the parent's children, or FileTree's root list) — used after this node itself is renamed/deleted. */
   onRequestReload: () => void;
   /** A drag-and-drop move happened anywhere in this tree — same callback reference passed unchanged at every depth (FileTree's own full-tree refresh), unlike onRequestReload which is level-specific. */
@@ -40,6 +42,7 @@ export function FileTreeNode({
   relativePath,
   depth,
   onOpenFile,
+  onOpenFolder,
   onRequestReload,
   onTreeChanged,
   onImportPaths,
@@ -344,6 +347,7 @@ export function FileTreeNode({
           isDir={isDir}
           onClose={() => setMenu(null)}
           onRename={(newName) => void rename(newName)}
+          onOpenFolder={isDir && onOpenFolder ? () => onOpenFolder(relativePath) : undefined}
           onDelete={() => void remove()}
           onNewFile={isDir ? (name) => void createChild("file", name) : undefined}
           onNewFolder={isDir ? (name) => void createChild("directory", name) : undefined}
@@ -388,6 +392,7 @@ export function FileTreeNode({
               relativePath={relativePath ? `${relativePath}/${child.name}` : child.name}
               depth={depth + 1}
               onOpenFile={onOpenFile}
+              onOpenFolder={onOpenFolder}
               onRequestReload={loadChildren}
               onTreeChanged={onTreeChanged}
               onImportPaths={onImportPaths}

@@ -1,6 +1,6 @@
 // OAuth Device Flow (https://docs.github.com/en/apps/oauth-apps/building-oauth-apps/authorizing-oauth-apps#device-flow)
 // — fits a desktop app: no redirect URI, no client secret. The client_id of
-// a GitHub OAuth App is public, so it's fine to ship/configure in plain env.
+// a GitHub OAuth App is public, so it's fine to ship in source (see below).
 
 // `repo` = read private repos + clone them over HTTPS. Narrower than that
 // isn't possible for private repos with an OAuth App.
@@ -9,15 +9,18 @@ export const GITHUB_OAUTH_SCOPES = ["repo"];
 const DEVICE_CODE_URL = "https://github.com/login/device/code";
 const TOKEN_URL = "https://github.com/login/oauth/access_token";
 
+/**
+ * Client ID of Yggdrasil's own GitHub OAuth App (Device Flow enabled). It's
+ * public by design — Device Flow has no client secret, and each user still
+ * authorizes on github.com with their own account; the app's owner never sees
+ * their tokens. Shipping it means the connector works out of the box in dev,
+ * in released builds and in the open-source repo. Forks/self-builders can use
+ * their own OAuth App by setting GITHUB_OAUTH_CLIENT_ID.
+ */
+export const DEFAULT_GITHUB_OAUTH_CLIENT_ID = "Ov23lirzgPyFGfN0tRXt";
+
 export function getGithubClientId(): string {
-  const clientId = process.env.GITHUB_OAUTH_CLIENT_ID?.trim();
-  if (!clientId) {
-    throw new Error(
-      "connectors.github: GITHUB_OAUTH_CLIENT_ID must be set in the environment (a GitHub OAuth App with " +
-        '"Enable Device Flow" checked) — not configured yet.',
-    );
-  }
-  return clientId;
+  return process.env.GITHUB_OAUTH_CLIENT_ID?.trim() || DEFAULT_GITHUB_OAUTH_CLIENT_ID;
 }
 
 export type DeviceCodeResponse = {

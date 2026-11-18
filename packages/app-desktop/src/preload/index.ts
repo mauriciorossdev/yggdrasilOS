@@ -207,6 +207,11 @@ const api = {
     openInIde: (id: string): Promise<OpenIdeResult> => ipcRenderer.invoke("projects:openInIde", id),
     /** Duplicates the project folder to a user-picked location and opens the copy. null = dialog cancelled. */
     clone: (id: string): Promise<ProjectRecord | null> => ipcRenderer.invoke("projects:clone", id),
+    /** Where Home's "Clone repository" puts clones unless the user picks another folder (~/Yggdrasil). */
+    cloneDefaultParent: (): Promise<string> => ipcRenderer.invoke("projects:cloneDefaultParent"),
+    /** git clone <url> into <parentDir>/<folderName>, register it and open it. Rejects with a localized message. */
+    cloneRepo: (params: { url: string; parentDir?: string; folderName?: string }): Promise<ProjectRecord> =>
+      ipcRenderer.invoke("projects:cloneRepo", params),
     /** Removes from the list only; the folder stays on disk. */
     remove: (id: string): Promise<boolean> => ipcRenderer.invoke("projects:remove", id),
     /** Removes from the list AND deletes the folder from disk. */
@@ -635,6 +640,15 @@ const api = {
     /** Opens a project-relative folder in the OS file explorer, or (for a file) its containing folder with the file selected. */
     revealPath: (relativePath: string, isDir: boolean): Promise<{ opened: boolean; error?: string }> =>
       ipcRenderer.invoke("ide:revealPath", readArg("--ygg-project-id"), relativePath, isDir),
+    /** Resolves a path printed in a terminal (absolute, ~/…, or relative to `cwd`/the project) to what exists on disk, or null. Only stats. */
+    resolveTerminalPath: (
+      raw: string,
+      cwd: string | null,
+    ): Promise<{ abs: string; kind: "file" | "directory"; insideProject: boolean; relativePath?: string } | null> =>
+      ipcRenderer.invoke("paths:resolve", readArg("--ygg-project-id"), raw, cwd),
+    /** Shows any existing absolute path in the OS file explorer (selected, never opened/executed). */
+    revealAbsolutePath: (abs: string): Promise<{ opened: boolean; error?: string }> =>
+      ipcRenderer.invoke("paths:reveal", abs),
   },
   skills: {
     /** Project, user and installed-plugin skills Claude Code would see for this project window. */

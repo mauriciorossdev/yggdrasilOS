@@ -14,6 +14,8 @@ import { useI18n } from "../i18n/index.js";
 type Props = {
   /** `target` is set when the file was opened from a content-search hit: where to take the reader. */
   onOpenFile: (relativePath: string, target?: OpenTarget) => void;
+  /** Show a folder's contents as a tab (adds "Open folder" to folder context menus). */
+  onOpenFolder?: (relativePath: string) => void;
   /** Scopes the whole tree to a subfolder (e.g. "notes" for the Documents tab) instead of the project root. */
   rootRelativePath?: string;
   /** The currently-active tab in whatever's showing this tree (DocumentsView) — highlights the matching node, see FileTreeNode. */
@@ -56,6 +58,7 @@ function focusShortcutTarget(): boolean {
 
 export function FileTree({
   onOpenFile,
+  onOpenFolder,
   rootRelativePath = "",
   activePath,
   gitDecor,
@@ -355,6 +358,7 @@ export function FileTree({
                 relativePath={joinPath(rootRelativePath, entry.name)}
                 depth={0}
                 onOpenFile={onOpenFile}
+                onOpenFolder={onOpenFolder}
                 onRequestReload={reload}
                 onTreeChanged={onTreeChanged}
                 onImportPaths={importPaths}

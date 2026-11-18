@@ -5,8 +5,9 @@ import { useI18n } from "../i18n/index.js";
 type Update = { version: string; url: string };
 
 /**
- * "Version X is available" strip with a button to its release page
- * (main/updateCheck.ts finds it). Nothing is downloaded from here.
+ * Floating "Version X is available" card (bottom-left corner) with a button
+ * to its release page (main/updateCheck.ts finds it). Nothing is downloaded
+ * from here — the release page is where the installer lives.
  */
 export function UpdateBanner() {
   const { t } = useI18n();
@@ -25,14 +26,19 @@ export function UpdateBanner() {
   if (!update) return null;
 
   return (
-    <div className="update-banner" role="status">
-      <span>{t("update.available", { version: update.version })}</span>
-      <Button variant="primary" size="sm" onClick={() => void window.yggdrasil.update.openRelease()}>
-        {t("update.view")}
-      </Button>
-      <Button variant="ghost" size="sm" onClick={() => void window.yggdrasil.update.dismiss()}>
-        {t("update.later")}
-      </Button>
+    <div className="update-toast" role="status">
+      <div className="update-toast-text">
+        <strong>{t("update.title")}</strong>
+        <span>{t("update.available", { version: update.version })}</span>
+      </div>
+      <div className="update-toast-actions">
+        <Button variant="ghost" size="sm" onClick={() => void window.yggdrasil.update.dismiss()}>
+          {t("update.later")}
+        </Button>
+        <Button variant="primary" size="sm" onClick={() => void window.yggdrasil.update.openRelease()}>
+          {t("update.view")}
+        </Button>
+      </div>
     </div>
   );
 }

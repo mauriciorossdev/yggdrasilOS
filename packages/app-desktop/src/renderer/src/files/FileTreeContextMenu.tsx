@@ -14,6 +14,8 @@ type Props = {
   isDir: boolean;
   onClose: () => void;
   onRename: (newName: string) => void;
+  /** Show the folder's contents as a tab (folders only). */
+  onOpenFolder?: () => void;
   onDelete: () => void;
   onNewFile?: (name: string) => void;
   onNewFolder?: (name: string) => void;
@@ -47,6 +49,7 @@ export function FileTreeContextMenu({
   isDir,
   onClose,
   onRename,
+  onOpenFolder,
   onDelete,
   onNewFile,
   onNewFolder,
@@ -122,6 +125,7 @@ export function FileTreeContextMenu({
     <div className="context-menu" ref={ref} style={{ left: x, top }}>
       {mode === "menu" && (
         <>
+          {onOpenFolder && item(tr("folder.open"), onOpenFolder)}
           <button type="button" className="context-menu-item" onClick={() => setMode("rename")}>
             {tr("doc.menu.rename")}
           </button>

@@ -2,7 +2,17 @@ plugins {
     id("com.android.application")
     // The Flutter Gradle Plugin must be applied after the Android and Kotlin Gradle plugins.
     id("dev.flutter.flutter-gradle-plugin")
-    id("com.google.gms.google-services")
+}
+
+// Firebase (push) needs google-services.json, which isn't in the repo. Without
+// it the build still works and push just stays off: PushService catches the
+// failed Firebase.initializeApp.
+val hasGoogleServicesJson = file("google-services.json").exists() ||
+    fileTree("src") { include("**/google-services.json") }.files.isNotEmpty()
+if (hasGoogleServicesJson) {
+    apply(plugin = "com.google.gms.google-services")
+} else {
+    logger.lifecycle("google-services.json not found: building without Firebase (push disabled).")
 }
 
 android {

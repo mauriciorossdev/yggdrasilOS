@@ -107,7 +107,11 @@ class BubbleAssistantSession {
     });
 
     try {
-      client.sendMessage(text, sessionKey: assistantSessionKey, agentId: assistantAgentId);
+      // A send that fails (socket closed, gateway error) ends the wait now
+      // instead of after the 3-minute timeout.
+      client.sendMessage(text, sessionKey: assistantSessionKey, agentId: assistantAgentId).catchError((Object e) {
+        if (!done.isCompleted) done.completeError(e);
+      });
       final reply = (await done.future.timeout(const Duration(minutes: 3))).trim();
       if (reply.isEmpty) return const BubbleReply('', spoken: true);
 

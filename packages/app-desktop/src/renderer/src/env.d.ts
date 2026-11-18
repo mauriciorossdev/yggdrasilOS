@@ -136,6 +136,8 @@ declare global {
         reveal: (id: string) => Promise<OpenIdeResult>;
         openInIde: (id: string) => Promise<OpenIdeResult>;
         clone: (id: string) => Promise<ProjectRecord | null>;
+        cloneDefaultParent: () => Promise<string>;
+        cloneRepo: (params: { url: string; parentDir?: string; folderName?: string }) => Promise<ProjectRecord>;
         remove: (id: string) => Promise<boolean>;
         purge: (id: string) => Promise<boolean>;
         onColorChange: (handler: (id: string, color: string | null) => void) => () => void;
@@ -351,6 +353,11 @@ declare global {
         openProject: () => Promise<OpenIdeResult>;
         openPath: (relativePath: string) => Promise<OpenIdeResult>;
         revealPath: (relativePath: string, isDir: boolean) => Promise<{ opened: boolean; error?: string }>;
+        resolveTerminalPath: (
+          raw: string,
+          cwd: string | null,
+        ) => Promise<{ abs: string; kind: "file" | "directory"; insideProject: boolean; relativePath?: string } | null>;
+        revealAbsolutePath: (abs: string) => Promise<{ opened: boolean; error?: string }>;
         openInBlender: (relativePath: string) => Promise<{ opened: boolean; error?: string }>;
         detectBlender: () => Promise<string | null>;
       };

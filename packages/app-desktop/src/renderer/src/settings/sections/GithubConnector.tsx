@@ -1,11 +1,13 @@
 import { useEffect, useRef, useState } from "react";
+import { LockClosedIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import { useI18n } from "../../i18n/index.js";
+import { ipcErrorMessage } from "../../home/cloneRepo.js";
 
 type GithubStatus = { connected: boolean; login?: string; connectedAt?: number };
 type DeviceStart = { deviceCode: string; userCode: string; verificationUri: string; expiresIn: number; interval: number };
 type PollResult = { status: "authorized"; login: string } | { status: "pending"; interval?: number } | { status: "error"; error: string };
-type Repo = { fullName: string; name: string; description: string | null; private: boolean; fork: boolean; updatedAt: string };
+type Repo = { fullName: string; name: string; description: string | null; private: boolean; fork: boolean; cloneUrl: string; updatedAt: string };
 
 // Own connect/poll cycle for the same reason ConnectorsSection's Google block
 // has one — an immediate action, not part of SettingsView's batched Save.
@@ -109,10 +111,11 @@ export function GithubConnector() {
     if (!parentDir) return;
     setCloning(repo.fullName);
     try {
-      const res = await call<{ path: string }>("connectors.github.clone", { repo: repo.fullName, parentDir });
-      setNotice(t("set.connectors.cloned", { repo: repo.fullName, path: res.path }));
+      // Same path as Home → "Clone repository": clone, register and open it as a project.
+      const project = await window.yggdrasil.projects.cloneRepo({ url: repo.cloneUrl, parentDir });
+      setNotice(t("set.connectors.cloned", { repo: repo.fullName, path: project.path }));
     } catch (err) {
-      fail(err);
+      setError(ipcErrorMessage(err));
     } finally {
       setCloning(null);
     }
@@ -158,11 +161,22 @@ export function GithubConnector() {
       {status?.connected && repos && (
         <ul className="github-repos">
           {repos.map((repo) => (
-            <li key={repo.fullName} className="mcp-server-header">
-              <span>
-                <strong>{repo.fullName}</strong>
-                {repo.private ? " 🔒" : ""}
-                {repo.description ? <span className="muted"> — {repo.description}</span> : null}
+            <li key={repo.fullName} className="github-repo">
+              <span className="github-repo-text">
+                <span className="github-repo-name">
+                  <span className="github-repo-fullname">{repo.fullName}</span>
+                  {repo.private && (
+                    <span className="home-clone-badge">
+                      <LockClosedIcon className="hero-icon" /> {t("home.clone.private")}
+                    </span>
+                  )}
+                  {repo.fork && <span className="home-clone-badge">{t("home.clone.fork")}</span>}
+                </span>
+                {repo.description && (
+                  <span className="github-repo-desc" title={repo.description}>
+                    {repo.description}
+                  </span>
+                )}
               </span>
               <button type="button" className="icon-btn" onClick={() => void clone(repo)} disabled={cloning !== null}>
                 {cloning === repo.fullName ? t("set.connectors.cloning") : t("set.connectors.clone")}

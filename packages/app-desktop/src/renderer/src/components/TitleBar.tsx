@@ -11,6 +11,7 @@ import { SettingsView } from "../settings/SettingsView.js";
 import { ClaudeUsage } from "./ClaudeUsage.js";
 import { useActiveTab, useExtraTabs, viewLabel } from "../ui/mainTabsStore.js";
 import { useI18n } from "../i18n/index.js";
+import logoUrl from "../assets/logo.png";
 
 /**
  * Every project window is frameless (main/index.ts's createProjectBrowserWindow
@@ -89,6 +90,7 @@ export function TitleBar() {
   return (
     <div className="title-bar">
       <div className="title-bar-drag">
+        <img className="title-bar-logo" src={logoUrl} alt="" title={`Yggdrasil v${__APP_VERSION__}`} draggable={false} />
         <span className="title-bar-project">{window.yggdrasil.projectName ?? "Yggdrasil"}</span>
         <span className="title-bar-view">/ {viewLabel(activeTab, extraTabs)}</span>
         {window.yggdrasil.gatewayLanUrl && (

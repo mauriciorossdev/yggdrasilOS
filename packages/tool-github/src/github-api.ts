@@ -1,14 +1,51 @@
 const API = "https://api.github.com";
 
-export async function githubFetch(path: string, accessToken: string): Promise<{ data: unknown; next: boolean }> {
-  const res = await fetch(`${API}${path}`, {
-    headers: {
-      Authorization: `Bearer ${accessToken}`,
-      Accept: "application/vnd.github+json",
-      "X-GitHub-Api-Version": "2022-11-28",
-      "User-Agent": "yggdrasil",
+// Retries for GETs that never got a response (DNS, reset/closed socket,
+// timeout) — on flaky networks the first cold connection to api.github.com can
+// be dropped ("fetch failed: other side closed"). HTTP errors are real answers
+// and are never retried.
+const NETWORK_ATTEMPTS = 3;
+const RETRY_DELAY_MS = 400;
+const REQUEST_TIMEOUT_MS = 20_000;
+
+/** Network-level failure: `fetch` threw instead of resolving with a response. */
+function describeNetworkError(err: unknown): string {
+  const cause = (err as { cause?: { code?: string; message?: string } })?.cause;
+  return cause?.code || cause?.message || (err instanceof Error ? err.message : String(err));
+}
+
+async function fetchWithRetry(url: string, init: RequestInit, delayMs = RETRY_DELAY_MS): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= NETWORK_ATTEMPTS; attempt++) {
+    try {
+      return await fetch(url, { ...init, signal: AbortSignal.timeout(REQUEST_TIMEOUT_MS) });
+    } catch (err) {
+      lastError = err;
+      if (attempt < NETWORK_ATTEMPTS) await new Promise((r) => setTimeout(r, delayMs * attempt));
+    }
+  }
+  throw new Error(
+    `Couldn't reach GitHub (${describeNetworkError(lastError)}) after ${NETWORK_ATTEMPTS} attempts — check your connection and try again.`,
+  );
+}
+
+export async function githubFetch(
+  path: string,
+  accessToken: string,
+  opts: { retryDelayMs?: number } = {},
+): Promise<{ data: unknown; next: boolean }> {
+  const res = await fetchWithRetry(
+    `${API}${path}`,
+    {
+      headers: {
+        Authorization: `Bearer ${accessToken}`,
+        Accept: "application/vnd.github+json",
+        "X-GitHub-Api-Version": "2022-11-28",
+        "User-Agent": "yggdrasil",
+      },
     },
-  });
+    opts.retryDelayMs,
+  );
   if (res.status === 401) {
     throw new Error("GitHub rejected the stored token (revoked or expired) — reconnect GitHub in Settings → Connectors.");
   }

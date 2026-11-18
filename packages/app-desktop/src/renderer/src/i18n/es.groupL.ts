@@ -1,6 +1,16 @@
 import type { enGroupL } from "./en.groupL.js";
 
 export const esGroupL: Record<keyof typeof enGroupL, string> = {
+  "folder.up": "Subir una carpeta",
+  "folder.location": "Ubicación de la carpeta",
+  "folder.countOne": "1 elemento",
+  "folder.count": "{count} elementos",
+  "folder.empty": "Esta carpeta está vacía.",
+  "folder.truncated": "Solo se muestran los primeros elementos.",
+  "folder.kindFolder": "Carpeta",
+  "folder.revealFailed": "No se pudo abrir el explorador de archivos.",
+  "folder.projectRoot": "Proyecto",
+  "folder.open": "Abrir carpeta",
   "docs.crumb.label": "Ubicación del documento",
   "docs.view.newFeatureDocTitle": "Crea un documento de feature para repartir trabajo a otros agentes por ruta",
   "docs.view.newFeatureDoc": "+ Nuevo documento de feature",

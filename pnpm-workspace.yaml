@@ -2,3 +2,9 @@ packages:
   - "packages/*"
   - "mobile/*"
   - "extensions/*"
+allowBuilds:
+  better-sqlite3: true
+  core-js: false
+  electron: true
+  esbuild: true
+  node-pty: true

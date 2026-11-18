@@ -1,5 +1,15 @@
 // Group L. Keys: <area>.<name>.
 export const enGroupL = {
+  "folder.up": "Up one folder",
+  "folder.location": "Folder location",
+  "folder.countOne": "1 item",
+  "folder.count": "{count} items",
+  "folder.empty": "This folder is empty.",
+  "folder.truncated": "Only the first entries are shown.",
+  "folder.kindFolder": "Folder",
+  "folder.revealFailed": "Could not open the file explorer.",
+  "folder.projectRoot": "Project",
+  "folder.open": "Open folder",
   "docs.crumb.label": "Document location",
   "docs.view.newFeatureDocTitle": "Create a feature doc to hand work to other agents by path",
   "docs.view.newFeatureDoc": "+ New feature doc",

@@ -6,12 +6,17 @@ type Props = {
   agents: AgentInfo[];
   activeAgentId: string | null;
   onSelectAgent: (agentId: string) => void;
+  /** Opens Settings → Agents (the last entry of the agent picker). */
+  onManageAgents: () => void;
   providers: ProviderInfo[];
   modelOverride: ModelOverride | null;
   onSelectModel: (override: ModelOverride | null) => void;
   mode: ApprovalMode;
   onSelectMode: (mode: ApprovalMode) => void;
 };
+
+/** Not an agent id: picking it opens Settings → Agents and leaves the selection as it was. */
+const MANAGE_AGENTS = "__manage-agents__";
 
 function encode(o: ModelOverride): string {
   return `${o.provider}::${o.model}`;
@@ -27,6 +32,7 @@ export function ComposerToolbar({
   agents,
   activeAgentId,
   onSelectAgent,
+  onManageAgents,
   providers,
   modelOverride,
   onSelectModel,
@@ -39,8 +45,7 @@ export function ComposerToolbar({
       <select
         className="composer-pill"
         value={activeAgentId ?? ""}
-        onChange={(e) => onSelectAgent(e.target.value)}
-        disabled={agents.length === 0}
+        onChange={(e) => (e.target.value === MANAGE_AGENTS ? onManageAgents() : onSelectAgent(e.target.value))}
         title={t("chat.composer.agent")}
       >
         {agents.length === 0 && <option value="">{t("chat.composer.noAgents")}</option>}
@@ -49,6 +54,8 @@ export function ComposerToolbar({
             {a.label ?? a.id}
           </option>
         ))}
+        <option disabled>──────────</option>
+        <option value={MANAGE_AGENTS}>{t("chat.composer.manageAgents")}</option>
       </select>
 
       <select

@@ -29,6 +29,15 @@ enum _Kind { user, assistant, syncTool, approval, interactive, note }
 /// invocation (UX doc §4).
 bool _isInteractiveDeviceTool(String? name) => capabilityByName(name)?.isInteractive ?? false;
 
+enum _SendFailure {
+  /// Never reached the gateway — safe to send again.
+  unsent,
+
+  /// The socket closed while the gateway was working on it: it may still
+  /// answer once the client reconnects, so retrying could duplicate it.
+  interrupted,
+}
+
 class _Item {
   final String id;
   final _Kind kind;
@@ -43,6 +52,9 @@ class _Item {
   bool streaming;
   TurnUsage? usage;
   Timer? watchdog;
+
+  /// User messages only: why it isn't on its way. null = sent (or sending).
+  _SendFailure? sendFailure;
 
   _Item({
     required this.id,
@@ -132,12 +144,18 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _init() async {
-    await _loadHistory();
-    if (mounted) _tracker.markHistory(_items.map((e) => e.id));
     final initial = widget.initialMessage?.trim();
     if (initial != null && initial.isNotEmpty) {
-      _send(initial);
+      // initialMessage only comes with a brand-new session key (the home
+      // composer), so there's no history to load — and waiting for it used to
+      // hold the message back until the socket was up, dropping it silently
+      // when the gateway was unreachable.
+      await Future<void>.value();
+      if (mounted) _send(initial);
+      return;
     }
+    await _loadHistory();
+    if (mounted) _tracker.markHistory(_items.map((e) => e.id));
   }
 
   @override
@@ -293,6 +311,9 @@ class _ChatScreenState extends State<ChatScreen> {
     }
     setState(() {
       _thinking = false;
+      for (final it in _items) {
+        if (it.sendFailure == _SendFailure.interrupted) it.sendFailure = null;
+      }
       final reply = _streamingReply;
       if (reply != null) {
         reply.streaming = false;
@@ -537,8 +558,56 @@ class _ChatScreenState extends State<ChatScreen> {
       _thinking = true;
     });
     _localTurn = true;
-    widget.client.sendMessage(text, sessionKey: widget.sessionKey, agentId: widget.agentId, model: _isAssistantChat ? AssistantUsage.instance.modelId : null);
+    _sendToGateway(text).catchError((Object _) {
+      if (!mounted) return;
+      setState(() {
+        _thinking = false;
+        _items.add(_Item(id: _nextId(), kind: _Kind.note, text: AppStrings.t('chat.sendFailed')));
+      });
+    });
     _scrollToBottom();
+  }
+
+  /// How long a send waits for the socket to come up (cold start, reconnect)
+  /// before it's reported as not sent.
+  static const _sendOpenTimeout = Duration(seconds: 15);
+
+  Future<void> _sendToGateway(String text) async {
+    await widget.client.whenOpen(timeout: _sendOpenTimeout);
+    await widget.client.sendMessage(text, sessionKey: widget.sessionKey, agentId: widget.agentId, model: _isAssistantChat ? AssistantUsage.instance.modelId : null);
+  }
+
+  /// Sends the user message [item] and, if that fails, marks it with a
+  /// retry action instead of leaving the chat "thinking" forever.
+  Future<void> _deliver(_Item item) async {
+    var reachedGateway = false;
+    try {
+      await widget.client.whenOpen(timeout: _sendOpenTimeout);
+      reachedGateway = true;
+      await widget.client.sendMessage(item.text, sessionKey: widget.sessionKey, agentId: widget.agentId, model: _isAssistantChat ? AssistantUsage.instance.modelId : null);
+    } catch (e) {
+      if (!mounted) return;
+      // A closed socket after the message went out may still produce a reply;
+      // anything else (no socket, gateway rejected it) means it wasn't taken.
+      final interrupted = reachedGateway && e is StateError;
+      setState(() {
+        _thinking = false;
+        _localTurn = false;
+        _streamingReply = null;
+        item.sendFailure = interrupted ? _SendFailure.interrupted : _SendFailure.unsent;
+      });
+      _scrollToBottom();
+    }
+  }
+
+  void _resend(_Item item) {
+    if (_isAssistantChat) AssistantTts.instance.stop();
+    setState(() {
+      item.sendFailure = null;
+      _thinking = true;
+    });
+    _localTurn = true;
+    unawaited(_deliver(item));
   }
 
   Future<String?> _attachDocument() async {
@@ -592,13 +661,14 @@ class _ChatScreenState extends State<ChatScreen> {
     final value = (text ?? _inputController.text).trim();
     if (value.isEmpty) return;
     if (_isAssistantChat) AssistantTts.instance.stop();
+    final item = _Item(id: _nextId(), kind: _Kind.user, text: value);
     setState(() {
-      _items.add(_Item(id: _nextId(), kind: _Kind.user, text: value));
+      _items.add(item);
       _suggestions = [];
       _thinking = true;
     });
     _localTurn = true;
-    widget.client.sendMessage(value, sessionKey: widget.sessionKey, agentId: widget.agentId, model: _isAssistantChat ? AssistantUsage.instance.modelId : null);
+    unawaited(_deliver(item));
     _inputController.clear();
     _scrollToBottom();
   }
@@ -773,6 +843,25 @@ class _ChatScreenState extends State<ChatScreen> {
     );
   }
 
+  Widget _buildSendFailure(_Item item) {
+    final message = item.sendFailure == _SendFailure.interrupted ? 'chat.sendInterrupted' : 'chat.sendFailed';
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 2),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(Icons.error_outline, size: 15, color: YggColors.danger),
+          const SizedBox(width: 6),
+          Flexible(child: Text(AppStrings.t(message), style: TextStyle(color: YggColors.textMuted, fontSize: 12.5))),
+          TextButton(
+            onPressed: _thinking ? null : () => _resend(item),
+            child: Text(AppStrings.t('common.retry')),
+          ),
+        ],
+      ),
+    );
+  }
+
   Widget _buildItem(BuildContext context, _Item item) {
     switch (item.kind) {
       case _Kind.syncTool:
@@ -805,6 +894,7 @@ class _ChatScreenState extends State<ChatScreen> {
             ),
             child: Text(item.text, style: TextStyle(color: YggColors.onAccent, fontSize: 15, height: 1.45)),
           ),
+              if (item.sendFailure != null) _buildSendFailure(item),
               Padding(padding: const EdgeInsets.only(bottom: 4), child: CopyPill(text: item.text)),
             ],
           ),

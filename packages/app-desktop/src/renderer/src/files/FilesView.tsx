@@ -2,7 +2,10 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { XMarkIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import { FileTree } from "./FileTree.js";
-import { TextEditor } from "./TextEditor.js";
+import { TextEditor, type RevealTarget } from "./TextEditor.js";
+import { FolderView } from "./FolderView.js";
+import { folderOfTab, folderTabKey, isFolderTab, navigateFolderTab, tabLabel } from "./folderTabs.js";
+import { onRequestOpenInFiles } from "./filesBridge.js";
 import { FileViewer } from "./FileViewer.js";
 import { previewKind } from "./filePreviewKind.js";
 import { DiskConflictBar } from "../documents/DiskConflictBar.js";
@@ -25,10 +28,6 @@ type TabState = {
   diskConflict?: string;
 };
 
-function basename(path: string): string {
-  const idx = path.lastIndexOf("/");
-  return idx === -1 ? path : path.slice(idx + 1);
-}
 
 /**
  * Project file explorer as a main tab: the whole project tree on the left,
@@ -87,7 +86,7 @@ export function FilesView() {
   );
 
   useEffect(() => {
-    if (activePath && !tabs[activePath]) void loadTab(activePath);
+    if (activePath && !isFolderTab(activePath) && !tabs[activePath]) void loadTab(activePath);
   }, [activePath, tabs, loadTab]);
 
   // Same external-edit handling as DocumentsView: clean tabs reload in place,
@@ -141,10 +140,24 @@ export function FilesView() {
       };
     });
 
-  const openFile = (path: string) => {
+  const [reveal, setReveal] = useState<(RevealTarget & { path: string }) | null>(null);
+  const openFile = (path: string, line?: number) => {
     setOpenPaths((prev) => (prev.includes(path) ? prev : [...prev, path]));
     setActivePath(path);
+    if (line) setReveal({ path, query: "", line, nonce: Date.now() });
   };
+  const openFolder = (dir: string) => openFile(folderTabKey(dir));
+  // Going into another folder reuses the folder tab, like a Finder window.
+  const navigateFolder = (fromKey: string, dir: string) => {
+    const toKey = folderTabKey(dir);
+    setOpenPaths((prev) => navigateFolderTab(prev, fromKey, toKey));
+    setActivePath(toKey);
+  };
+
+  // A terminal pane's path link (TerminalPane's PathLinkProvider) for a
+  // project file or folder outside notes/.
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  useEffect(() => onRequestOpenInFiles(openFile), []);
 
   useEffect(
     () =>
@@ -193,10 +206,10 @@ export function FilesView() {
 
   const closeTab = (path: string) => {
     const tab = tabs[path];
-    if (tab && tab.content !== tab.savedContent && !window.confirm(t("doc.discardConfirmFile", { name: basename(path) }))) {
+    if (tab && tab.content !== tab.savedContent && !window.confirm(t("doc.discardConfirmFile", { name: tabLabel(path, "") }))) {
       return;
     }
-    releaseModel(path);
+    if (!isFolderTab(path)) releaseModel(path);
     setOpenPaths((prev) => {
       const next = prev.filter((p) => p !== path);
       if (activePath === path) setActivePath(next.length > 0 ? next[next.length - 1]! : null);
@@ -210,12 +223,14 @@ export function FilesView() {
   };
 
   const activeTab = activePath ? tabs[activePath] : undefined;
-  const activeKind = activePath ? previewKind(activePath) : null;
+  const activeFolder = activePath && isFolderTab(activePath) ? activePath : null;
+  const activeKind = activePath && !activeFolder ? previewKind(activePath) : null;
+  const rootLabel = t("folder.projectRoot");
 
   return (
     <div className="documents-view" ref={rootRef}>
       <div className="documents-tree">
-        <FileTree onOpenFile={openFile} activePath={activePath} />
+        <FileTree onOpenFile={(path) => openFile(path)} onOpenFolder={openFolder} activePath={activePath} />
       </div>
       <div className="documents-main">
         {openPaths.length > 0 && (
@@ -227,7 +242,7 @@ export function FilesView() {
                 <div key={path} className={`documents-tab${path === activePath ? " active" : ""}`}>
                   <button type="button" className="documents-tab-label" onClick={() => setActivePath(path)} title={path}>
                     {dirty ? "● " : ""}
-                    {basename(path)}
+                    {tabLabel(path, rootLabel)}
                   </button>
                   <button type="button" className="documents-tab-close" title={t("doc.close")} onClick={() => closeTab(path)}>
                     <XMarkIcon className="hero-icon" />
@@ -245,6 +260,14 @@ export function FilesView() {
         )}
         <div className="documents-editor">
           {!activePath && <p className="muted documents-empty">{t("doc.selectFile")}</p>}
+          {activeFolder && (
+            <FolderView
+              dir={folderOfTab(activeFolder)}
+              rootLabel={rootLabel}
+              onNavigate={(dir) => navigateFolder(activeFolder, dir)}
+              onOpenFile={(path) => openFile(path)}
+            />
+          )}
           {activePath && activeKind && activeKind !== "text" && <FileViewer relativePath={activePath} kind={activeKind} />}
           {activePath && activeKind === "text" && activeTab?.loading && <p className="muted documents-empty">{t("doc.loading")}</p>}
           {activePath && activeKind === "text" && activeTab?.error && (
@@ -263,6 +286,7 @@ export function FilesView() {
               path={activePath}
               value={activeTab.content}
               readOnly={activeTab.truncated}
+              reveal={reveal && reveal.path === activePath ? reveal : undefined}
               onChange={(value) =>
                 setTabs((prev) => ({ ...prev, [activePath]: { ...prev[activePath]!, content: value } }))
               }

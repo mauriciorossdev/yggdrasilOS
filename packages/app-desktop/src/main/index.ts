@@ -24,6 +24,7 @@ import { readAgentFlow, writeAgentFlow, type AgentFlow } from "./agentFlow.js";
 import { readAgentTeams, saveAgentTeam, deleteAgentTeam, renameAgentTeam, type AgentTeam } from "./agentTeams.js";
 import { readDocumentTabs, writeDocumentTabs, type DocumentTabsLayout } from "./documentTabs.js";
 import { importExternalPaths } from "./fileImport.js";
+import { resolveTerminalPath } from "./pathResolve.js";
 import { readClipboardFilePaths, writeClipboardFilePaths } from "./clipboardFiles.js";
 import { classifyPickedPaths } from "./pickedAttachments.js";
 import { MAX_ASSET_BYTES, isImageName, sanitizeAssetName, uniqueAssetName } from "./noteAssets.js";
@@ -62,6 +63,7 @@ import {
 } from "./mcpConfig.js";
 import { indexPluginStorageOnWrite, reindexAllPluginStorage } from "./pluginStorageIndex.js";
 import { closeMemoryDb } from "@yggdrasil/context-memory-db";
+import { getGithubAccount } from "@yggdrasil/tool-github";
 import { writeStatuslineConfig } from "./statuslineConfig.js";
 import { runScriptInSystemTerminal } from "./scriptRunner.js";
 import {
@@ -123,7 +125,7 @@ import {
   revokeMemberForResource,
 } from "./syncEngine.js";
 import { notesAbsoluteDir, watchNotesDir } from "./notesWatcher.js";
-import { createBrowserTabView, type BrowserTabBounds, type BrowserTabHandle } from "./browserTabView.js";
+import { createBrowserTabView, scaleBrowserTabBounds, type BrowserTabBounds, type BrowserTabHandle } from "./browserTabView.js";
 import { createBrowserCommentsHost, type CommentProvider } from "./browserCommentsHost.js";
 import { writeCaptureBundle } from "./browserCaptureStore.js";
 import {
@@ -155,6 +157,7 @@ import { pluginStorageDelete, pluginStorageGet, pluginStorageKeys, pluginStorage
 import { readPluginTabs, writePluginTabs, type PluginTabsLayout } from "./pluginTabs.js";
 import { PLUGIN_API_DOCS } from "./pluginApiDocs.js";
 import { installCrashLogging, logCaughtError, logPath } from "./crashLogging.js";
+import { startSystemMonitor, stopSystemMonitor } from "./systemMonitor.js";
 import { detectClis, CLI_CATALOG } from "./cliDetect.js";
 import { detectOllama } from "./ollamaDetect.js";
 import {
@@ -167,7 +170,8 @@ import {
 import { createSplash, type Splash } from "./splash.js";
 import { resolveShellPath } from "./resolveShellPath.js";
 import { installAboutMenu } from "./aboutPanel.js";
-import { mt, resolveMainLanguage, setMainLanguage } from "./i18n.js";
+import { mt, resolveMainLanguage, setMainLanguage, type MainMessageKey } from "./i18n.js";
+import { GitCloneError, cloneGitRepo, parseGitUrl, validateCloneFolderName, type GitCloneErrorCode } from "./gitClone.js";
 import { installAutoUpdater } from "./autoUpdate.js";
 import { installUpdateCheck } from "./updateCheck.js";
 
@@ -266,6 +270,12 @@ function handleDeepLink(url: string): void {
 // spawn a second, window-less Electron process that immediately quits below
 // without ever delivering the link to the instance that's actually showing
 // the "Connect Google" button.
+//
+// On macOS the app outlives its last window (see window-all-closed), so the
+// instance holding the lock may have no windows at all; a plain relaunch then
+// reopens the default project (same as clicking the dock icon, see "activate")
+// instead of silently doing nothing.
+let reopenDefaultWindow: (() => void) | undefined; // set once startup has opened the default project
 if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
@@ -276,6 +286,9 @@ if (!app.requestSingleInstanceLock()) {
     if (firstWindow) {
       if (firstWindow.isMinimized()) firstWindow.restore();
       firstWindow.focus();
+    } else if (!url) {
+      // A deep link opens its own window (open-project) or needs none.
+      reopenDefaultWindow?.();
     }
   });
 }
@@ -659,6 +672,45 @@ async function createProjectFromPhone(rawName: string): Promise<{ id: string; na
   return { id: project.id, name: project.name, path: project.path, port: projectWindows.get(project.id)?.gateway.port ?? null };
 }
 
+const CLONE_ERROR_KEYS: Record<GitCloneErrorCode, MainMessageKey> = {
+  emptyUrl: "clone.emptyUrl",
+  invalidUrl: "clone.invalidUrl",
+  unsupportedProtocol: "clone.unsupportedProtocol",
+  invalidFolder: "clone.invalidFolder",
+  targetExists: "clone.targetExists",
+  gitMissing: "clone.gitMissing",
+  timeout: "clone.timeout",
+  cloneFailed: "clone.failed",
+};
+
+/**
+ * Home → "Clone repository": git clone <url> into <parentDir>/<folderName>
+ * (default ~/Yggdrasil/<repo>), then register and open it like "Open folder".
+ * Used by both the GitHub tab (repo.cloneUrl) and the paste-a-URL tab. The
+ * stored GitHub token, if any, authenticates github.com HTTPS (private repos).
+ */
+async function cloneRepoAsProject(params: { url: string; parentDir?: string; folderName?: string }): Promise<ProjectRecord> {
+  try {
+    const url = parseGitUrl(params.url ?? "");
+    const folder = validateCloneFolderName(params.folderName?.trim() || url.defaultFolder);
+    const parentDir = params.parentDir?.trim() || remoteProjectsRoot();
+    if (!isAbsolute(parentDir)) throw new Error(mt("clone.parentNotAbsolute"));
+    const target = join(parentDir, folder);
+    const taken =
+      (await stat(target).then(() => true, () => false)) || (await listProjects()).some((p) => p.path === target);
+    if (taken) throw new GitCloneError("targetExists", target);
+    await mkdir(parentDir, { recursive: true });
+    const githubToken = url.githubHttps ? ((await getGithubAccount())?.accessToken ?? null) : null;
+    await cloneGitRepo({ url, target, githubToken });
+    const project = await upsertProject({ path: target, name: folder });
+    await openProject(project);
+    return project;
+  } catch (err) {
+    if (err instanceof GitCloneError) throw new Error(mt(CLONE_ERROR_KEYS[err.code], { detail: err.detail }));
+    throw err;
+  }
+}
+
 async function openProject(project: ProjectRecord): Promise<void> {
   try {
     await openProjectUnsafe(project);
@@ -866,8 +918,8 @@ function registerIpc(): void {
     projectWindows.get(projectId)?.browserTab?.stop();
   });
   ipcMain.handle("browserTab:getState", (_event, projectId: string) => projectWindows.get(projectId)?.browserTab?.getState() ?? null);
-  ipcMain.handle("browserTab:setBounds", (_event, projectId: string, bounds: BrowserTabBounds) => {
-    resolveBrowserTab(projectId)?.setBounds(bounds);
+  ipcMain.handle("browserTab:setBounds", (event, projectId: string, bounds: BrowserTabBounds) => {
+    resolveBrowserTab(projectId)?.setBounds(scaleBrowserTabBounds(bounds, event.sender.getZoomFactor()));
   });
   ipcMain.handle("browserTab:show", (_event, projectId: string) => {
     resolveBrowserTab(projectId)?.show();
@@ -941,6 +993,12 @@ function registerIpc(): void {
     await openProject(project);
     return project;
   });
+
+  ipcMain.handle("projects:cloneDefaultParent", () => remoteProjectsRoot());
+
+  ipcMain.handle("projects:cloneRepo", (_event, params: { url: string; parentDir?: string; folderName?: string }) =>
+    cloneRepoAsProject(params ?? { url: "" }),
+  );
 
   ipcMain.handle("projects:open", async (_event, id: string) => {
     const project = await getProject(id);
@@ -1629,6 +1687,24 @@ function registerIpc(): void {
     return { opened: true };
   });
 
+  // Terminal path links (renderer terminal/pathLinkProvider.ts). Paths come
+  // from untrusted terminal output, so this only stats them, and anything
+  // outside the project is only ever *revealed* (selected in Finder/Explorer),
+  // never opened — opening could run a script or an .app an agent printed.
+  ipcMain.handle("paths:resolve", async (_event, projectId: string, raw: string, cwd: string | null) => {
+    if (typeof raw !== "string" || raw.length > 4096) return null;
+    const project = await getProject(projectId);
+    return resolveTerminalPath(raw, typeof cwd === "string" && isAbsolute(cwd) ? cwd : null, project?.path ?? null);
+  });
+
+  ipcMain.handle("paths:reveal", async (_event, abs: string) => {
+    if (typeof abs !== "string" || !isAbsolute(abs)) return { opened: false, error: "Not an absolute path." };
+    const info = await stat(abs).catch(() => null);
+    if (!info) return { opened: false, error: "Path not found." };
+    shell.showItemInFolder(resolve(abs));
+    return { opened: true };
+  });
+
   ipcMain.handle("ide:openInBlender", async (_event, projectId: string, relativePath: string) => {
     const project = await getProject(projectId);
     if (!project) return { opened: false, error: "Project not found." };
@@ -1745,6 +1821,7 @@ function registerIpc(): void {
   });
 
 app.whenReady().then(async () => {
+  void startSystemMonitor();
   splash = createSplash();
   // Must land before any project opens — Agent Flow/terminal spawns
   // (terminals.ts) exec CLIs directly with no shell in between, so they only
@@ -1816,8 +1893,9 @@ app.whenReady().then(async () => {
     return;
   }
 
+  reopenDefaultWindow = () => void openProject(defaultProject);
   app.on("activate", () => {
-    if (BrowserWindow.getAllWindows().length === 0) void openProject(defaultProject);
+    if (BrowserWindow.getAllWindows().length === 0) reopenDefaultWindow?.();
   });
 });
 
@@ -1838,5 +1916,5 @@ app.on("before-quit", (event) => {
     paneControl.shutdown();
   }
   stopWhisperServer();
-  void Promise.allSettled([disposeAllTerminalsAndWait(), lspIpc?.stopAll()]).finally(() => app.quit());
+  void Promise.allSettled([disposeAllTerminalsAndWait(), lspIpc?.stopAll(), stopSystemMonitor()]).finally(() => app.quit());
 });
