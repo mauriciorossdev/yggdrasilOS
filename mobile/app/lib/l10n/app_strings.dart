@@ -201,6 +201,11 @@ class AppStrings {
     'chat.retryingNote': {'es': '🔄 Reintentando: {label}', 'en': '🔄 Retrying: {label}'},
     'chat.retryLabelFallback': {'es': 'la acción', 'en': 'the action'},
     'chat.turnError': {'es': 'Error en el turno', 'en': 'Turn error'},
+    'chat.sendFailed': {'es': 'No se pudo enviar: sin conexión con el gateway.', 'en': 'Not sent: no connection to the gateway.'},
+    'chat.sendInterrupted': {
+      'es': 'Se cortó la conexión. Si el gateway lo recibió, la respuesta llegará al reconectar.',
+      'en': 'Connection lost. If the gateway got it, the reply will arrive once reconnected.',
+    },
     'chat.historyError': {'es': 'No se pudo cargar el historial. Reintenta al volver a entrar.', 'en': 'Could not load history. Reopen the chat to retry.'},
     'chat.toolStepLimitReached': {
       'es': 'Se alcanzó el límite de pasos de herramientas para este turno.',
@@ -624,7 +629,7 @@ class AppStrings {
 
     // ---- project detail (tabs: Terminales/Sessions/Agent Flow/Workflows/Files) ----
     'projects.tabTerminals': {'es': 'Terminales', 'en': 'Terminals'},
-    'projects.tabSessions': {'es': 'Sessions', 'en': 'Sessions'},
+    'projects.tabSessions': {'es': 'Sesiones', 'en': 'Sessions'},
     'projects.tabAgentFlow': {'es': 'Agent Flow', 'en': 'Agent Flow'},
     'projects.tabWorkflows': {'es': 'Workflows', 'en': 'Workflows'},
     'projects.tabFiles': {'es': 'Files', 'en': 'Files'},
@@ -650,6 +655,10 @@ class AppStrings {
     'projects.toolResultEmpty': {'es': '(sin resultado todavía)', 'en': '(no result yet)'},
 
     // ---- project detail: Workflows tab ----
+    'projects.workflowsUnsupported': {
+      'es': 'Este gateway no tiene workflows (falta el complemento de workflows).',
+      'en': 'This gateway has no workflows (the workflows plugin isn\'t loaded).',
+    },
     'projects.noWorkflows': {'es': 'Este proyecto no tiene workflows.', 'en': 'This project has no workflows.'},
     'projects.workflowRun': {'es': 'Correr', 'en': 'Run'},
     'projects.workflowCancel': {'es': 'Cancelar', 'en': 'Cancel'},
@@ -949,7 +958,7 @@ class AppStrings {
     'editor.gatewaySegment': {'es': 'Gateway', 'en': 'Gateway'},
     'editor.directSegment': {'es': 'Provider directo', 'en': 'Direct provider'},
     'editor.gatewayUrlLabel': {'es': 'URL del gateway', 'en': 'Gateway URL'},
-    'editor.gatewayUrlHint': {'es': 'ws://100.x.x.x:18889', 'en': 'ws://100.x.x.x:18889'},
+    'editor.gatewayUrlHint': {'es': 'ws://100.x.x.x:18789', 'en': 'ws://100.x.x.x:18789'},
     'editor.apiKeyOptionalLabel': {'es': 'API key (opcional)', 'en': 'API key (optional)'},
     'editor.apiKeyLabel': {'es': 'API key', 'en': 'API key'},
     'editor.providerLabel': {'es': 'Provider', 'en': 'Provider'},

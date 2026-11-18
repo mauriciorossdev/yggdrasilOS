@@ -95,11 +95,13 @@ for a minimal channel example.
 
 ## Bring your own credentials
 
-Nothing in this repository ships with credentials or a hosted backend:
+Nothing in this repository ships with secrets or a hosted backend:
 
 - **LLM providers** — set `OLLAMA_API_KEY` / `OPENAI_API_KEY` etc. ([provider config](docs/provider-config.md)).
-- **GitHub / Google connectors** — create your own OAuth app and set `GITHUB_OAUTH_CLIENT_ID` (Device Flow enabled) or
-  `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`.
+- **GitHub connector** — works out of the box: it ships the public Client ID of Yggdrasil's GitHub OAuth App (Device
+  Flow, no client secret; each user authorizes with their own account and the token stays on their machine). To use
+  your own OAuth App instead, set `GITHUB_OAUTH_CLIENT_ID` (with "Enable Device Flow" checked).
+- **Google connector** — create your own OAuth app and set `GOOGLE_OAUTH_CLIENT_ID` / `GOOGLE_OAUTH_CLIENT_SECRET`.
 - **Phone link** — run your own link server to reach your desktops from any network ([guide](deploy/README.md)).
 - **Sync** — self-host `packages/sync-server` and enter its URL in the desktop app's settings.
 - **Mobile push** — add your own Firebase config, see [`mobile/app/README.md`](mobile/app/README.md).

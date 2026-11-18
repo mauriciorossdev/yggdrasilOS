@@ -29,7 +29,10 @@ import { formatElapsed, useDictation } from "./useDictation.js";
 import { useSpeakLastResponse } from "./useSpeakLastResponse.js";
 import { SpeakModeMenu } from "./SpeakModeMenu.js";
 import { SplitMenu } from "./SplitMenu.js";
-import { PathLinkProvider } from "./pathLinkProvider.js";
+import { markRestarted } from "../scripts/scriptRuns.js";
+import { PathLinkProvider, type ResolvedTerminalPath } from "./pathLinkProvider.js";
+import { folderTabKey } from "../files/folderTabs.js";
+import { requestOpenInFiles } from "../files/filesBridge.js";
 import type { SessionRecord } from "../types.js";
 import { FILE_DRAG_MIME, type FileDragPayload } from "../files/dragMimeType.js";
 import { requestOpenDocument } from "../chat/documentsBridge.js";
@@ -40,22 +43,49 @@ import { useElementWidth } from "../ui/useElementWidth.js";
 import { getThemeColors, onThemeApplied } from "../ui/theme/themeRuntime.js";
 import { terminalColors } from "../ui/theme/surfaces.js";
 
-// Strips a trailing "claude code"-style ":line" or ":line:col" locator —
-// TextEditor has no jump-to-line yet, so only the path itself is used.
-function stripLocator(path: string): string {
-  return path.replace(/:\d+(?::\d+)?$/, "");
+// Path links resolve through main (stat only). Cached briefly so hovering
+// over the same output doesn't stat the disk again and again; a path that
+// didn't exist is retried soon, since an agent may be about to create it.
+const pathCache = new Map<string, { at: number; result: Promise<ResolvedTerminalPath | null> }>();
+const HIT_TTL_MS = 30_000;
+const MISS_TTL_MS = 3_000;
+
+function resolveTerminalPathCached(path: string, cwd: string | null): Promise<ResolvedTerminalPath | null> {
+  const key = `${cwd ?? ""}\0${path}`;
+  const now = Date.now();
+  const cached = pathCache.get(key);
+  if (cached && now - cached.at < HIT_TTL_MS) return cached.result;
+  const result = window.yggdrasil.ide.resolveTerminalPath(path, cwd).catch(() => null);
+  pathCache.set(key, { at: now, result });
+  void result.then((r) => {
+    if (!r) pathCache.set(key, { at: now - HIT_TTL_MS + MISS_TTL_MS, result });
+  });
+  if (pathCache.size > 500) pathCache.delete(pathCache.keys().next().value!);
+  return result;
 }
 
-// Project-relative path for DocumentsView's fs.read/fs.write, or null when
-// the clicked text is an absolute path outside this project (nothing
-// sensible to open in-app — e.g. a system binary's path in a command echo).
-function toProjectRelativePath(raw: string, projectPath: string | null): string | null {
-  const path = stripLocator(raw);
-  if (!path.startsWith("/")) return path.replace(/^\.\//, "");
-  if (projectPath && (path === projectPath || path.startsWith(`${projectPath}/`))) {
-    return path.slice(projectPath.length + 1) || ".";
+/**
+ * Where a clicked path goes: notes/ in Documents, the rest of the project in
+ * Files (file tab, or a folder tab listing its contents), and anything
+ * outside the project is shown selected in Finder/Explorer — never opened,
+ * since terminal output is untrusted and opening could run a script or app.
+ */
+function openTerminalPath(target: ResolvedTerminalPath, line: number | undefined): void {
+  const rel = target.insideProject ? target.relativePath : undefined;
+  if (rel === undefined) {
+    void window.yggdrasil.ide.revealAbsolutePath(target.abs).then((r) => {
+      if (!r.opened && r.error) window.alert(r.error);
+    });
+    return;
   }
-  return null;
+  const key = target.kind === "directory" ? folderTabKey(rel) : rel;
+  if (rel === "notes" || rel.startsWith("notes/")) {
+    requestOpenDocument(key, line);
+    requestTab("documents");
+  } else {
+    requestOpenInFiles(key, line);
+    requestTab("files");
+  }
 }
 
 // Same convention as a real terminal's drag-and-drop-a-file behavior
@@ -158,22 +188,18 @@ export function TerminalPane({
       const fitAddon = new FitAddon();
       term.loadAddon(fitAddon);
 
-      // URLs open in the OS browser; file paths open in the Documents panel
-      // (fs.read is sandboxed to this project's root — see
-      // toProjectRelativePath — so there's nowhere else sensible to put an
-      // in-app file viewer for them). Default WebLinksAddon behavior
-      // (`window.open()` with no args, then set `.location.href`) opens
-      // "about:blank" in the OS browser under Electron's own
-      // setWindowOpenHandler instead of the real URL — passing the uri to
-      // `window.open` directly up front sidesteps that.
+      // URLs open in the OS browser; file/folder paths go through
+      // openTerminalPath above. Default WebLinksAddon behavior (`window.open()`
+      // with no args, then set `.location.href`) opens "about:blank" in the OS
+      // browser under Electron's own setWindowOpenHandler instead of the real
+      // URL — passing the uri to `window.open` directly up front sidesteps that.
       term.loadAddon(new WebLinksAddon((_event, uri) => window.open(uri, "_blank", "noopener")));
+      // Relative paths resolve against the folder the pane started in (a
+      // worktree pane's own checkout), then the project root; a later `cd`
+      // inside the pane isn't tracked.
+      const paneCwd = leaf.cwd ?? projectPath;
       term.registerLinkProvider(
-        new PathLinkProvider(term, (_event, path) => {
-          const relativePath = toProjectRelativePath(path, projectPath);
-          if (relativePath == null) return;
-          requestOpenDocument(relativePath);
-          requestTab("documents");
-        }),
+        new PathLinkProvider(term, (path) => resolveTerminalPathCached(path, paneCwd), openTerminalPath),
       );
 
       entry = { term, fitAddon, opened: false, exited: false, exitCode: null, taskSent: false };
@@ -281,6 +307,7 @@ export function TerminalPane({
     entry.term.clear();
     entry.exited = false;
     setExited(false);
+    markRestarted(leaf.id);
     void window.yggdrasil.terminals.create({
       id: leaf.id,
       cwd: leaf.cwd,

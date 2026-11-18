@@ -11,7 +11,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import type { IndexProgress } from "../types.js";
-import type { AgentInfo, PluginRecord, ProjectRecord, SessionInfo } from "../types.js";
+import type { PluginRecord, ProjectRecord, SessionInfo } from "../types.js";
 import { SessionContextMenu } from "./SessionContextMenu.js";
 import { ProjectContextMenu } from "./ProjectContextMenu.js";
 import { FileTree } from "../files/FileTree.js";
@@ -35,13 +35,9 @@ type Props = {
   activeSessionKey: string | null;
   onSelectSession: (sessionKey: string) => void;
   onNewChat: () => void;
-  onManageAgents: () => void;
   onOpenSettings: () => void;
   onRenameSession: (sessionKey: string, title: string) => void;
   onDeleteSession: (sessionKey: string) => void;
-  agents: AgentInfo[];
-  activeAgentId: string | null;
-  onSelectAgent: (agentId: string) => void;
   onOpenFile: (relativePath: string) => void;
   /** Remote Diff: show one changed file's diff in the side panel. */
   onOpenDiff: (target: DiffTarget) => void;
@@ -62,13 +58,9 @@ export function SessionSidebar({
   activeSessionKey,
   onSelectSession,
   onNewChat,
-  onManageAgents,
   onOpenSettings,
   onRenameSession,
   onDeleteSession,
-  agents,
-  activeAgentId,
-  onSelectAgent,
   onOpenFile,
   onOpenDiff,
   activeDiffPath,
@@ -236,38 +228,6 @@ export function SessionSidebar({
           </ul>
         </CollapsibleSection>
 
-        <CollapsibleSection
-          title={t("chat.sidebar.agents")}
-          id="agents"
-          count={agents.length}
-          actions={
-            <button
-              type="button"
-              className="icon-btn"
-              title={t("chat.sidebar.manageAgentsTip")}
-              onClick={onManageAgents}
-            >
-              <PlusIcon className="hero-icon" />
-            </button>
-          }
-        >
-          <ul>
-            {agents.map((a) => (
-              <li key={a.id}>
-                <button
-                  type="button"
-                  className={`session-item ${a.id === activeAgentId ? "active" : ""}`}
-                  onClick={() => onSelectAgent(a.id)}
-                  title={`${a.provider ?? "?"}/${a.model ?? "?"}`}
-                >
-                  {a.label ?? a.id}
-                  {a.scope && <span className="scope-tag">{a.scope}</span>}
-                </button>
-              </li>
-            ))}
-            {agents.length === 0 && <li className="muted">{t("chat.sidebar.noAgents")}</li>}
-          </ul>
-        </CollapsibleSection>
 
         <CollapsibleSection
           title={t("chat.sidebar.files")}
@@ -343,7 +303,7 @@ export function SessionSidebar({
                     <svg className="files-ring" viewBox="0 0 24 24" aria-hidden="true">
                       <circle className="trk" cx="12" cy="12" r="10" />
                       <circle
-                        className={`val${indexProgress && indexProgress.total > 0 ? "" : " indeterminate"}`}
+                        className={`val${isIndexing && !(indexProgress && indexProgress.total > 0) ? " indeterminate" : ""}`}
                         cx="12"
                         cy="12"
                         r="10"
@@ -372,9 +332,6 @@ export function SessionSidebar({
       </div>
 
       <div className="sidebar-footer">
-        <button type="button" className="link-btn sidebar-footer-manage" onClick={onManageAgents}>
-          {t("chat.sidebar.manageAgents")}
-        </button>
         <button
           type="button"
           className="link-btn"

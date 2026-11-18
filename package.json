@@ -24,7 +24,9 @@
     "desktop": "pnpm --filter @yggdrasil/app-desktop dev",
     "desktop:watch": "pnpm --filter @yggdrasil/app-desktop dev --watch",
     "desktop:build": "pnpm --filter @yggdrasil/app-desktop dist",
-    "avatar": "pnpm --filter @yggdrasil/app-avatar dev"
+    "desktop:install": "node scripts/install-desktop.mjs",
+    "avatar": "pnpm --filter @yggdrasil/app-avatar dev",
+    "rebuild:electron": "node scripts/rebuild-electron.mjs"
   },
   "engines": {
     "node": ">=22"

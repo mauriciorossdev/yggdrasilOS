@@ -164,7 +164,6 @@ export const esGroupJ: Record<keyof typeof enGroupJ, string> = {
   "agents.role.sound-designer.summary": "Efectos de sonido, integración de música, feedback de audio",
   "agents.manager.idRequired": "El id del agente es obligatorio",
   "agents.manager.deleteConfirm": "¿Eliminar el agente \"{name}\"? No se puede deshacer.",
-  "agents.manager.title": "Agentes",
   "agents.manager.edit": "Editar agente",
   "agents.manager.delete": "Eliminar agente",
   "agents.manager.none": "No hay agentes configurados",

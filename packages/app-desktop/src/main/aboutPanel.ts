@@ -44,7 +44,26 @@ export function installAboutMenu(): void {
   const template: MenuItemConstructorOptions[] = [
     { role: "fileMenu" },
     { role: "editMenu" },
-    { role: "viewMenu" },
+    {
+      // Not the stock viewMenu role: its Zoom In is bound to Ctrl+Plus, which Ctrl+= never
+      // fires on Windows, so the app could shrink but not grow. Extra accelerators ride on
+      // hidden duplicates.
+      label: "&View",
+      submenu: [
+        { role: "reload" },
+        { role: "forceReload" },
+        { role: "toggleDevTools" },
+        { type: "separator" },
+        { role: "resetZoom" },
+        { role: "zoomIn", accelerator: "CommandOrControl+=" },
+        { role: "zoomIn", accelerator: "CommandOrControl+Plus", visible: false, acceleratorWorksWhenHidden: true },
+        { role: "zoomIn", accelerator: "CommandOrControl+numadd", visible: false, acceleratorWorksWhenHidden: true },
+        { role: "zoomOut" },
+        { role: "zoomOut", accelerator: "CommandOrControl+numsub", visible: false, acceleratorWorksWhenHidden: true },
+        { type: "separator" },
+        { role: "togglefullscreen" },
+      ],
+    },
     { role: "windowMenu" },
     {
       role: "help",

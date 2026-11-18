@@ -21,7 +21,8 @@ export function AgentsStep({ draft, update, clis, onClis, preselectInstalled }: 
     async (preselect: boolean) => {
       setScanning(true);
       try {
-        const found = await window.yggdrasil.onboarding.detectClis();
+        // omp isn't offered during onboarding (still selectable via "show all CLIs" in Settings).
+        const found = (await window.yggdrasil.onboarding.detectClis()).filter((c) => c.id !== "omp");
         onClis(found);
         if (preselect) update({ enabled: found.filter((c) => c.installed).map((c) => c.id) });
       } catch {

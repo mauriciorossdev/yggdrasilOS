@@ -6,6 +6,8 @@ import { FileTree } from "../files/FileTree.js";
 import { TextEditor, type RevealTarget } from "../files/TextEditor.js";
 import type { OpenTarget } from "../files/FileSearchResults.js";
 import { FileViewer } from "../files/FileViewer.js";
+import { FolderView } from "../files/FolderView.js";
+import { folderOfTab, folderTabKey, isFolderTab, navigateFolderTab, tabLabel } from "../files/folderTabs.js";
 import { previewKind } from "../files/filePreviewKind.js";
 import { DocumentsTabContextMenu } from "./DocumentsTabContextMenu.js";
 import { reconcileExternalChange } from "./reconcileExternalChange.js";
@@ -49,8 +51,8 @@ function basename(path: string): string {
   return idx === -1 ? path : path.slice(idx + 1);
 }
 
-/** The open note's location, `notes / folder / file.md`, with the file name stressed. */
-function Breadcrumb({ path }: { path: string }) {
+/** The open note's location, `notes / folder / file.md`, with the file name stressed. Folder segments open that folder. */
+function Breadcrumb({ path, onOpenFolder }: { path: string; onOpenFolder: (dir: string) => void }) {
   const { t } = useI18n();
   const parts = path.split("/");
   return (
@@ -58,7 +60,13 @@ function Breadcrumb({ path }: { path: string }) {
       {parts.map((part, i) => (
         <span key={`${i}:${part}`} className={i === parts.length - 1 ? "current" : ""}>
           {i > 0 && <span className="sep">/</span>}
-          {part}
+          {i === parts.length - 1 ? (
+            part
+          ) : (
+            <button type="button" onClick={() => onOpenFolder(parts.slice(0, i + 1).join("/"))}>
+              {part}
+            </button>
+          )}
         </span>
       ))}
     </nav>
@@ -100,7 +108,13 @@ export function DocumentsView() {
       if (stack.length === 0) return stack;
       const target = stack[stack.length - 1]!;
       skipHistoryRef.current = true;
-      setOpenPaths((prevPaths) => (prevPaths.includes(target) ? prevPaths : [...prevPaths, target]));
+      setOpenPaths((prevPaths) => {
+        if (prevPaths.includes(target)) return prevPaths;
+        // Back out of a folder navigation in the same folder tab instead of opening another one.
+        const current = prevActivePathRef.current;
+        if (current && isFolderTab(current) && isFolderTab(target)) return navigateFolderTab(prevPaths, current, target);
+        return [...prevPaths, target];
+      });
       setActivePath(target);
       return stack.slice(0, -1);
     });
@@ -185,7 +199,7 @@ export function DocumentsView() {
   // active) the first time it's needed, rather than eagerly for every
   // restored tab on mount.
   useEffect(() => {
-    if (activePath && !tabs[activePath]) void loadTab(activePath);
+    if (activePath && !isFolderTab(activePath) && !tabs[activePath]) void loadTab(activePath);
   }, [activePath, tabs, loadTab]);
 
   // An agent (or anything else) can edit a note that's open in a tab. Without
@@ -284,7 +298,14 @@ export function DocumentsView() {
   // PathLinkProvider) opens here instead of falling through to the OS,
   // which has no app association for a bare project-relative path anyway.
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  useEffect(() => onRequestOpenDocument(openFile), []);
+  useEffect(() => onRequestOpenDocument((path, line) => openFile(path, line ? { query: "", line } : undefined)), []);
+  const openFolder = (dir: string) => openFile(folderTabKey(dir));
+  // Going into another folder reuses the folder tab, like a Finder window.
+  const navigateFolder = (fromKey: string, dir: string) => {
+    const toKey = folderTabKey(dir);
+    setOpenPaths((prev) => navigateFolderTab(prev, fromKey, toKey));
+    setActivePath(toKey);
+  };
 
   // Reads the tab from the ref, not from a render's closure: autosave fires from timers and
   // blur handlers that would otherwise hold an older copy of what the user typed.
@@ -370,7 +391,7 @@ export function DocumentsView() {
       if (shouldAutosave(tab)) void save(path);
       else if (!window.confirm(t("doc.discardConfirmFile", { name: basename(path) }))) return;
     }
-    releaseModel(path);
+    if (!isFolderTab(path)) releaseModel(path);
     setOpenPaths((prev) => {
       const next = prev.filter((p) => p !== path);
       if (activePath === path) setActivePath(next.length > 0 ? next[next.length - 1]! : null);
@@ -413,7 +434,9 @@ export function DocumentsView() {
   const activeBacklinks = useMemo(() => (activePath ? buildBacklinks(notesIndex, activePath) : []), [notesIndex, activePath]);
 
   const activeTab = activePath ? tabs[activePath] : undefined;
-  const activeKind = activePath ? previewKind(activePath) : null;
+  const activeFolder = activePath && isFolderTab(activePath) ? activePath : null;
+  const activeKind = activePath && !activeFolder ? previewKind(activePath) : null;
+  const rootLabel = t("folder.projectRoot");
 
   return (
     <div className="documents-view">
@@ -459,6 +482,7 @@ export function DocumentsView() {
           <FileTree
             rootRelativePath={NOTES_ROOT}
             onOpenFile={openFile}
+            onOpenFolder={openFolder}
             activePath={activePath}
             searchable
             searchContent
@@ -486,7 +510,7 @@ export function DocumentsView() {
                 >
                   <button type="button" className="documents-tab-label" onClick={() => setActivePath(path)} title={path}>
                     {dirty ? "● " : ""}
-                    {basename(path)}
+                    {tabLabel(path, rootLabel)}
                   </button>
                   <button
                     type="button"
@@ -501,7 +525,7 @@ export function DocumentsView() {
             })}
           </div>
         )}
-        {(activePath || backStack.length > 0) && (
+        {(activePath || backStack.length > 0) && !activeFolder && (
           <div className="documents-toolbar">
             <button
               type="button"
@@ -512,7 +536,7 @@ export function DocumentsView() {
             >
               <ArrowLeftIcon className="hero-icon" />
             </button>
-            {activePath && <Breadcrumb path={activePath} />}
+            {activePath && <Breadcrumb path={activePath} onOpenFolder={openFolder} />}
             <span className="documents-toolbar-spacer" />
             {activePath && (
               <>
@@ -552,6 +576,25 @@ export function DocumentsView() {
         )}
         <div className="documents-editor">
           {!activePath && <p className="muted documents-empty">{t("docs.view.selectNote")}</p>}
+          {activeFolder && (
+            <FolderView
+              dir={folderOfTab(activeFolder)}
+              rootLabel={rootLabel}
+              onNavigate={(dir) => navigateFolder(activeFolder, dir)}
+              onOpenFile={(path) => openFile(path)}
+              leading={
+                <button
+                    type="button"
+                    className="icon-btn documents-back-btn"
+                    title={t("docs.view.back")}
+                    disabled={backStack.length === 0}
+                    onClick={goBack}
+                  >
+                    <ArrowLeftIcon className="hero-icon" />
+                  </button>
+              }
+            />
+          )}
           {activePath && activeKind && activeKind !== "text" && <FileViewer relativePath={activePath} kind={activeKind} />}
           {activePath && activeKind === "text" && activeTab?.loading && (
             <p className="muted documents-empty">{t("doc.loading")}</p>

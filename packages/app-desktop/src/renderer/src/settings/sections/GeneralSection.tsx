@@ -1,7 +1,7 @@
 import type { ConfigShape } from "../../types.js";
 import { LANGUAGES, useI18n } from "../../i18n/index.js";
 import { saveOnboarding, useOnboarding } from "../../onboarding/store.js";
-import { setShowWorkflows, useShowWorkflows } from "../../ui/sidebarStore.js";
+import { setScriptsInApp, setShowWorkflows, useScriptsInApp, useShowWorkflows } from "../../ui/sidebarStore.js";
 
 type Props = {
   config: ConfigShape;
@@ -11,6 +11,7 @@ type Props = {
 export function GeneralSection({ config, setConfig }: Props) {
   const { t } = useI18n();
   const showWorkflows = useShowWorkflows();
+  const scriptsInApp = useScriptsInApp();
   const onboarding = useOnboarding();
   return (
     <section className="settings-section">
@@ -53,6 +54,14 @@ export function GeneralSection({ config, setConfig }: Props) {
       <p className="muted">
         {t("set.general.showWorkflowsHelp")}
       </p>
+      <label>
+        {t("set.general.scriptsOpenIn")}
+        <select value={scriptsInApp ? "app" : "system"} onChange={(e) => setScriptsInApp(e.target.value === "app")}>
+          <option value="app">{t("set.general.scriptsInApp")}</option>
+          <option value="system">{t("set.general.scriptsInSystem")}</option>
+        </select>
+      </label>
+      <p className="muted">{t("set.general.scriptsOpenInHelp")}</p>
     </section>
   );
 }

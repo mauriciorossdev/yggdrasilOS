@@ -6,6 +6,8 @@ import { readSettingsFile, updateSettingsFile } from "./settingsFile.js";
 export type ThemeSettings = {
   presetId: string;
   overrides: Partial<Record<"bg" | "surface" | "text" | "accent", string>>;
+  /** Pane corner style; absent means the default (rounded). */
+  paneCorners?: "square";
 };
 
 const CORE_KEYS = ["bg", "surface", "text", "accent"] as const;
@@ -17,7 +19,7 @@ export function defaultThemeSettings(): ThemeSettings {
 
 /** Whatever the renderer or an old settings file hands us, reduced to a safe ThemeSettings. */
 export function sanitizeThemeSettings(raw: unknown): ThemeSettings {
-  const input = (raw ?? {}) as { presetId?: unknown; overrides?: unknown };
+  const input = (raw ?? {}) as { presetId?: unknown; overrides?: unknown; paneCorners?: unknown };
   const presetId =
     typeof input.presetId === "string" && /^[a-z0-9-]{1,40}$/.test(input.presetId) ? input.presetId : DEFAULT_PRESET_ID;
   const overrides: ThemeSettings["overrides"] = {};
@@ -26,7 +28,7 @@ export function sanitizeThemeSettings(raw: unknown): ThemeSettings {
     const value = given[key];
     if (typeof value === "string" && /^#[0-9a-fA-F]{6}$/.test(value)) overrides[key] = value.toLowerCase();
   }
-  return { presetId, overrides };
+  return input.paneCorners === "square" ? { presetId, overrides, paneCorners: "square" } : { presetId, overrides };
 }
 
 /** desktop-settings.json also holds the theme (nested under "theme") — see settingsFile.ts's shared write queue. */

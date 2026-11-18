@@ -1,6 +1,7 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
@@ -42,7 +43,17 @@ class YggdrasilClient {
   bool _intentionalClose = false;
   Timer? _reconnectTimer;
   int _reconnectAttempt = 0;
-  Completer<void>? _reopenWaiter;
+
+  /// Whether the socket is really up: true once the gateway answers this
+  /// connection's first message (init-auth), false as soon as it closes.
+  /// `isClosed` can't say this — it stays false while a connect is still in
+  /// flight or never completes (gateway down, wrong address).
+  final ValueNotifier<bool> connection = ValueNotifier<bool>(false);
+  bool get isOpen => connection.value;
+
+  /// A connect that hasn't been answered by then is treated as failed, so
+  /// requests queued on it fail instead of waiting forever.
+  static const connectTimeout = Duration(seconds: 15);
 
   /// Called each time this phone finishes registering its tools with the gateway
   /// (every connect and reconnect) — e.g. to register its push token.
@@ -279,11 +290,19 @@ class YggdrasilClient {
     _open();
   }
 
-  /// Completes once the socket is (re)opened; fails after [timeout]. Lets
-  /// callers ride out a reconnect instead of failing on a closed socket.
+  /// Completes once the socket is open (see [connection]); fails with a
+  /// TimeoutException after [timeout]. Lets callers ride out a reconnect
+  /// instead of failing on a closed socket. A client that was never told to
+  /// connect has nothing to wait for and completes right away.
   Future<void> whenOpen({Duration timeout = const Duration(seconds: 20)}) {
-    if (!_closed) return Future.value();
-    return (_reopenWaiter ??= Completer<void>()).future.timeout(timeout);
+    if (_onMessage == null || connection.value) return Future.value();
+    final opened = Completer<void>();
+    void listener() {
+      if (connection.value && !opened.isCompleted) opened.complete();
+    }
+
+    connection.addListener(listener);
+    return opened.future.timeout(timeout).whenComplete(() => connection.removeListener(listener));
   }
 
   void _scheduleReconnect() {
@@ -295,8 +314,6 @@ class YggdrasilClient {
       if (_intentionalClose) return;
       _closed = false;
       _open();
-      _reopenWaiter?.complete();
-      _reopenWaiter = null;
     });
   }
 
@@ -314,6 +331,36 @@ class YggdrasilClient {
     final uri = parsed.replace(scheme: (parsed.scheme == 'https' || parsed.scheme == 'wss') ? 'wss' : 'ws');
     _channel = WebSocketChannel.connect(uri);
     final channel = _channel!;
+
+    // Runs once per channel, whichever comes first: the socket's onDone or
+    // the connect timeout below.
+    var closedHandled = false;
+    void handleClosed() {
+      if (closedHandled) return;
+      closedHandled = true;
+      // A stale socket's late close must not mark the live one closed.
+      if (!identical(channel, _channel)) return;
+      _closed = true;
+      connection.value = false;
+      // Nothing will ever answer these now — fail them instead of leaving
+      // their callers awaiting forever.
+      final pending = Map.of(_pendingRequests);
+      _pendingRequests.clear();
+      for (final c in pending.values) {
+        if (!c.isCompleted) c.completeError(StateError('WebSocket closed'));
+      }
+      onDisconnected?.call();
+      _scheduleReconnect();
+    }
+
+    var answered = false;
+    final connectTimer = Timer(connectTimeout, () {
+      if (answered) return;
+      print('Conexión sin respuesta tras ${connectTimeout.inSeconds}s: $uri');
+      handleClosed();
+      channel.sink.close();
+    });
+
     // A failed connect (DNS, refused, TLS) is reported on `ready` AND on the
     // stream; the stream's onError/onDone below already handle it, so this
     // only keeps `ready` from surfacing as an unhandled exception.
@@ -349,7 +396,18 @@ class YggdrasilClient {
       (data) {
         final response = jsonDecode(data.toString());
         print("Respuesta recibida: $response");
-        if (response['id'] == 'init-auth' && response['error'] == null) _reconnectAttempt = 0;
+        if (!answered) {
+          answered = true;
+          connectTimer.cancel();
+        }
+        if (response['id'] == 'init-auth') {
+          if (response['error'] == null) _reconnectAttempt = 0;
+          // The gateway answers the auth message either way; only a rejected
+          // key means this socket can't be used. (With no auth required it
+          // reports the extra `auth` call as an error, but the socket is fine.)
+          final code = response['error'] is Map ? response['error']['code'] : null;
+          if (identical(channel, _channel)) connection.value = code != 'UNAUTHORIZED';
+        }
         if (response['id'] != null && _pendingRequests.containsKey(response['id'])) {
           final completer = _pendingRequests.remove(response['id']);
           if (response['error'] != null) {
@@ -374,18 +432,8 @@ class YggdrasilClient {
       onError: (error) => print('Error WS: $error'),
       onDone: () {
         print('Conexión cerrada. Código: ${channel.closeCode}, Razón: ${channel.closeReason}');
-        // A stale socket's late onDone must not mark the live one closed.
-        if (!identical(channel, _channel)) return;
-        _closed = true;
-        // Nothing will ever answer these now — fail them instead of leaving
-        // their callers awaiting forever.
-        final pending = Map.of(_pendingRequests);
-        _pendingRequests.clear();
-        for (final c in pending.values) {
-          if (!c.isCompleted) c.completeError(StateError('WebSocket closed'));
-        }
-        onDisconnected?.call();
-        _scheduleReconnect();
+        connectTimer.cancel();
+        handleClosed();
       },
     );
   }
@@ -495,7 +543,9 @@ class YggdrasilClient {
     capabilityByName(_pendingInteractiveTool)?.cancel?.call();
   }
 
-  void sendMessage(String text, {String? sessionKey, String? agentId, String? model}) {
+  /// Completes when the gateway finishes the turn (chat.send answers at turn
+  /// end), and fails if the socket closes first or the gateway rejects it.
+  Future<dynamic> sendMessage(String text, {String? sessionKey, String? agentId, String? model}) {
     final params = <String, dynamic>{
       "message": text,
       "sessionKey": sessionKey ?? "tui",
@@ -524,12 +574,13 @@ class YggdrasilClient {
       params["model"] = model;
     }
 
-    call("chat.send", params);
+    return call("chat.send", params);
   }
 
   void disconnect() {
     _intentionalClose = true;
     _reconnectTimer?.cancel();
+    connection.value = false;
     _channel?.sink.close();
   }
 }

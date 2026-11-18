@@ -60,7 +60,7 @@ export function AppearanceSection() {
             key={preset.id}
             type="button"
             className={`appearance-preset${preset.id === theme.presetId ? " active" : ""}`}
-            onClick={() => commit({ presetId: preset.id, overrides: {} })}
+            onClick={() => commit({ ...theme, presetId: preset.id, overrides: {} })}
           >
             <span className="appearance-swatches">
               {CORE_KEYS.map((key) => (
@@ -96,6 +96,21 @@ export function AppearanceSection() {
             )}
           </div>
         ))}
+      </div>
+
+      <div className="appearance-color-row">
+        <span className="appearance-color-label">{t("set.appearance.paneCorners")}</span>
+        <select
+          aria-label={t("set.appearance.paneCorners")}
+          value={theme.paneCorners ?? "rounded"}
+          onChange={(e) => {
+            const { paneCorners: _drop, ...rest } = theme;
+            commit(e.target.value === "square" ? { ...rest, paneCorners: "square" } : rest);
+          }}
+        >
+          <option value="rounded">{t("set.appearance.paneCorners.rounded")}</option>
+          <option value="square">{t("set.appearance.paneCorners.square")}</option>
+        </select>
       </div>
 
       {warnings.length > 0 && (

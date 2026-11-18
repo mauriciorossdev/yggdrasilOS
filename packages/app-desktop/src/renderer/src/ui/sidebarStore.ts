@@ -49,6 +49,12 @@ const workflowsShown = persistedFlag("ygg.sidebar.showWorkflows", false);
 export const setShowWorkflows = workflowsShown.set;
 export const useShowWorkflows = workflowsShown.use;
 
+// Where a sidebar script runs: a pane of the app's own Terminal tab (default)
+// or a separate window of the OS terminal (main/scriptRunner.ts).
+const scriptsInApp = persistedFlag("ygg.scripts.inApp", true);
+export const setScriptsInApp = scriptsInApp.set;
+export const useScriptsInApp = scriptsInApp.use;
+
 const terminalsOpen = persistedFlag("ygg.sidebar.terminalsOpen", true);
 export const toggleTerminalsList = terminalsOpen.toggle;
 export const useTerminalsListOpen = terminalsOpen.use;

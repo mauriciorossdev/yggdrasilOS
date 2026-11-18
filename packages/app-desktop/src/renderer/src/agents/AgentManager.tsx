@@ -5,7 +5,6 @@ import {
   PencilIcon,
   StarIcon,
   TrashIcon,
-  XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import { useI18n } from "../i18n/index.js";
@@ -15,7 +14,6 @@ import { EMPTY_TOOLS_FORM, toolsPayload, toolsToForm, type ToolsFormState } from
 
 type Props = {
   agents: AgentInfo[];
-  onClose: () => void;
   onCreated: (agents: AgentInfo[], newAgentId: string) => void;
   onDeleted: (agents: AgentInfo[], deletedId: string) => void;
 };
@@ -39,7 +37,8 @@ const EMPTY_FORM: FormState = {
   ...EMPTY_TOOLS_FORM,
 };
 
-export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
+/** The agent list and its create/edit form, shown in Settings → Agents. */
+export function AgentManager({ agents, onCreated, onDeleted }: Props) {
   const { call } = useGateway();
   const { t } = useI18n();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
@@ -178,15 +177,7 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
   };
 
   return (
-    <div className="modal-overlay" onClick={onClose}>
-      <div className="modal agent-manager" onClick={(e) => e.stopPropagation()}>
-        <div className="modal-header">
-          <h2>{t("agents.manager.title")}</h2>
-          <button type="button" className="icon-btn" onClick={onClose}>
-            <XMarkIcon className="hero-icon" />
-          </button>
-        </div>
-
+    <div className="agent-manager">
         {!showForm && (
           <>
             <ul className="agent-list">
@@ -439,7 +430,6 @@ export function AgentManager({ agents, onClose, onCreated, onDeleted }: Props) {
         )}
 
         {!showForm && error && <p className="error">{error}</p>}
-      </div>
     </div>
   );
 }

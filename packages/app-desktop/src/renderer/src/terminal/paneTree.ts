@@ -22,6 +22,9 @@ export type PaneAction =
   | { type: "SET_VIEW_MODE"; mode: "grid" | "canvas" }
   | { type: "SET_CANVAS_POSITIONS"; positions: Array<{ id: string; position: { x: number; y: number } }> };
 
+/** Id prefix of a package.json script's pane (scripts/scriptRuns.ts). A restart drops them: a `dev` server must not start by itself. */
+export const SCRIPT_PANE_PREFIX = "script:";
+
 /** Builds a brand-new blank terminal leaf — shared by TerminalContainer.tsx (New Terminal, Split) and TerminalCanvasView.tsx (Split from a canvas node) so both build the exact same shape. */
 export function newLeaf(cwd: string, title: string): LeafPane {
   return { type: "leaf", id: crypto.randomUUID(), title, cwd };
@@ -144,7 +147,7 @@ export function paneReducer(state: TerminalLayout, action: PaneAction): Terminal
       // conversation left to "belong" to. Only terminals the user
       // deliberately keeps open (New Terminal, or a Team's root) survive.
       const survivors = collectLeaves(action.layout.root)
-        .filter((l) => !l.attach)
+        .filter((l) => !l.attach && !l.id.startsWith(SCRIPT_PANE_PREFIX))
         // Strip initialPrompt too — a restored pane keeps its role/system
         // prompt (systemPromptAppend, still in `args`) but shouldn't
         // silently re-submit its original task on every plain reopen; it

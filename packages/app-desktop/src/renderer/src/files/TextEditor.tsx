@@ -201,10 +201,12 @@ export function TextEditor({ path, value, onChange, readOnly, status, reveal, wi
   // A note opened from a search hit: find the text (rich view) or go to its line (source view).
   useEffect(() => {
     if (!reveal || reveal.nonce === revealedRef.current) return;
-    if (previewing) {
+    // `previewing` starts true for every file, but only markdown has a rich view.
+    if (isMarkdown && previewing) {
       if (!rich) return;
       revealedRef.current = reveal.nonce;
-      openFind(reveal.query);
+      // A bare `file.md:12` (terminal link) has no text to find; the rich view has no line numbers.
+      if (reveal.query) openFind(reveal.query);
     } else if (source) {
       revealedRef.current = reveal.nonce;
       if (reveal.line) {
@@ -212,7 +214,7 @@ export function TextEditor({ path, value, onChange, readOnly, status, reveal, wi
         source.setPosition({ lineNumber: reveal.line, column: 1 });
       }
     }
-  }, [reveal, previewing, rich, source, openFind]);
+  }, [reveal, isMarkdown, previewing, rich, source, openFind]);
 
   if (!isMarkdown) {
     return (

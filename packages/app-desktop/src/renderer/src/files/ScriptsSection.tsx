@@ -3,6 +3,8 @@ import { useGateway } from "@yggdrasil/client-web";
 import { CollapsibleSection } from "../components/CollapsibleSection.js";
 import type { FsListResult, FsReadResult } from "../types.js";
 import { useI18n } from "../i18n/index.js";
+import { useScriptsInApp } from "../ui/sidebarStore.js";
+import { markStopRequested, requestScriptCommand, useScriptRuns, type ScriptRun } from "../scripts/scriptRuns.js";
 
 type Props = {
   projectPath: string | undefined;
@@ -23,11 +25,12 @@ const LOCKFILE_PACKAGE_MANAGERS: Array<{ file: string; packageManager: string }>
 /**
  * Sidebar section (own CollapsibleSection, rendered directly under "Files"
  * in SessionSidebar.tsx) listing this project's package.json scripts and,
- * on click, running one in a new native OS terminal window
- * (main/scriptRunner.ts) — deliberately NOT one of this app's own node-pty/
- * xterm.js terminal panes (nesting it there is a possible future
- * enhancement, not this). Renders nothing at all — no empty "Scripts"
- * header either — when the project has no package.json or no scripts.
+ * on click, running one in its own pane of the app's Terminal tab
+ * (TerminalContainer handles the command, see scripts/scriptRuns.ts) with a
+ * live status and stop/restart. Settings → General can send them to a new OS
+ * terminal window instead (main/scriptRunner.ts). Renders nothing at all —
+ * no empty "Scripts" header either — when the project has no package.json or
+ * no scripts.
  */
 export function ScriptsSection({ projectPath }: Props) {
   const { t } = useI18n();
@@ -35,6 +38,8 @@ export function ScriptsSection({ projectPath }: Props) {
   const [scripts, setScripts] = useState<Record<string, string> | null>(null);
   const [packageManager, setPackageManager] = useState("npm");
   const [runningScript, setRunningScript] = useState<string | null>(null);
+  const inApp = useScriptsInApp();
+  const runs = useScriptRuns();
   const [error, setError] = useState<string | null>(null);
 
   useEffect(() => {
@@ -71,8 +76,17 @@ export function ScriptsSection({ projectPath }: Props) {
 
   if (!scripts) return null;
 
+  const stopScript = (run: ScriptRun, name: string) => {
+    markStopRequested(name);
+    void window.yggdrasil.terminals.write(run.paneId, "\x03");
+  };
+
   const runScript = (name: string) => {
     if (!projectPath) return;
+    if (inApp) {
+      requestScriptCommand({ type: "run", name, packageManager, cwd: projectPath });
+      return;
+    }
     setRunningScript(name);
     setError(null);
     void window.yggdrasil.scripts
@@ -89,24 +103,63 @@ export function ScriptsSection({ projectPath }: Props) {
         </p>
       )}
       <ul className="script-list">
-        {Object.entries(scripts).map(([name, cmd]) => (
-          <li key={name} className="script-row">
-            <div className="script-row-info">
-              <div className="script-row-name" title={cmd}>
-                {name}
+        {Object.entries(scripts).map(([name, cmd]) => {
+          const run = inApp ? runs.get(name) : undefined;
+          const running = run?.status === "running";
+          const statusText = run
+            ? t(`scripts.status.${run.status}`, { code: run.exitCode ?? "?" })
+            : undefined;
+          return (
+            <li key={name} className="script-row">
+              {run && <span className={`script-status ${run.status}`} role="img" aria-label={statusText} title={statusText} />}
+              <div className="script-row-info">
+                {run ? (
+                  <button
+                    type="button"
+                    className="script-row-name script-row-link"
+                    title={`${cmd}\n${t("scripts.show")}`}
+                    onClick={() => requestScriptCommand({ type: "focus", name })}
+                  >
+                    {name}
+                  </button>
+                ) : (
+                  <div className="script-row-name" title={cmd}>
+                    {name}
+                  </div>
+                )}
               </div>
-            </div>
-            <button
-              type="button"
-              className="icon-btn"
-              title={t("scripts.run", { command: `${packageManager} run ${name}` })}
-              onClick={() => runScript(name)}
-              disabled={runningScript === name}
-            >
-              {runningScript === name ? "…" : "▶"}
-            </button>
-          </li>
-        ))}
+              <div className="script-row-actions">
+                {running && run && (
+                  <>
+                    <button type="button" className="icon-btn script-act" title={t("scripts.stop")} aria-label={t("scripts.stop")} onClick={() => stopScript(run, name)}>
+                      ■
+                    </button>
+                    <button
+                      type="button"
+                      className="icon-btn script-act"
+                      title={t("scripts.restart")}
+                      aria-label={t("scripts.restart")}
+                      onClick={() => projectPath && requestScriptCommand({ type: "restart", name, packageManager, cwd: projectPath })}
+                    >
+                      ↻
+                    </button>
+                  </>
+                )}
+                {!running && (
+                  <button
+                    type="button"
+                    className="icon-btn"
+                    title={t("scripts.run", { command: `${packageManager} run ${name}` })}
+                    onClick={() => runScript(name)}
+                    disabled={runningScript === name}
+                  >
+                    {runningScript === name ? "…" : "▶"}
+                  </button>
+                )}
+              </div>
+            </li>
+          );
+        })}
       </ul>
     </CollapsibleSection>
   );

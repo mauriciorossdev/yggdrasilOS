@@ -17,6 +17,7 @@ import { NavItem } from "../ui/index.js";
 import { toggleTerminalsList, useShowWorkflows, useTerminalsListOpen } from "../ui/sidebarStore.js";
 import { setBrowserTabCovered } from "../browser/browserTabBridge.js";
 import { requestFocusPane, useTerminalPanes } from "../terminal/terminalPanesStore.js";
+import { useWorktreeCount } from "../terminal/paneBranchContext.js";
 import { useI18n } from "../i18n/index.js";
 import {
   setActiveTab,
@@ -89,6 +90,42 @@ export function MainNav({ collapsed = false }: { collapsed?: boolean }) {
   // Never leave the page frozen if the entry goes away mid-hover (sidebar expanded, panes closed).
   useEffect(() => () => setBrowserTabCovered(false), [collapsed]);
   const listOpen = useTerminalsListOpen();
+  const worktreeCount = useWorktreeCount();
+
+  const worktreesEntry = () => {
+    const label = tabLabel("worktrees");
+    const countLabel = worktreeCount > 0 ? t("chat.mainNav.worktreesCount", { count: worktreeCount }) : label;
+    const item = (
+      <NavItem
+        key="worktrees"
+        active={active === "worktrees"}
+        icon={sectionIcon("worktrees")}
+        onClick={() => setActiveTab("worktrees")}
+        title={collapsed ? countLabel : undefined}
+        aria-label={countLabel}
+      >
+        {!collapsed && (
+          <>
+            <span className="main-nav-label">{label}</span>
+            {worktreeCount > 0 && (
+              <span className="main-nav-badge" aria-hidden>
+                {worktreeCount}
+              </span>
+            )}
+          </>
+        )}
+      </NavItem>
+    );
+    if (!collapsed || worktreeCount === 0) return item;
+    return (
+      <div key="worktrees" className="main-nav-flyout-host">
+        {item}
+        <span className="main-nav-count" aria-hidden>
+          {worktreeCount}
+        </span>
+      </div>
+    );
+  };
 
   const terminalEntry = () => {
     const item = (
@@ -154,6 +191,8 @@ export function MainNav({ collapsed = false }: { collapsed?: boolean }) {
   const builtin = (id: BuiltinMainTab) =>
     id === "terminal" ? (
       terminalEntry()
+    ) : id === "worktrees" ? (
+      worktreesEntry()
     ) : (
     <NavItem
       key={id}

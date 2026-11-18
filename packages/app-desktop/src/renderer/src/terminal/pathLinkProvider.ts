@@ -1,53 +1,93 @@
-import type { ILink, ILinkProvider, Terminal } from "@xterm/xterm";
+import type { IBufferCell, IBufferLine, ILink, ILinkProvider, Terminal } from "@xterm/xterm";
+import { pathTokensAt, splitLocator, type Row } from "./pathLinkText.js";
 
-// Requires at least one "/" so plain words never match, and a leading
-// non-"/" lookbehind so it never grabs the tail of a "https://…/…" URL that
-// @xterm/addon-web-links' own provider (registered separately) already
-// claims — that regex always starts right after "//", so this one simply
-// refuses to start there. Trailing ":line" / ":line:col" (how `claude`
-// itself cites a location, and how most CLIs/compilers do) is captured so
-// it can be stripped before opening.
-const PATH_REGEX = /(?<!\/)(?:[~.]{0,2}\/)?(?:[\w.-]+\/)+[\w.-]*(?::\d+(?::\d+)?)?/g;
+export type ResolvedTerminalPath = {
+  abs: string;
+  kind: "file" | "directory";
+  insideProject: boolean;
+  relativePath?: string;
+};
+
+/** How many rows around the hovered one are read, so a path split by a TUI's own wrapping is seen whole. */
+const CONTEXT_ROWS = 2;
 
 /**
- * Detects filesystem-path-looking tokens in terminal output and hands them
- * to `activate` on click. Modeled on @xterm/addon-web-links' own
- * WebLinkProvider/LinkComputer (same ILink range convention: 1-based,
- * end-inclusive), reimplemented rather than reused because that addon's
- * computeLink() hardcodes a `new URL(text)` validity check that rejects
- * every plain path. Only scans the single buffer line under the cursor, not
- * wrapped continuation lines like the original — real paths rarely wrap a
- * terminal this wide, and skipping it keeps the position math a plain
- * 1-char-per-cell offset (paths are ASCII-only, so that's always exact).
+ * Detects filesystem paths in terminal output and hands the resolved target
+ * to `activate` on click. Modeled on @xterm/addon-web-links (same ILink range
+ * convention: 1-based, end-inclusive), reimplemented because that addon's
+ * `new URL(text)` check rejects every plain path.
+ *
+ * Only paths that exist on disk become links (`resolve` stats them), which is
+ * also how a path split across rows is told apart from a path followed by an
+ * ordinary word: pathTokensAt offers the joined form first and the first
+ * alternative that exists wins, as one link spanning every row it covers.
  */
 export class PathLinkProvider implements ILinkProvider {
   constructor(
     private readonly terminal: Terminal,
-    private readonly activate: (event: MouseEvent, path: string) => void,
+    private readonly resolve: (path: string) => Promise<ResolvedTerminalPath | null>,
+    private readonly activate: (target: ResolvedTerminalPath, line: number | undefined) => void,
   ) {}
 
   provideLinks(bufferLineNumber: number, callback: (links: ILink[] | undefined) => void): void {
-    const line = this.terminal.buffer.active.getLine(bufferLineNumber - 1);
-    if (!line) return callback(undefined);
-    const text = line.translateToString(true);
-    const rex = new RegExp(PATH_REGEX.source, "g");
-    const links: ILink[] = [];
-    let match: RegExpExecArray | null;
-    while ((match = rex.exec(text))) {
-      // Trailing punctuation is almost always sentence structure, not part
-      // of the path (e.g. "see packages/foo/bar.ts.").
-      const trimmed = match[0].replace(/[.,;:!?)]+$/, "");
-      if (!trimmed || !/[a-zA-Z]/.test(trimmed)) continue;
-      const idx0 = match.index;
-      links.push({
-        text: trimmed,
-        range: {
-          start: { x: idx0 + 1, y: bufferLineNumber },
-          end: { x: idx0 + trimmed.length, y: bufferLineNumber },
-        },
-        activate: this.activate,
-      });
-    }
-    callback(links.length > 0 ? links : undefined);
+    const buffer = this.terminal.buffer.active;
+    const focus = bufferLineNumber - 1;
+    const from = Math.max(0, focus - CONTEXT_ROWS);
+    const to = Math.min(buffer.length - 1, focus + CONTEXT_ROWS);
+    const rows: Row[] = [];
+    const cell = buffer.getNullCell();
+    for (let i = from; i <= to; i++) rows.push(readRow(buffer.getLine(i), cell));
+    if (!rows[focus - from]) return callback(undefined);
+
+    const groups = pathTokensAt(rows, focus - from);
+    if (groups.length === 0) return callback(undefined);
+
+    void Promise.all(
+      groups.map(async (alternatives) => {
+        for (const token of alternatives) {
+          const { path, line } = splitLocator(token.text);
+          const target = await this.resolve(path).catch(() => null);
+          if (target) return { token, target, line };
+        }
+        return null;
+      }),
+    ).then((found) => {
+      const links: ILink[] = [];
+      for (const hit of found) {
+        if (!hit) continue;
+        const first = hit.token.spans[0]!;
+        const last = hit.token.spans[hit.token.spans.length - 1]!;
+        const firstRow = rows[first.row]!;
+        const lastRow = rows[last.row]!;
+        links.push({
+          text: hit.token.text,
+          range: {
+            start: { x: firstRow.cols[first.start]! + 1, y: from + first.row + 1 },
+            end: { x: lastRow.cols[last.end - 1]! + 1, y: from + last.row + 1 },
+          },
+          activate: () => this.activate(hit.target, hit.line),
+        });
+      }
+      callback(links.length > 0 ? links : undefined);
+    });
   }
+}
+
+/**
+ * A row's text plus the cell column of each string index. Not
+ * translateToString: a wide char (CJK, many emoji) is one string char but two
+ * cells, which would shift every underline after it.
+ */
+function readRow(line: IBufferLine | undefined, cell: IBufferCell): Row {
+  if (!line) return { text: "", cols: [] };
+  let text = "";
+  const cols: number[] = [];
+  for (let x = 0; x < line.length; x++) {
+    line.getCell(x, cell);
+    if (cell.getWidth() === 0) continue; // second half of a wide char
+    const chars = cell.getChars() || " ";
+    for (let i = 0; i < chars.length; i++) cols.push(x);
+    text += chars;
+  }
+  return { text, cols };
 }

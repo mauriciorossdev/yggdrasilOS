@@ -83,3 +83,18 @@ Los tests live consumen cuota de Ollama Cloud.
 2. Usar `createTestPlatform({ startServer: true })` o `GatewayWsClient`
 3. Para auth/SSE/Telegram: stubs en helpers (`postInbound` con headers, etc.)
 4. Actualizar esta matriz
+
+## E2E de la app mobile (Flutter, emulador Android)
+
+`node scripts/mobile-e2e.mjs` corre `mobile/app/integration_test/` en un emulador Android contra un gateway real (`packages/cli` headless). Usa el agente builtin echo, así que no gasta LLM. El workspace de QA es desechable, con `HOME` aislado. Al terminar deja screenshots y logs en `mobile/app/build/e2e/<timestamp>/`.
+
+- **Requisitos:**
+  - Flutter 3.47 o posterior (probado con 3.47.9; el wrapper de Gradle es 9.3.1, el mínimo que pide 3.50).
+  - Android SDK con `cmdline-tools`.
+  - Un AVD x86_64 o arm64. El default es `ygg_e2e_api34`; se cambia con `--avd`. Flutter no corre en imágenes x86 de 32 bits.
+  - `pnpm --filter "@yggdrasil/cli..." run build`.
+- **Opciones:**
+  - `--name "<texto>"` corre solo los tests cuyo nombre lo contenga.
+  - `--stop-emulator` apaga el emulador si lo arrancó el script.
+- **Durante la corrida:** los tests llaman a un servidor de control del host (vía `adb reverse`) para sacar screenshots y para apagar/prender el gateway (test de reconexión).
+- **Bugs conocidos:** los tests que reproducen un bug llevan `knownBug: 'F-…'` y se saltan. Están detallados en `notes/yggdrasil-mobile/qa-e2e-findings-*.md`.

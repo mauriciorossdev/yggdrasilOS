@@ -1,11 +1,13 @@
 import { useEffect, useMemo, useState } from "react";
-import { FolderOpenIcon, MagnifyingGlassIcon, PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { ArrowDownTrayIcon, FolderOpenIcon, MagnifyingGlassIcon, PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { ProjectRecord } from "../types.js";
 import { ProjectContextMenu } from "../chat/ProjectContextMenu.js";
 import { useProjects } from "../projects/useProjects.js";
 import { filterProjects } from "./filterProjects.js";
 import { formatOpenedAt } from "./formatOpenedAt.js";
 import { useI18n } from "../i18n/index.js";
+import { SettingsView } from "../settings/SettingsView.js";
+import { CloneRepoDialog } from "./CloneRepoDialog.js";
 
 // Launch pad: every known project as a button, most recently opened first.
 // The sidebar's project list is only shown in the default workspace window, so
@@ -15,6 +17,8 @@ export function HomeView() {
   const { projects, error, refresh, open, openExisting, createNew, rename, reveal, openInIde, clone, remove, purge } =
     useProjects();
   const [menu, setMenu] = useState<{ project: ProjectRecord; x: number; y: number } | null>(null);
+  const [cloneOpen, setCloneOpen] = useState(false);
+  const [connectorsOpen, setConnectorsOpen] = useState(false);
 
   // This window stays mounted while other windows open projects, so the order
   // would go stale; refresh whenever the user comes back to it.
@@ -59,6 +63,9 @@ export function HomeView() {
           <button type="button" className="home-action" onClick={() => void createNew()}>
             <PlusIcon className="hero-icon" /> {t("home.newProject")}
           </button>
+          <button type="button" className="home-action" onClick={() => setCloneOpen(true)}>
+            <ArrowDownTrayIcon className="hero-icon" /> {t("home.cloneRepo")}
+          </button>
         </div>
       </div>
       {error && <p className="error">{error}</p>}
@@ -92,6 +99,26 @@ export function HomeView() {
         {sorted.length === 0 && <p className="muted">{t("home.empty")}</p>}
         {sorted.length > 0 && visible.length === 0 && <p className="muted">{t("home.noMatch", { query: query.trim() })}</p>}
       </div>
+      {cloneOpen && (
+        <CloneRepoDialog
+          onClose={() => setCloneOpen(false)}
+          onCloned={() => void refresh()}
+          onOpenConnectors={() => {
+            setCloneOpen(false);
+            setConnectorsOpen(true);
+          }}
+        />
+      )}
+      {connectorsOpen && (
+        <SettingsView
+          initialSection="connectors"
+          onClose={() => {
+            setConnectorsOpen(false);
+            // Back to the dialog, which re-checks the connection on mount.
+            setCloneOpen(true);
+          }}
+        />
+      )}
       {menu && (
         <ProjectContextMenu
           project={menu.project}

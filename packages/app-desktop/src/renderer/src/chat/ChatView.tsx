@@ -8,8 +8,8 @@ import { ApprovalBar } from "./ApprovalBar.js";
 import { ChatInput } from "./ChatInput.js";
 import { SessionSidebar } from "./SessionSidebar.js";
 import { ComposerToolbar } from "./ComposerToolbar.js";
-import { AgentManager } from "../agents/AgentManager.js";
-import { SettingsView } from "../settings/SettingsView.js";
+import { onAgentsChanged } from "../agents/agentsEvents.js";
+import { SettingsView, type SettingsSection } from "../settings/SettingsView.js";
 import { FileContentPanel } from "../files/FileContentPanel.js";
 import { DiffContentPanel } from "../files/DiffContentPanel.js";
 import type { DiffTarget } from "../files/RemoteFilesPanel.js";
@@ -20,6 +20,7 @@ import { MainTabs, type ExtraTab, type MainTab } from "./MainTabs.js";
 import { requestTab } from "./mainTabsBridge.js";
 import { onChatAttach } from "./chatAttachBridge.js";
 import { TerminalContainer } from "../terminal/TerminalContainer.js";
+import { PaneBranchProvider } from "../terminal/paneBranchContext.js";
 import { AgentFlowView } from "../agentFlow/AgentFlowView.js";
 import { WorkflowsView } from "../workflows/WorkflowsView.js";
 import { WorktreesView } from "../worktrees/WorktreesView.js";
@@ -62,8 +63,8 @@ export function ChatView() {
   const { call, onEvent } = useGateway();
   const { t } = useI18n();
   const [state, dispatch] = useReducer(chatReducer, undefined, initialChatState);
-  const [showAgentManager, setShowAgentManager] = useState(false);
-  const [showSettings, setShowSettings] = useState(false);
+  // Which Settings section is open (null = closed); the composer's "Manage agents…" opens it at Agents.
+  const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(null);
   const [{ panel: sidePanel, phase: panelPhase }, dispatchPanel] = useReducer(sidePanelReducer<SidePanel>, {
     panel: null,
     phase: "open",
@@ -398,7 +399,6 @@ export function ChatView() {
     (agents: AgentInfo[], newAgentId: string) => {
       dispatch({ type: "SET_AGENTS", agents, defaultAgent: state.defaultAgent ?? newAgentId });
       dispatch({ type: "SET_ACTIVE_AGENT", agentId: newAgentId });
-      setShowAgentManager(false);
     },
     [state.defaultAgent],
   );
@@ -413,6 +413,17 @@ export function ChatView() {
       }
     },
     [state.defaultAgent, state.activeAgentId],
+  );
+
+  // Agents are edited in Settings → Agents, which may have been opened from elsewhere (title bar, Home).
+  useEffect(
+    () =>
+      onAgentsChanged((change) =>
+        change.kind === "saved"
+          ? handleAgentsCreated(change.agents, change.agentId)
+          : handleAgentDeleted(change.agents, change.agentId),
+      ),
+    [handleAgentsCreated, handleAgentDeleted],
   );
 
   const runningTools = [...state.toolCalls.values()]
@@ -521,125 +532,118 @@ export function ChatView() {
   };
 
   return (
-    <div className="chat-shell">
-      <SessionSidebar
-        sessions={state.sessions}
-        activeSessionKey={state.sessionKey}
-        onSelectSession={(k) => void selectSession(k)}
-        onNewChat={newChat}
-        onManageAgents={() => setShowAgentManager(true)}
-        onOpenSettings={() => setShowSettings(true)}
-        onRenameSession={(k, title) => void renameSession(k, title)}
-        onDeleteSession={(k) => void deleteSession(k)}
-        agents={state.agents}
-        activeAgentId={state.activeAgentId}
-        onSelectAgent={(agentId) => dispatch({ type: "SET_ACTIVE_AGENT", agentId })}
-        onOpenFile={openFile}
-        onOpenDiff={openDiff}
-        activeDiffPath={sidePanel?.kind === "diff" && panelPhase !== "exit" ? sidePanel.path : undefined}
-        plugins={plugins}
-        onOpenPlugin={openPlugin}
-        onOpenPluginTab={openPluginTab}
-        onOpenPluginPanel={openPluginPanel}
-        onReloadPlugins={() => void reloadPlugins()}
-      />
-      <PluginToolRuntime plugins={plugins} />
-      {/* The panel floats over everything by default; pinned, it takes its own column. */}
-      <div className="chat-main" style={sidePanel && panelPinned ? { paddingRight: panelWidth + PANEL_RESIZER_WIDTH } : undefined}>
-        <MainTabs
-          homeContent={window.yggdrasil.isDefaultProject ? <HomeView /> : undefined}
-          chatContent={
-            <>
-              <MessageList
-                messages={state.messages}
-                streamingText={state.streamingText}
-                isStreaming={state.isStreaming}
-                isTurnActive={state.isTurnActive}
-                runningTools={runningTools}
-              />
-              {state.pendingApproval && (
-                <ApprovalBar key={state.pendingApproval.requestId} approval={state.pendingApproval} onRespond={respondApproval} />
-              )}
-              <ChatInput
-                disabled={!state.sessionKey || !!state.pendingApproval}
-                isStreaming={state.isStreaming}
-                onSend={(t) => void send(t)}
-                onStop={() => void call("chat.stop", { sessionKey: state.sessionKey })}
-                attachments={attachedFiles}
-                onAttach={attachFile}
-                onRemoveAttachment={removeAttachment}
-                onCycleMode={cycleMode}
-              />
-              <ComposerToolbar
-                agents={state.agents}
-                activeAgentId={state.activeAgentId}
-                onSelectAgent={(agentId) => dispatch({ type: "SET_ACTIVE_AGENT", agentId })}
-                providers={state.providers}
-                modelOverride={state.modelOverride}
-                onSelectModel={(override) => dispatch({ type: "SET_MODEL_OVERRIDE", override })}
-                mode={state.mode}
-                onSelectMode={setMode}
-              />
-            </>
-          }
-          terminalContent={<TerminalContainer />}
-          agentFlowContent={<AgentFlowView />}
-          worktreesContent={<WorktreesView />}
-          workflowsContent={<WorkflowsView />}
-          documentsContent={<DocumentsView />}
-          browserContent={<BrowserTabView />}
-          studioContent={<StudioView />}
-          repositoryContent={<RepositoryView />}
-          filesContent={<FilesView />}
-          extraTabs={extraTabs}
-          onActiveTabChange={setActiveMainTab}
+    <PaneBranchProvider>
+      <div className="chat-shell">
+        <SessionSidebar
+          sessions={state.sessions}
+          activeSessionKey={state.sessionKey}
+          onSelectSession={(k) => void selectSession(k)}
+          onNewChat={newChat}
+          onOpenSettings={() => setSettingsSection("general")}
+          onRenameSession={(k, title) => void renameSession(k, title)}
+          onDeleteSession={(k) => void deleteSession(k)}
+          onOpenFile={openFile}
+          onOpenDiff={openDiff}
+          activeDiffPath={sidePanel?.kind === "diff" && panelPhase !== "exit" ? sidePanel.path : undefined}
+          plugins={plugins}
+          onOpenPlugin={openPlugin}
+          onOpenPluginTab={openPluginTab}
+          onOpenPluginPanel={openPluginPanel}
+          onReloadPlugins={() => void reloadPlugins()}
         />
-        {/* fs.write/fs.delete/etc. always require approval, even from this
-            app's own loopback connection (deliberate — see methods.ts) — but
-            ApprovalBar above only renders inside the Chat tab's own hidden
-            panel, so a Documents/Terminal/Agent-Flow-triggered approval
-            (e.g. saving a file in FileContentPanel) had nowhere visible to
-            be answered and just timed out. Same pendingApproval/respondApproval,
-            just surfaced as a floating banner when Chat isn't the active tab. */}
-        {state.pendingApproval && activeMainTab !== "chat" && (
-          <div className="approval-bar-overlay">
-            <ApprovalBar key={state.pendingApproval.requestId} approval={state.pendingApproval} onRespond={respondApproval} />
-          </div>
+        <PluginToolRuntime plugins={plugins} />
+        {/* The panel floats over everything by default; pinned, it takes its own column. */}
+        <div className="chat-main" style={sidePanel && panelPinned ? { paddingRight: panelWidth + PANEL_RESIZER_WIDTH } : undefined}>
+          <MainTabs
+            homeContent={window.yggdrasil.isDefaultProject ? <HomeView /> : undefined}
+            chatContent={
+              <>
+                <MessageList
+                  messages={state.messages}
+                  streamingText={state.streamingText}
+                  isStreaming={state.isStreaming}
+                  isTurnActive={state.isTurnActive}
+                  runningTools={runningTools}
+                />
+                {state.pendingApproval && (
+                  <ApprovalBar key={state.pendingApproval.requestId} approval={state.pendingApproval} onRespond={respondApproval} />
+                )}
+                <ChatInput
+                  disabled={!state.sessionKey || !!state.pendingApproval}
+                  isStreaming={state.isStreaming}
+                  onSend={(t) => void send(t)}
+                  onStop={() => void call("chat.stop", { sessionKey: state.sessionKey })}
+                  attachments={attachedFiles}
+                  onAttach={attachFile}
+                  onRemoveAttachment={removeAttachment}
+                  onCycleMode={cycleMode}
+                />
+                <ComposerToolbar
+                  agents={state.agents}
+                  activeAgentId={state.activeAgentId}
+                  onSelectAgent={(agentId) => dispatch({ type: "SET_ACTIVE_AGENT", agentId })}
+                  onManageAgents={() => setSettingsSection("agent")}
+                  providers={state.providers}
+                  modelOverride={state.modelOverride}
+                  onSelectModel={(override) => dispatch({ type: "SET_MODEL_OVERRIDE", override })}
+                  mode={state.mode}
+                  onSelectMode={setMode}
+                />
+              </>
+            }
+            terminalContent={<TerminalContainer />}
+            agentFlowContent={<AgentFlowView />}
+            worktreesContent={<WorktreesView />}
+            workflowsContent={<WorkflowsView />}
+            documentsContent={<DocumentsView />}
+            browserContent={<BrowserTabView />}
+            studioContent={<StudioView />}
+            repositoryContent={<RepositoryView />}
+            filesContent={<FilesView />}
+            extraTabs={extraTabs}
+            onActiveTabChange={setActiveMainTab}
+          />
+          {/* fs.write/fs.delete/etc. always require approval, even from this
+              app's own loopback connection (deliberate — see methods.ts) — but
+              ApprovalBar above only renders inside the Chat tab's own hidden
+              panel, so a Documents/Terminal/Agent-Flow-triggered approval
+              (e.g. saving a file in FileContentPanel) had nowhere visible to
+              be answered and just timed out. Same pendingApproval/respondApproval,
+              just surfaced as a floating banner when Chat isn't the active tab. */}
+          {state.pendingApproval && activeMainTab !== "chat" && (
+            <div className="approval-bar-overlay">
+              <ApprovalBar key={state.pendingApproval.requestId} approval={state.pendingApproval} onRespond={respondApproval} />
+            </div>
+          )}
+          {/* Terminal tab: a floating drawer over the panes instead of a side
+              column — shrinking .chat-main here would resize/reflow the real
+              xterm panes underneath, which the column mode doesn't have to
+              worry about for chat/agentFlow/documents. Same panelWidth state
+              and drag math as the column's resizer below — just positioned
+              absolutely at the drawer's left seam instead of sitting in flow. */}
+          {sidePanel && activeMainTab === "terminal" && (
+            <>
+              <div
+                className="file-content-resizer file-content-resizer-drawer"
+                style={{ right: panelWidth, visibility: panelPhase === "open" ? undefined : "hidden" }}
+                onPointerDown={startPanelResize}
+              />
+              {renderSidePanel("file-content-panel-drawer")}
+            </>
+          )}
+        </div>
+        {sidePanel && activeMainTab !== "terminal" && (
+          <div
+            className="file-content-resizer"
+            style={{ right: panelWidth, visibility: panelPhase === "open" ? undefined : "hidden" }}
+            onPointerDown={startPanelResize}
+          />
         )}
-        {/* Terminal tab: a floating drawer over the panes instead of a side
-            column — shrinking .chat-main here would resize/reflow the real
-            xterm panes underneath, which the column mode doesn't have to
-            worry about for chat/agentFlow/documents. Same panelWidth state
-            and drag math as the column's resizer below — just positioned
-            absolutely at the drawer's left seam instead of sitting in flow. */}
-        {sidePanel && activeMainTab === "terminal" && (
-          <>
-            <div
-              className="file-content-resizer file-content-resizer-drawer"
-              style={{ right: panelWidth, visibility: panelPhase === "open" ? undefined : "hidden" }}
-              onPointerDown={startPanelResize}
-            />
-            {renderSidePanel("file-content-panel-drawer")}
-          </>
+        {sidePanel && activeMainTab !== "terminal" && renderSidePanel()}
+        {settingsSection && (
+          <SettingsView initialSection={settingsSection} onClose={() => setSettingsSection(null)} />
         )}
       </div>
-      {sidePanel && activeMainTab !== "terminal" && (
-        <div
-          className="file-content-resizer"
-          style={{ right: panelWidth, visibility: panelPhase === "open" ? undefined : "hidden" }}
-          onPointerDown={startPanelResize}
-        />
-      )}
-      {sidePanel && activeMainTab !== "terminal" && renderSidePanel()}
-      {showAgentManager && (
-        <AgentManager
-          agents={state.agents}
-          onClose={() => setShowAgentManager(false)}
-          onCreated={handleAgentsCreated}
-          onDeleted={handleAgentDeleted}
-        />
-      )}
-      {showSettings && <SettingsView onClose={() => setShowSettings(false)} />}
-    </div>
+    </PaneBranchProvider>
   );
 }

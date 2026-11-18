@@ -11,6 +11,9 @@ const listeners = new Set<(core: ThemeCore) => void>();
 export function applyTheme(settings: ThemeSettings): void {
   const root = document.documentElement.style;
   for (const [name, value] of Object.entries(themeToCssVars(settings))) root.setProperty(name, value);
+  // styles.css keys square pane corners off this attribute.
+  if (settings.paneCorners === "square") document.documentElement.dataset.paneCorners = "square";
+  else delete document.documentElement.dataset.paneCorners;
   current = resolveCore(settings);
   listeners.forEach((fn) => fn(current));
 }

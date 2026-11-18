@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_strings.dart';
+import '../services/gateway_scope.dart';
 import '../services/user_name_store.dart';
 import '../services/yggdrasil_client.dart';
 import '../profiles/connection_profile.dart';
@@ -133,10 +134,31 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   bool get _isDirectMode => _activeProfile?.type == ConnectionProfileType.direct;
 
+  // This screen is pushed with the client that existed at that moment; after
+  // a profile switch main.dart has a new one, published through GatewayScope
+  // (F-lista-cliente-viejo). widget.client is the fallback without a scope.
+  GatewayScope? _scope;
+  YggdrasilClient get _client => _scope?.client ?? widget.client;
+  Future<void> get _connected => _scope?.connected ?? widget.connected;
+
   @override
   void initState() {
     super.initState();
     _load();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final scope = GatewayScope.maybeOf(context);
+    final previous = _scope;
+    _scope = scope;
+    if (previous != null && scope != null && !identical(previous.client, scope.client)) {
+      // Not from inside this build: _load starts with a setState.
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _load();
+      });
+    }
   }
 
   Future<void> _editUserName() async {
@@ -196,8 +218,8 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
     // Gateway mode (default, and unchanged from before profiles existed).
     try {
-      await widget.connected;
-      final res = await widget.client.call('sessions.list', {});
+      await _connected;
+      final res = await _client.call('sessions.list', {});
       final list = (res is Map ? res['sessions'] : null) as List<dynamic>? ?? [];
       if (!mounted) return;
       setState(() {
@@ -224,9 +246,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
       context,
       MaterialPageRoute(
         builder: (_) => ChatScreen(
-          client: widget.client,
+          client: _client,
           events: widget.events,
-          connected: widget.connected,
+          connected: _connected,
           sessionKey: sessionKey,
           initialTitle: title,
           initialMessage: initialMessage,
@@ -317,7 +339,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     try {
       // sessions.delete doesn't exist (design doc gap, §6.2) — reset unlinks
       // the session file server-side, which is effectively delete for v1.
-      await widget.client.call('sessions.reset', {'sessionKey': s.sessionKey});
+      await _client.call('sessions.reset', {'sessionKey': s.sessionKey});
     } catch (_) {
       // best-effort — refresh either way so the list matches server state
     }
@@ -328,7 +350,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
     final newTitle = await _promptForTitle(s.title);
     if (newTitle == null) return;
     try {
-      await widget.client.call('sessions.patch', {'sessionKey': s.sessionKey, 'title': newTitle});
+      await _client.call('sessions.patch', {'sessionKey': s.sessionKey, 'title': newTitle});
     } catch (_) {}
     _load();
   }
@@ -508,7 +530,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
       title: 'Yggdrasil',
       wordmark: true,
       trailing: [
-        if (_gatewayReady) YggChip(AppStrings.t('home.connected'), tone: YggChipTone.ready, dot: true),
+        // The chat client's live socket, not a saved setting: "Conectado"
+        // must go away when the gateway does. (_gatewayReady is Proyectos'
+        // own config and still gates that section.)
+        ValueListenableBuilder<bool>(
+          valueListenable: _client.connection,
+          builder: (context, open, _) => open
+              ? YggChip(AppStrings.t('home.connected'), tone: YggChipTone.ready, dot: true)
+              : const SizedBox.shrink(),
+        ),
         _avatar(44),
       ],
     );
@@ -596,7 +626,7 @@ class _ChatListScreenState extends State<ChatListScreen> {
   Future<void> _openSettings() async {
     await Navigator.push(
       context,
-      MaterialPageRoute(builder: (_) => SettingsScreen(client: widget.client, onProfileChanged: widget.onProfileChanged)),
+      MaterialPageRoute(builder: (_) => SettingsScreen(client: _client, onProfileChanged: widget.onProfileChanged)),
     );
     _load();
   }
