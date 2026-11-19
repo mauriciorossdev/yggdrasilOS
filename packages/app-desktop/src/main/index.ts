@@ -1,4 +1,4 @@
-import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
+import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
 import { cp, mkdir, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -27,6 +27,7 @@ import { importExternalPaths } from "./fileImport.js";
 import { resolveTerminalPath } from "./pathResolve.js";
 import { readClipboardFilePaths, writeClipboardFilePaths } from "./clipboardFiles.js";
 import { classifyPickedPaths } from "./pickedAttachments.js";
+import { copyPathFor, createDeckFile, createDocFile, createSheetFile, loadDeck, loadDoc, loadSheetSnapshot, saveDeck, saveDoc, saveSheetSnapshot, setSheetBaseline } from "./officeFiles.js";
 import { MAX_ASSET_BYTES, isImageName, sanitizeAssetName, uniqueAssetName } from "./noteAssets.js";
 import { startPaneControlServer, type CreatePaneSpec, type PaneControlHandle } from "./paneControlServer.js";
 import {
@@ -46,20 +47,12 @@ import {
 } from "./automationSettings.js";
 import {
   seedDocumentsGuidance,
+  trustYggdrasilMcpServer,
+  writeYggdrasilMcpConfig,
   seedMemoryGuidance,
   seedPaneControlGuidance,
   seedPluginsGuidance,
   seedWorkflowsGuidance,
-  trustDocumentsMcpServer,
-  trustMemoryMcpServer,
-  trustPaneControlMcpServer,
-  trustPluginsMcpServer,
-  trustWorkflowsMcpServer,
-  writeDocumentsMcpConfig,
-  writeMemoryMcpConfig,
-  writePaneControlMcpConfig,
-  writePluginsMcpConfig,
-  writeWorkflowsMcpConfig,
 } from "./mcpConfig.js";
 import { indexPluginStorageOnWrite, reindexAllPluginStorage } from "./pluginStorageIndex.js";
 import { closeMemoryDb } from "@yggdrasil/context-memory-db";
@@ -174,6 +167,11 @@ import { mt, resolveMainLanguage, setMainLanguage, type MainMessageKey } from ".
 import { GitCloneError, cloneGitRepo, parseGitUrl, validateCloneFolderName, type GitCloneErrorCode } from "./gitClone.js";
 import { installAutoUpdater } from "./autoUpdate.js";
 import { installUpdateCheck } from "./updateCheck.js";
+
+// Dev/testing escape hatch: run a second, isolated instance next to the installed app
+// (userData also scopes the single-instance lock below). Not set in normal use.
+if (process.env.YGG_USER_DATA_DIR) app.setPath("userData", process.env.YGG_USER_DATA_DIR);
+
 
 // Loads packages/app-desktop/.env (gitignored, `.env*` in the root
 // .gitignore) into process.env before anything else runs — this is where
@@ -334,6 +332,9 @@ let lspIpc: ReturnType<typeof installLspIpc> | undefined;
  */
 const pendingPluginToolCalls = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void }>();
 
+/** Same request/response pair for in-app editors (spreadsheets today): an office tool call → "editors:request" to the project's window → "editors:reply" back. */
+const pendingEditorCalls = new Map<string, { resolve: (v: unknown) => void; reject: (e: Error) => void; webContentsId: number }>();
+
 /**
  * Cross-project workspace (notes/features/cross-project-workspace.md). The broker
  * is the only code that reaches from one project's panes into another's; an
@@ -422,29 +423,10 @@ async function resolveInitialWhisperBinaryPath(current: string, backend: Whisper
   return (await findBundledWhisperBinary(resourcesDir(), backend)) ?? "";
 }
 
-function paneControlShimPath(): string {
-  // Built as its own bundle alongside index.js — see electron.vite.config.ts.
-  return join(__dirname, "paneControlMcpShim.js");
-}
-
-function documentsControlShimPath(): string {
-  // Built as its own bundle alongside index.js — see electron.vite.config.ts.
-  return join(__dirname, "documentsControlMcpShim.js");
-}
-
-function memoryControlShimPath(): string {
-  // Built as its own bundle alongside index.js — see electron.vite.config.ts.
-  return join(__dirname, "memoryControlMcpShim.js");
-}
-
-function pluginsControlShimPath(): string {
-  // Built as its own bundle alongside index.js — see electron.vite.config.ts.
-  return join(__dirname, "pluginsControlMcpShim.js");
-}
-
-function workflowsMcpShimPath(): string {
-  // Built as its own bundle alongside index.js — see electron.vite.config.ts.
-  return join(__dirname, "workflowsMcpShim.js");
+function yggdrasilShimPath(): string {
+  // The single MCP server every claude session connects to — built as its own
+  // bundle alongside index.js, see electron.vite.config.ts.
+  return join(__dirname, "yggdrasilMcpShim.js");
 }
 
 function statuslineBridgePath(): string {
@@ -803,6 +785,40 @@ async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
       write: (target, pane, text, fromPaneTitle) =>
         requireWorkspaceBroker().writePane(project.id, target, pane, text, fromPaneTitle),
     },
+    {
+      call: (kind, op, params) => {
+        const win = projectWindows.get(project.id)?.window;
+        if (!win || win.isDestroyed()) return Promise.reject(new Error("The project window is not open"));
+        const callId = randomUUID();
+        return new Promise((resolve, reject) => {
+          const contents = win.webContents;
+          const settle = () => {
+            clearTimeout(timer);
+            contents.removeListener("did-start-loading", gone);
+            contents.removeListener("destroyed", gone);
+          };
+          // A reload or close drops the renderer's editors: fail now instead of leaving the agent waiting.
+          const gone = () => {
+            if (!pendingEditorCalls.delete(callId)) return;
+            settle();
+            reject(new Error("The project window was reloaded or closed before the editor answered"));
+          };
+          const timer = setTimeout(() => {
+            pendingEditorCalls.delete(callId);
+            settle();
+            reject(new Error("The editor did not answer in time"));
+          }, 40_000);
+          pendingEditorCalls.set(callId, {
+            resolve: (v) => (settle(), resolve(v)),
+            reject: (e) => (settle(), reject(e)),
+            webContentsId: contents.id,
+          });
+          contents.once("did-start-loading", gone);
+          contents.once("destroyed", gone);
+          contents.send("editors:request", { callId, kind, op, params });
+        });
+      },
+    },
   );
   setSplashStatus("Starting gateway…");
   const gateway = await ensureGateway(
@@ -818,20 +834,18 @@ async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
   );
   await registerOpenGateway(project.id, gateway.port);
   notifyPhoneLinkChanged();
-  await writePaneControlMcpConfig(project.path, paneControlShimPath(), paneControl.url, paneControl.token);
-  await trustPaneControlMcpServer(project.path);
+  const { removedLegacy } = await writeYggdrasilMcpConfig(
+    project.path,
+    yggdrasilShimPath(),
+    paneControl.url,
+    paneControl.token,
+    gateway.url,
+  );
+  await trustYggdrasilMcpServer(project.path, removedLegacy);
   await seedPaneControlGuidance(project.path);
-  await writeDocumentsMcpConfig(project.path, documentsControlShimPath());
-  await trustDocumentsMcpServer(project.path);
   await seedDocumentsGuidance(project.path);
-  await writePluginsMcpConfig(project.path, pluginsControlShimPath(), paneControl.url, paneControl.token);
-  await trustPluginsMcpServer(project.path);
   await seedPluginsGuidance(project.path);
-  await writeMemoryMcpConfig(project.path, memoryControlShimPath());
-  await trustMemoryMcpServer(project.path);
   await seedMemoryGuidance(project.path);
-  await writeWorkflowsMcpConfig(project.path, workflowsMcpShimPath(), gateway.url);
-  await trustWorkflowsMcpServer(project.path);
   await seedWorkflowsGuidance(project.path);
   await writeStatuslineConfig(project.path, statuslineBridgePath(), paneControl.url, paneControl.token);
   // Fire-and-forget — pre-existing plugin data (installed before this
@@ -1263,6 +1277,16 @@ function registerIpc(): void {
     shell.showItemInFolder(dir);
   });
 
+  // Reply half of the editors:request pair built in openProject() above: the renderer's open spreadsheet /
+  // document / presentation answers an agent's tool call. Only the window that was asked may answer.
+  ipcMain.handle("editors:reply", (event, callId: string, ok: boolean, payload: unknown) => {
+    const pending = pendingEditorCalls.get(callId);
+    if (!pending || pending.webContentsId !== event.sender.id) return;
+    pendingEditorCalls.delete(callId);
+    if (ok) pending.resolve(payload);
+    else pending.reject(new Error(typeof payload === "string" ? payload : "editor operation failed"));
+  });
+
   // Reply half of the callTool request/response pair built in openProject()
   // above — PluginToolRuntime.tsx (renderer) calls this once it has (or
   // fails to get) a result from the plugin's own headless iframe.
@@ -1329,12 +1353,67 @@ function registerIpc(): void {
     const root = resolve(project.path);
     const target = resolve(root, relativePath);
     const rel = relative(root, target);
-    if (rel.startsWith("..") || isAbsolute(rel)) throw new Error("relativePath escapes the project root");
+    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error("relativePath escapes the project root");
     return target;
   };
 
   ipcMain.handle("files:absolutePath", (_event, projectId: string, relativePath: string) =>
     resolveInProject(projectId, relativePath),
+  );
+
+  // In-app spreadsheet editor (workspace/SheetEditor.tsx): .xlsx ⇄ the editor's snapshot, confined to the project.
+  ipcMain.handle("office:sheetLoad", async (_event, projectId: string, relativePath: string) =>
+    loadSheetSnapshot(await resolveInProject(projectId, relativePath), basename(relativePath)),
+  );
+  ipcMain.handle("office:sheetSave", async (_event, projectId: string, relativePath: string, snapshot: unknown) =>
+    saveSheetSnapshot(await resolveInProject(projectId, relativePath), snapshot as Parameters<typeof saveSheetSnapshot>[1]),
+  );
+  ipcMain.handle("office:sheetBaseline", async (_event, projectId: string, relativePath: string, snapshot: unknown) =>
+    setSheetBaseline(await resolveInProject(projectId, relativePath), snapshot as Parameters<typeof saveSheetSnapshot>[1]),
+  );
+  // "Save a copy" for a file the editor can't round-trip without loss: returns the copy's project-relative path.
+  ipcMain.handle("office:sheetSaveCopy", async (_event, projectId: string, relativePath: string, snapshot: unknown) => {
+    const copy = await copyPathFor(await resolveInProject(projectId, relativePath));
+    await saveSheetSnapshot(copy, snapshot as Parameters<typeof saveSheetSnapshot>[1]);
+    const project = await getProject(projectId);
+    return relative(resolve(project!.path), copy);
+  });
+  // Word documents (workspace/DocEditor.tsx).
+  ipcMain.handle("office:docLoad", async (_event, projectId: string, relativePath: string) =>
+    loadDoc(await resolveInProject(projectId, relativePath)),
+  );
+  ipcMain.handle("office:docSave", async (_event, projectId: string, relativePath: string, model: unknown) =>
+    saveDoc(await resolveInProject(projectId, relativePath), model as Parameters<typeof saveDoc>[1]),
+  );
+  ipcMain.handle("office:docSaveCopy", async (_event, projectId: string, relativePath: string, model: unknown) => {
+    const copy = await copyPathFor(await resolveInProject(projectId, relativePath));
+    await saveDoc(copy, model as Parameters<typeof saveDoc>[1]);
+    const project = await getProject(projectId);
+    return relative(resolve(project!.path), copy);
+  });
+  ipcMain.handle("office:docCreate", async (_event, projectId: string, relativePath: string, model: unknown) =>
+    createDocFile(await resolveInProject(projectId, relativePath), model as Parameters<typeof createDocFile>[1]),
+  );
+  // PowerPoint presentations (workspace/DeckEditor.tsx).
+  ipcMain.handle("office:deckLoad", async (_event, projectId: string, relativePath: string) =>
+    loadDeck(await resolveInProject(projectId, relativePath)),
+  );
+  ipcMain.handle("office:deckSave", async (_event, projectId: string, relativePath: string, deck: unknown) =>
+    saveDeck(await resolveInProject(projectId, relativePath), deck as Parameters<typeof saveDeck>[1]),
+  );
+  ipcMain.handle("office:deckSaveCopy", async (_event, projectId: string, relativePath: string, deck: unknown) => {
+    const copy = await copyPathFor(await resolveInProject(projectId, relativePath));
+    await saveDeck(copy, deck as Parameters<typeof saveDeck>[1]);
+    const project = await getProject(projectId);
+    return relative(resolve(project!.path), copy);
+  });
+  ipcMain.handle("office:deckCreate", async (_event, projectId: string, relativePath: string, deck: unknown) =>
+    createDeckFile(await resolveInProject(projectId, relativePath), deck as Parameters<typeof createDeckFile>[1]),
+  );
+  ipcMain.handle(
+    "office:sheetCreate",
+    async (_event, projectId: string, relativePath: string, rows?: Array<Array<string | number | boolean | null>>) =>
+      createSheetFile(await resolveInProject(projectId, relativePath), rows ?? []),
   );
 
   // An image pasted, dropped or picked into a note: stored in an `assets` folder next to the note, under a safe

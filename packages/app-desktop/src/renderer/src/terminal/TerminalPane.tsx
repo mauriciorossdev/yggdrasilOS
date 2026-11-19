@@ -12,6 +12,7 @@ import {
   SpeakerWaveIcon,
   StopIcon,
   EllipsisHorizontalIcon,
+  InformationCircleIcon,
   ViewColumnsIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
@@ -160,6 +161,7 @@ export function TerminalPane({
   const [splitMenu, setSplitMenu] = useState<{ x: number; y: number } | null>(null);
   const [speakMenu, setSpeakMenu] = useState<{ x: number; y: number } | null>(null);
   const [actionsMenu, setActionsMenu] = useState<{ x: number; y: number } | null>(null);
+  const [menuMemTip, setMenuMemTip] = useState<{ x: number; y: number } | null>(null);
   const headerRef = useRef<HTMLDivElement>(null);
   const headerWidth = useElementWidth(headerRef);
   // Set once the user edits the draft, so the async sessions.get upgrade
@@ -577,6 +579,7 @@ export function TerminalPane({
             >
               <SpeakerWaveIcon className="hero-icon" />
             </button>
+            <PaneMemoryInfo paneId={leaf.id} />
             <button
               type="button"
               title={isExpanded ? t("term.pane.collapse") : t("term.pane.expand")}
@@ -675,9 +678,17 @@ export function TerminalPane({
   return (
     <>
       {isExpanded ? createPortal(paneContent, document.body) : paneContent}
+      {actionsMenu && menuMemTip && <PaneMemoryTooltip paneId={leaf.id} pos={menuMemTip} />}
       {actionsMenu &&
         createPortal(
-          <Menu x={actionsMenu.x} y={actionsMenu.y} onClose={() => setActionsMenu(null)}>
+          <Menu
+            x={actionsMenu.x}
+            y={actionsMenu.y}
+            onClose={() => {
+              setMenuMemTip(null);
+              setActionsMenu(null);
+            }}
+          >
             {leaf.initialPrompt && !taskSent && (
               <MenuItem
                 onClick={() => {
@@ -698,6 +709,16 @@ export function TerminalPane({
                 <ArrowRightIcon className="hero-icon" /> {t("term.pane.delegate")}
               </MenuItem>
             )}
+            <MenuItem
+              onMouseEnter={(e) => {
+                const r = e.currentTarget.getBoundingClientRect();
+                const left = r.left - 268;
+                setMenuMemTip({ x: left >= 8 ? left : r.right + 8, y: r.top });
+              }}
+              onMouseLeave={() => setMenuMemTip(null)}
+            >
+              <InformationCircleIcon className="hero-icon" /> {t("term.pane.memInfo")}
+            </MenuItem>
             <MenuItem
               disabled={exited || dictation.phase === "transcribing"}
               onClick={() => {
@@ -833,6 +854,79 @@ export function TerminalPane({
           </div>,
           document.body,
         )}
+    </>
+  );
+}
+
+type PaneMem = Awaited<ReturnType<typeof window.yggdrasil.terminals.memory>>;
+
+function formatBytes(n: number): string {
+  if (n >= 1024 ** 3) return `${(n / 1024 ** 3).toFixed(2)} GB`;
+  return `${Math.round(n / 1024 ** 2)} MB`;
+}
+
+/** Floating RAM tooltip for a pane at `pos`; polls the pane's process tree every 2s while mounted. */
+function PaneMemoryTooltip({ paneId, pos }: { paneId: string; pos: { x: number; y: number } }) {
+  const { t } = useI18n();
+  const [mem, setMem] = useState<PaneMem | null | undefined>(undefined);
+  useEffect(() => {
+    let alive = true;
+    const load = () =>
+      void window.yggdrasil.terminals.memory(paneId).then((m) => alive && setMem(m ?? null)).catch(() => alive && setMem(null));
+    load();
+    const timer = setInterval(load, 2000);
+    return () => {
+      alive = false;
+      clearInterval(timer);
+    };
+  }, [paneId]);
+  return createPortal(
+    <div className="pane-mem-tooltip" style={{ left: pos.x, top: pos.y }} role="tooltip">
+      <strong>{t("term.pane.memTitle")}</strong>
+      {mem === undefined ? (
+        <div>…</div>
+      ) : mem === null ? (
+        <div>{t("term.pane.memUnavailable")}</div>
+      ) : (
+        <>
+          <div className="pane-mem-total">{formatBytes(mem.rssBytes)}</div>
+          <div className="pane-mem-hint">{t("term.pane.memHint")}</div>
+          <div className="pane-mem-sub">
+            {t("term.pane.memProcesses")}: {mem.processCount}
+          </div>
+          <ul>
+            {mem.processes.map((p) => (
+              <li key={p.pid}>
+                <span>{p.name}</span>
+                <span>{formatBytes(p.rssBytes)}</span>
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
+    </div>,
+    document.body,
+  );
+}
+
+/** Info icon: hovering shows the RAM used by this pane's process tree. */
+function PaneMemoryInfo({ paneId }: { paneId: string }) {
+  const { t } = useI18n();
+  const [pos, setPos] = useState<{ x: number; y: number } | null>(null);
+  return (
+    <>
+      <button
+        type="button"
+        aria-label={t("term.pane.memInfo")}
+        onMouseEnter={(e) => {
+          const r = e.currentTarget.getBoundingClientRect();
+          setPos({ x: Math.max(8, r.right - 260), y: r.bottom + 6 });
+        }}
+        onMouseLeave={() => setPos(null)}
+      >
+        <InformationCircleIcon className="hero-icon" />
+      </button>
+      {pos && <PaneMemoryTooltip paneId={paneId} pos={pos} />}
     </>
   );
 }

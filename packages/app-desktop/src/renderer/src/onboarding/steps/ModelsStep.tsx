@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
 import { Button, Card, Chip } from "../../ui/index.js";
 import { useI18n } from "../../i18n/index.js";
-import { ProvidersSection, buildProvidersPatch } from "../../settings/sections/ProvidersSection.js";
+import { ProvidersSection } from "../../settings/sections/ProvidersSection.js";
 import type { ConfigGetResult, ConfigShape, OllamaStatus, ProviderInfo } from "../../types.js";
 import { toggle, type WizardDraft, type WizardUpdate } from "../draft.js";
 
@@ -17,7 +17,6 @@ export function ModelsStep({ draft, update }: Props) {
   const [config, setConfig] = useState<ConfigShape | null>(null);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [apiKeyEdits, setApiKeyEdits] = useState<Record<string, string>>({});
-  const [apiMessage, setApiMessage] = useState<{ ok: boolean; text: string } | null>(null);
 
   const [ollama, setOllama] = useState<OllamaStatus | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -69,24 +68,11 @@ export function ModelsStep({ draft, update }: Props) {
     update({ usage: toggle(draft.usage, "local", true) });
   };
 
-  const saveProviders = async () => {
-    if (!config) return;
-    setApiMessage(null);
-    try {
-      await call("config.patch", { providers: buildProvidersPatch(config, apiKeyEdits) });
-      const list = await call<{ providers: ProviderInfo[] }>("providers.list");
-      setProviders(list.providers ?? []);
-      setApiKeyEdits({});
-      const failing = (list.providers ?? []).find((p) => p.id === "openai-compat" && p.error);
-      if (failing) {
-        setApiMessage({ ok: false, text: t("ob.api.error", { error: failing.error ?? "" }) });
-      } else {
-        setApiMessage({ ok: true, text: t("ob.api.saved") });
-        update({ usage: toggle(draft.usage, "api", true) });
-      }
-    } catch (err) {
-      setApiMessage({ ok: false, text: t("ob.api.error", { error: err instanceof Error ? err.message : String(err) }) });
-    }
+  // ProvidersSection saves & tests each card itself; here we only mirror the outcome.
+  const onProvidersChanged = (list: ProviderInfo[]) => {
+    setProviders(list);
+    const ok = list.some((p) => p.id !== "ollama" && !p.error && config?.providers?.[p.id]?.apiKey);
+    if (ok) update({ usage: toggle(draft.usage, "api", true) });
   };
 
   return (
@@ -155,14 +141,9 @@ export function ModelsStep({ draft, update }: Props) {
             providers={providers}
             apiKeyEdits={apiKeyEdits}
             setApiKeyEdits={setApiKeyEdits}
+            onProvidersChanged={onProvidersChanged}
           />
         )}
-        <div className="onboarding-card-row">
-          <Button size="sm" onClick={() => void saveProviders()} disabled={!config}>
-            {t("ob.api.save")}
-          </Button>
-          {apiMessage && <span className={apiMessage.ok ? "onboarding-ok" : "error"}>{apiMessage.text}</span>}
-        </div>
       </Card>
     </div>
   );

@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { mergeConfig } from "./index.js";
-import { sanitizeConfigForClient } from "./sanitize.js";
+import { restoreMaskedSecrets, sanitizeConfigForClient } from "./sanitize.js";
 
 describe("sanitizeConfigForClient", () => {
   it("masks api keys and tokens", () => {
@@ -91,5 +91,34 @@ describe("sanitizeConfigForClient", () => {
     const config = mergeConfig({}, { language: "Spanish" });
     const sanitized = sanitizeConfigForClient(config);
     expect(sanitized.language).toBe("Spanish");
+  });
+});
+
+describe("restoreMaskedSecrets", () => {
+  it("puts the stored secret back where the client echoed the mask", () => {
+    const stored = { telegram: { accounts: { bot1: { token: "real-token", name: "A" } } } };
+    const sent = { telegram: { accounts: { bot1: { token: "***", name: "B" } } } };
+    expect(restoreMaskedSecrets(sent, stored)).toEqual({ telegram: { accounts: { bot1: { token: "real-token", name: "B" } } } });
+  });
+
+  it("drops a mask that has nothing stored behind it", () => {
+    expect(restoreMaskedSecrets({ gateway: { apiKey: "***", required: true } }, {})).toEqual({ gateway: { required: true } });
+  });
+
+  it("lets a genuinely new secret through and leaves arrays alone", () => {
+    expect(restoreMaskedSecrets({ a: { token: "new" }, list: ["***"] }, { a: { token: "old" } })).toEqual({
+      a: { token: "new" },
+      list: ["***"],
+    });
+  });
+
+  it("round-trips: sanitized config sent back restores the original secrets", () => {
+    const original = {
+      channels: { tg: { enabled: true, accounts: { default: { botToken: "bot-secret", apiKey: "k" } } } },
+      auth: { gateway: { required: true, apiKey: "gw-secret" } },
+    };
+    const shown = sanitizeConfigForClient(original as never);
+    expect(restoreMaskedSecrets(shown.channels, original.channels)).toEqual(original.channels);
+    expect(restoreMaskedSecrets(shown.auth, original.auth)).toEqual(original.auth);
   });
 });

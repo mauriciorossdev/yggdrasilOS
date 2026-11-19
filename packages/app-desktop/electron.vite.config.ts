@@ -13,22 +13,11 @@ export default defineConfig({
       rollupOptions: {
         input: {
           index: resolve(__dirname, "src/main/index.ts"),
-          // Spawned standalone (`node dist/main/paneControlMcpShim.js`) by a
-          // claude CLI session's .mcp.json — see paneControlMcpShim.ts.
-          paneControlMcpShim: resolve(__dirname, "src/main/paneControlMcpShim.ts"),
-          // Same standalone-spawn pattern, see documentsControlMcpShim.ts.
-          documentsControlMcpShim: resolve(__dirname, "src/main/documentsControlMcpShim.ts"),
-          // Same standalone-spawn pattern, see pluginsControlMcpShim.ts.
-          pluginsControlMcpShim: resolve(__dirname, "src/main/pluginsControlMcpShim.ts"),
-          // Same standalone-spawn pattern, see memoryControlMcpShim.ts — spawned
-          // via process.execPath/ELECTRON_RUN_AS_NODE instead of plain "node"
-          // (writeMemoryMcpConfig), not just "node dist/main/....js" like the
-          // three shims above.
-          memoryControlMcpShim: resolve(__dirname, "src/main/memoryControlMcpShim.ts"),
-          // Same standalone-spawn pattern, see workflowsMcpShim.ts — a WS
-          // client of this project's own gateway subprocess, not a proxy
-          // into paneControlServer.ts like the pane/plugins shims above.
-          workflowsMcpShim: resolve(__dirname, "src/main/workflowsMcpShim.ts"),
+          // The one MCP server a claude CLI session's .mcp.json spawns (via
+          // process.execPath + ELECTRON_RUN_AS_NODE) — serves the panes,
+          // documents, plugins, memory and workflows tools from a single
+          // process; see yggdrasilMcpShim.ts.
+          yggdrasilMcpShim: resolve(__dirname, "src/main/yggdrasilMcpShim.ts"),
           // Same standalone-spawn pattern, invoked by Claude Code itself
           // (as this project's `statusLine` command) rather than by the
           // `claude` CLI's MCP client — see statuslineBridge.ts.

@@ -1,4 +1,5 @@
 import type { McpServerConfig, YggdrasilConfig } from "./index.js";
+import { isMaskedSecret } from "./sanitize.js";
 
 const HOT_RELOAD_KEYS = new Set([
   "agents",
@@ -123,7 +124,9 @@ export function validateConfigPatch(input: Record<string, unknown>): ConfigPatch
       // merges this against current on-disk state via object spread.
       const entry: NonNullable<YggdrasilConfig["providers"]>[string] = {};
       if (provider.baseUrl !== undefined) entry.baseUrl = String(provider.baseUrl);
-      if (provider.apiKey !== undefined) entry.apiKey = String(provider.apiKey);
+      // config.get only ever shows a mask for the key; echoing it back (a form sending everything it
+      // loaded) is "unchanged", not a new key.
+      if (provider.apiKey !== undefined && !isMaskedSecret(provider.apiKey)) entry.apiKey = String(provider.apiKey);
       if (provider.defaultModel !== undefined) entry.defaultModel = String(provider.defaultModel);
       providers[id] = entry;
     }

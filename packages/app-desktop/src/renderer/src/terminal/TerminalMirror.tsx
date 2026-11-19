@@ -10,9 +10,10 @@ import { terminalColors } from "../ui/theme/surfaces.js";
  * garbles a pty that was resized), then follows terminal:data, skipping the
  * chunks the snapshot already holds (seq). It never resizes the pty: it adopts
  * the pane's size (snapshot, then terminal:resized) and scrolls if bigger than
- * its box.
+ * its box. With `interactive`, keystrokes are forwarded to the pty (still never its size, which
+ * stays the pane's), so a second view can be typed into.
  */
-export function TerminalMirror({ id }: { id: string }) {
+export function TerminalMirror({ id, interactive = false }: { id: string; interactive?: boolean }) {
   const ref = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
@@ -22,8 +23,8 @@ export function TerminalMirror({ id }: { id: string }) {
       fontFamily: 'ui-monospace, "SF Mono", Consolas, monospace',
       fontSize: 13,
       theme: terminalColors(getThemeColors()),
-      disableStdin: true,
-      cursorBlink: false,
+      disableStdin: !interactive,
+      cursorBlink: interactive,
       scrollback: 2000,
     });
     term.open(container);
@@ -38,6 +39,12 @@ export function TerminalMirror({ id }: { id: string }) {
     const unsubRender = term.onRender(() => {
       if (stick && scroller) scroller.scrollTop = scroller.scrollHeight;
     });
+    const unsubInput = interactive ? term.onData((data) => void window.yggdrasil.terminals.write(id, data)) : undefined;
+    // xterm paints blank when its box was display:none (a hidden side-panel tab) and then shown: redraw on any resize.
+    const observer = new ResizeObserver(() => {
+      if (container.offsetWidth > 0 && term.rows > 0) term.refresh(0, term.rows - 1);
+    });
+    observer.observe(container);
     const unsubTheme = onThemeApplied((core) => {
       term.options.theme = terminalColors(core);
     });
@@ -75,11 +82,13 @@ export function TerminalMirror({ id }: { id: string }) {
       unsubData();
       unsubResize();
       unsubTheme();
+      unsubInput?.dispose();
+      observer.disconnect();
       unsubRender.dispose();
       scroller?.removeEventListener("scroll", onScroll);
       term.dispose();
     };
-  }, [id]);
+  }, [id, interactive]);
 
   return (
     <div className="wt-mirror" data-testid="terminal-mirror">

@@ -5,8 +5,8 @@ import { describe, expect, it } from "vitest";
 import {
   seedDocumentsGuidance,
   seedPaneControlGuidance,
-  trustPaneControlMcpServer,
-  trustWorkflowsMcpServer,
+  trustYggdrasilMcpServer,
+  writeYggdrasilMcpConfig,
 } from "./mcpConfig.js";
 
 async function project(): Promise<string> {
@@ -46,11 +46,11 @@ describe("feature-doc handoff guidance", () => {
   });
 });
 
-describe("trustMcpServer → .claude/settings.local.json", () => {
+describe("trustYggdrasilMcpServer → .claude/settings.local.json", () => {
   it("creates the file for a brand-new project", async () => {
     const dir = await project();
-    await trustPaneControlMcpServer(dir);
-    expect((await read(dir)).enabledMcpjsonServers).toEqual(["panes"]);
+    await trustYggdrasilMcpServer(dir);
+    expect((await read(dir)).enabledMcpjsonServers).toEqual(["yggdrasil"]);
   });
 
   it("adds to an existing list without touching other keys or duplicating", async () => {
@@ -58,23 +58,33 @@ describe("trustMcpServer → .claude/settings.local.json", () => {
     await mkdir(join(dir, ".claude"));
     await writeFile(
       join(dir, ".claude", "settings.local.json"),
-      JSON.stringify({ permissions: { allow: ["Bash(ls)"] }, enabledMcpjsonServers: ["documents"] }),
+      JSON.stringify({ permissions: { allow: ["Bash(ls)"] }, enabledMcpjsonServers: ["mine"] }),
     );
-    await trustPaneControlMcpServer(dir);
-    await trustPaneControlMcpServer(dir);
-    await trustWorkflowsMcpServer(dir);
+    await trustYggdrasilMcpServer(dir);
+    await trustYggdrasilMcpServer(dir);
     const settings = await read(dir);
-    expect(settings.enabledMcpjsonServers).toEqual(["documents", "panes", "workflows"]);
+    expect(settings.enabledMcpjsonServers).toEqual(["mine", "yggdrasil"]);
     expect(settings.permissions).toEqual({ allow: ["Bash(ls)"] });
+  });
+
+  it("drops the migrated legacy ids from the enabled list, keeping everything else", async () => {
+    const dir = await project();
+    await mkdir(join(dir, ".claude"));
+    await writeFile(
+      join(dir, ".claude", "settings.local.json"),
+      JSON.stringify({ enabledMcpjsonServers: ["panes", "documents", "mine", "memory"] }),
+    );
+    await trustYggdrasilMcpServer(dir, ["panes", "documents", "memory"]);
+    expect((await read(dir)).enabledMcpjsonServers).toEqual(["mine", "yggdrasil"]);
   });
 
   it("removes the server from disabledMcpjsonServers", async () => {
     const dir = await project();
     await mkdir(join(dir, ".claude"));
-    await writeFile(join(dir, ".claude", "settings.local.json"), JSON.stringify({ disabledMcpjsonServers: ["panes", "x"] }));
-    await trustPaneControlMcpServer(dir);
+    await writeFile(join(dir, ".claude", "settings.local.json"), JSON.stringify({ disabledMcpjsonServers: ["yggdrasil", "x"] }));
+    await trustYggdrasilMcpServer(dir);
     const settings = await read(dir);
-    expect(settings.enabledMcpjsonServers).toEqual(["panes"]);
+    expect(settings.enabledMcpjsonServers).toEqual(["yggdrasil"]);
     expect(settings.disabledMcpjsonServers).toEqual(["x"]);
   });
 
@@ -82,7 +92,48 @@ describe("trustMcpServer → .claude/settings.local.json", () => {
     const dir = await project();
     await mkdir(join(dir, ".claude"));
     await writeFile(join(dir, ".claude", "settings.local.json"), "{ not json");
-    await trustPaneControlMcpServer(dir);
+    await trustYggdrasilMcpServer(dir);
     expect(await readFile(join(dir, ".claude", "settings.local.json"), "utf8")).toBe("{ not json");
+  });
+});
+
+describe("writeYggdrasilMcpConfig → .mcp.json", () => {
+  const readMcp = async (dir: string) =>
+    JSON.parse(await readFile(join(dir, ".mcp.json"), "utf8")) as { mcpServers: Record<string, { args?: string[]; env?: Record<string, string> }> };
+
+  it("writes a single yggdrasil server carrying every env the five families need", async () => {
+    const dir = await project();
+    const { removedLegacy } = await writeYggdrasilMcpConfig(dir, "/app/yggdrasilMcpShim.js", "http://127.0.0.1:1", "tok", "ws://127.0.0.1:2");
+    const { mcpServers } = await readMcp(dir);
+    expect(removedLegacy).toEqual([]);
+    expect(Object.keys(mcpServers)).toEqual(["yggdrasil"]);
+    expect(mcpServers.yggdrasil.args).toEqual(["/app/yggdrasilMcpShim.js"]);
+    expect(mcpServers.yggdrasil.env).toMatchObject({
+      ELECTRON_RUN_AS_NODE: "1",
+      PANE_CONTROL_URL: "http://127.0.0.1:1",
+      PANE_CONTROL_TOKEN: "tok",
+      YGGDRASIL_PROJECT_ROOT: dir,
+      WORKFLOWS_GATEWAY_URL: "ws://127.0.0.1:2",
+    });
+  });
+
+  it("migrates the five legacy entries away but keeps hand-authored servers, even ones named like a legacy id", async () => {
+    const dir = await project();
+    await writeFile(
+      join(dir, ".mcp.json"),
+      JSON.stringify({
+        mcpServers: {
+          panes: { command: "node", args: ["/old/dist/main/paneControlMcpShim.js"] },
+          documents: { command: "node", args: ["/old/dist/main/documentsControlMcpShim.js"] },
+          plugins: { command: "node", args: ["/old/dist/main/pluginsControlMcpShim.js"] },
+          memory: { command: "my-own-memory-server", args: ["--serve"] },
+          workflows: { command: "node", args: ["C:\\old\\dist\\main\\workflowsMcpShim.js"] },
+          other: { command: "x" },
+        },
+      }),
+    );
+    const { removedLegacy } = await writeYggdrasilMcpConfig(dir, "/app/yggdrasilMcpShim.js", "u", "t", "g");
+    expect(removedLegacy.sort()).toEqual(["documents", "panes", "plugins", "workflows"]);
+    expect(Object.keys((await readMcp(dir)).mcpServers).sort()).toEqual(["memory", "other", "yggdrasil"]);
   });
 });

@@ -253,7 +253,7 @@ export function SettingsView({ onClose, initialSection }: Props) {
             {section === "appearance" && <AppearanceSection />}
             {section === "editor" && <EditorSection />}
             {section === "workspace" && <WorkspaceSection />}
-            {section === "agent" && <AgentSection config={config} setConfig={setConfig} providers={providers} />}
+            {section === "agent" && <AgentSection config={config} setConfig={setConfig} providers={providers} onGoToProviders={() => setSection("providers")} />}
             {section === "providers" && (
               <ProvidersSection
                 config={config}
@@ -261,6 +261,7 @@ export function SettingsView({ onClose, initialSection }: Props) {
                 providers={providers}
                 apiKeyEdits={apiKeyEdits}
                 setApiKeyEdits={setApiKeyEdits}
+                onProvidersChanged={setProviders}
               />
             )}
             {section === "onboarding" && <OnboardingSection />}

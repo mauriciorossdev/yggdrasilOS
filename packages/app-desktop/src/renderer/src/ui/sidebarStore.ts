@@ -58,3 +58,8 @@ export const useScriptsInApp = scriptsInApp.use;
 const terminalsOpen = persistedFlag("ygg.sidebar.terminalsOpen", true);
 export const toggleTerminalsList = terminalsOpen.toggle;
 export const useTerminalsListOpen = terminalsOpen.use;
+
+// RAM usage bar in the Terminal navbar: on by default, togglable in Settings → General.
+const ramBarShown = persistedFlag("ygg.terminal.showRamBar", true);
+export const setShowRamBar = ramBarShown.set;
+export const useShowRamBar = ramBarShown.use;

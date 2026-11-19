@@ -163,6 +163,12 @@ declare global {
         dispose: (id: string) => Promise<void>;
         read: (id: string, maxChars?: number) => Promise<string | undefined>;
         forPid: (pid: number) => Promise<string | undefined>;
+        memory: (
+          id: string,
+        ) => Promise<
+          { rssBytes: number; processes: Array<{ pid: number; name: string; rssBytes: number }>; processCount: number } | undefined
+        >;
+        memoryAll: () => Promise<{ totalBytes: number; usedBytes: number; appBytes: number; panes: Array<{ id: string; rssBytes: number }> }>;
         snapshot: (id: string) => Promise<{ data: string; cols: number; rows: number; seq: number } | undefined>;
         getLayout: () => Promise<TerminalLayout>;
         saveLayout: (layout: TerminalLayout) => Promise<void>;
@@ -275,6 +281,25 @@ declare global {
         list: () => Promise<PaneSummary[]>;
         create: (spec: CreatePaneSpec) => Promise<{ id: string }>;
         write: (id: string, text: string, pressEnter?: boolean) => Promise<void>;
+      };
+      editors: {
+        onRequest: (handler: (req: { callId: string; kind: string; op: string; params: Record<string, unknown> }) => void) => () => void;
+        reply: (callId: string, ok: boolean, payload: unknown) => Promise<void>;
+      };
+      office: {
+        sheetLoad: (relativePath: string) => Promise<{ snapshot: unknown; lossy: string[] }>;
+        sheetSave: (relativePath: string, snapshot: unknown) => Promise<void>;
+        docLoad: (relativePath: string) => Promise<{ model: unknown; lossy: string[] }>;
+        docSave: (relativePath: string, model: unknown) => Promise<void>;
+        docSaveCopy: (relativePath: string, model: unknown) => Promise<string>;
+        docCreate: (relativePath: string, model: unknown) => Promise<void>;
+        deckLoad: (relativePath: string) => Promise<{ deck: unknown; lossy: string[] }>;
+        deckSave: (relativePath: string, deck: unknown) => Promise<void>;
+        deckSaveCopy: (relativePath: string, deck: unknown) => Promise<string>;
+        deckCreate: (relativePath: string, deck: unknown) => Promise<void>;
+        sheetBaseline: (relativePath: string, snapshot: unknown) => Promise<void>;
+        sheetSaveCopy: (relativePath: string, snapshot: unknown) => Promise<string>;
+        sheetCreate: (relativePath: string, rows?: Array<Array<string | number | boolean | null>>) => Promise<void>;
       };
       files: {
         importExternal: (destRelativePath: string, sourcePaths: string[]) => Promise<ImportFilesResult>;

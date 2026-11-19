@@ -15,13 +15,16 @@ type Props = {
   style?: CSSProperties;
   /** Extra class alongside "file-content-panel" — e.g. "file-content-panel-drawer" for the Terminal-tab overlay mode. Same convention as FileContentPanel.tsx. */
   className?: string;
+  /** The side panel\'s tab strip, drawn above the header (ChatView). */
+  tabStrip?: ReactNode;
 };
 
 /** The aside/drawer equivalent of PluginFrame's MainTabs tab — same outer shell (and CSS classes) as FileContentPanel, so ChatView can swap between the two without any layout changes. */
-export function PluginPanel({ plugin, version, onClose, headerActions, onOpenFile, onOpenTab, style, className }: Props) {
+export function PluginPanel({ plugin, version, onClose, headerActions, onOpenFile, onOpenTab, style, className, tabStrip }: Props) {
   const { t } = useI18n();
   return (
     <aside className={`file-content-panel${className ? ` ${className}` : ""}`} style={style}>
+      {tabStrip}
       <div className="file-content-panel-header">
         <div className="file-content-panel-title">
           <span className="file-content-panel-path" title={plugin.manifest.name}>

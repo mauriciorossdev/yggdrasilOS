@@ -249,6 +249,13 @@ const api = {
     read: (id: string, maxChars?: number): Promise<string | undefined> =>
       ipcRenderer.invoke("terminal:read", id, maxChars),
     forPid: (pid: number): Promise<string | undefined> => ipcRenderer.invoke("terminal:forPid", pid),
+    memory: (
+      id: string,
+    ): Promise<
+      { rssBytes: number; processes: Array<{ pid: number; name: string; rssBytes: number }>; processCount: number } | undefined
+    > => ipcRenderer.invoke("terminal:memory", id),
+    memoryAll: (): Promise<{ totalBytes: number; usedBytes: number; appBytes: number; panes: Array<{ id: string; rssBytes: number }> }> =>
+      ipcRenderer.invoke("terminal:memoryAll"),
     snapshot: (id: string): Promise<{ data: string; cols: number; rows: number; seq: number } | undefined> =>
       ipcRenderer.invoke("terminal:snapshot", id),
     getLayout: (): Promise<TerminalLayout> => ipcRenderer.invoke("terminal:getLayout", readArg("--ygg-project-id")),
@@ -522,6 +529,34 @@ const api = {
       ipcRenderer.invoke("panes:create", readArg("--ygg-project-id"), spec),
     write: (id: string, text: string, pressEnter?: boolean): Promise<void> =>
       ipcRenderer.invoke("panes:write", readArg("--ygg-project-id"), id, text, pressEnter),
+  },
+  editors: {
+    /** An office tool call (agent) wants something done in an open editor; answer with reply(). */
+    onRequest: (handler: (req: { callId: string; kind: string; op: string; params: Record<string, unknown> }) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, req: { callId: string; kind: string; op: string; params: Record<string, unknown> }) => handler(req);
+      ipcRenderer.on("editors:request", listener);
+      return () => ipcRenderer.removeListener("editors:request", listener);
+    },
+    reply: (callId: string, ok: boolean, payload: unknown): Promise<void> => ipcRenderer.invoke("editors:reply", callId, ok, payload),
+  },
+  office: {
+    sheetLoad: (relativePath: string): Promise<{ snapshot: unknown; lossy: string[] }> => ipcRenderer.invoke("office:sheetLoad", readArg("--ygg-project-id"), relativePath),
+    sheetSave: (relativePath: string, snapshot: unknown): Promise<void> =>
+      ipcRenderer.invoke("office:sheetSave", readArg("--ygg-project-id"), relativePath, snapshot),
+    docLoad: (relativePath: string): Promise<{ model: unknown; lossy: string[] }> => ipcRenderer.invoke("office:docLoad", readArg("--ygg-project-id"), relativePath),
+    docSave: (relativePath: string, model: unknown): Promise<void> => ipcRenderer.invoke("office:docSave", readArg("--ygg-project-id"), relativePath, model),
+    docSaveCopy: (relativePath: string, model: unknown): Promise<string> => ipcRenderer.invoke("office:docSaveCopy", readArg("--ygg-project-id"), relativePath, model),
+    docCreate: (relativePath: string, model: unknown): Promise<void> => ipcRenderer.invoke("office:docCreate", readArg("--ygg-project-id"), relativePath, model),
+    deckLoad: (relativePath: string): Promise<{ deck: unknown; lossy: string[] }> => ipcRenderer.invoke("office:deckLoad", readArg("--ygg-project-id"), relativePath),
+    deckSave: (relativePath: string, deck: unknown): Promise<void> => ipcRenderer.invoke("office:deckSave", readArg("--ygg-project-id"), relativePath, deck),
+    deckSaveCopy: (relativePath: string, deck: unknown): Promise<string> => ipcRenderer.invoke("office:deckSaveCopy", readArg("--ygg-project-id"), relativePath, deck),
+    deckCreate: (relativePath: string, deck: unknown): Promise<void> => ipcRenderer.invoke("office:deckCreate", readArg("--ygg-project-id"), relativePath, deck),
+    sheetBaseline: (relativePath: string, snapshot: unknown): Promise<void> =>
+      ipcRenderer.invoke("office:sheetBaseline", readArg("--ygg-project-id"), relativePath, snapshot),
+    sheetSaveCopy: (relativePath: string, snapshot: unknown): Promise<string> =>
+      ipcRenderer.invoke("office:sheetSaveCopy", readArg("--ygg-project-id"), relativePath, snapshot),
+    sheetCreate: (relativePath: string, rows?: Array<Array<string | number | boolean | null>>): Promise<void> =>
+      ipcRenderer.invoke("office:sheetCreate", readArg("--ygg-project-id"), relativePath, rows),
   },
   files: {
     /** Copies files/folders pasted from Finder/Explorer (absolute OS paths) into destRelativePath inside the project. */

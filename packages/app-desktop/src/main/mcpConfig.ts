@@ -13,152 +13,65 @@ async function readExisting(path: string): Promise<McpServersFile> {
   }
 }
 
-/**
- * Upserts a "panes" entry into the project's `.mcp.json` so every `claude`
- * CLI session launched with this project as cwd (any pane — see
- * buildLaunchCommand.ts / TerminalPane.tsx — auto-loads project `.mcp.json`)
- * picks up the create/write/read-pane tools without any per-node
- * configuration. Merges rather than overwrites, same caution as
- * gateway.ts's seedWorkspaceConfig — a hand-authored `.mcp.json` with other
- * servers must survive this.
- */
-export async function writePaneControlMcpConfig(
-  projectPath: string,
-  shimPath: string,
-  controlUrl: string,
-  controlToken: string,
-): Promise<void> {
-  const path = join(projectPath, ".mcp.json");
-  const existing = await readExisting(path);
-  const merged: McpServersFile = {
-    ...existing,
-    mcpServers: {
-      ...existing.mcpServers,
-      // "node" (not process.execPath) deliberately — the shim is spawned by
-      // the claude CLI's own MCP client via plain child_process.spawn (which
-      // does its own PATH lookup), not node-pty, so none of
-      // resolveYggdrasilTuiCommand's ConPTY-specific PATH-resolution
-      // workarounds in terminals.ts apply here. Using Electron's own
-      // process.execPath here would instead need ELECTRON_RUN_AS_NODE and
-      // still risks Electron-runtime-init quirks a plain system Node avoids.
-      panes: {
-        command: "node",
-        args: [shimPath],
-        env: { PANE_CONTROL_URL: controlUrl, PANE_CONTROL_TOKEN: controlToken },
-      },
-    },
-  };
-  await writeFile(path, JSON.stringify(merged, null, 2), "utf8");
+/** The five per-session MCP servers this app used to register; replaced by the single `yggdrasil` server. */
+const LEGACY_SERVER_IDS = ["panes", "documents", "plugins", "memory", "workflows"] as const;
+const LEGACY_SHIM_RE = /(paneControl|documentsControl|pluginsControl|memoryControl|workflows)McpShim\.js$/;
+
+/** True when a `.mcp.json` entry is one of the legacy shims this app wrote (not a hand-authored server that happens to share the name). */
+function isLegacyShimEntry(entry: unknown): boolean {
+  const args = (entry as { args?: unknown } | undefined)?.args;
+  return Array.isArray(args) && args.some((a) => typeof a === "string" && LEGACY_SHIM_RE.test(a));
 }
 
 /**
- * Upserts a "documents" entry into the project's `.mcp.json` — same
- * merge-not-overwrite caution as writePaneControlMcpConfig. Unlike panes,
- * there's no token/URL to hand the shim (documentsControlMcpShim.ts does
- * plain filesystem work, no HTTP bridge into a live Electron process) — just
- * the project root, so it can scope every call to <project>/notes.
- */
-export async function writeDocumentsMcpConfig(projectPath: string, shimPath: string): Promise<void> {
-  const path = join(projectPath, ".mcp.json");
-  const existing = await readExisting(path);
-  const merged: McpServersFile = {
-    ...existing,
-    mcpServers: {
-      ...existing.mcpServers,
-      documents: {
-        command: "node",
-        args: [shimPath],
-        env: { YGGDRASIL_PROJECT_ROOT: projectPath },
-      },
-    },
-  };
-  await writeFile(path, JSON.stringify(merged, null, 2), "utf8");
-}
-
-/**
- * Upserts a "plugins" entry into the project's `.mcp.json` — same merge and
- * env-var shape as writePaneControlMcpConfig (this shim also proxies to
- * paneControlServer.ts's loopback HTTP server, just a different set of
- * routes — see pluginsControlMcpShim.ts).
- */
-export async function writePluginsMcpConfig(
-  projectPath: string,
-  shimPath: string,
-  controlUrl: string,
-  controlToken: string,
-): Promise<void> {
-  const path = join(projectPath, ".mcp.json");
-  const existing = await readExisting(path);
-  const merged: McpServersFile = {
-    ...existing,
-    mcpServers: {
-      ...existing.mcpServers,
-      plugins: {
-        command: "node",
-        args: [shimPath],
-        env: { PANE_CONTROL_URL: controlUrl, PANE_CONTROL_TOKEN: controlToken },
-      },
-    },
-  };
-  await writeFile(path, JSON.stringify(merged, null, 2), "utf8");
-}
-
-/**
- * Upserts a "memory" entry into the project's `.mcp.json` — same merge
- * caution as the others. Unlike documents/panes/plugins (spawned via plain
- * `"node"`, see writePaneControlMcpConfig's comment on why), this shim
- * (memoryControlMcpShim.ts) transitively depends on better-sqlite3
- * (@yggdrasil/context-memory-db) — a native addon whose ABI this app's own
+ * Upserts the single "yggdrasil" entry into the project's `.mcp.json` — one
+ * stdio process per `claude` session serving the panes, documents, plugins,
+ * memory and workflows tools (see yggdrasilMcpShim.ts), instead of five.
+ * Merges rather than overwrites, same caution as gateway.ts's
+ * seedWorkspaceConfig: a hand-authored `.mcp.json` with other servers must
+ * survive this. The five legacy entries this app wrote before are removed (only
+ * when they really are our shims — a user's own server named e.g. "memory" stays)
+ * and their ids returned, so the caller can drop them from the trusted list too.
+ *
+ * Spawned via `process.execPath` + `ELECTRON_RUN_AS_NODE` (not plain "node"):
+ * the memory tools pull in better-sqlite3, a native addon whose ABI this app's
  * `electron-builder install-app-deps` postinstall rebuilds for Electron's
- * bundled Node, not the system one (see docs/known-issues.md). Spawning it
- * via `process.execPath` + `ELECTRON_RUN_AS_NODE` (same trick
- * gateway.ts's spawnGatewaySubprocess already uses for the exact same
- * dependency) runs it under the ABI the installed binary actually matches,
- * instead of hitting that doc's NODE_MODULE_VERSION mismatch on launch.
+ * bundled Node, not the system one (see docs/known-issues.md) — same trick
+ * gateway.ts's spawnGatewaySubprocess uses for the same dependency. The env
+ * carries everything the five families need: the pane-control URL/token
+ * (panes, plugins), the project root (documents, memory) and this project's
+ * gateway URL (workflows).
  */
-export async function writeMemoryMcpConfig(projectPath: string, shimPath: string): Promise<void> {
+export async function writeYggdrasilMcpConfig(
+  projectPath: string,
+  shimPath: string,
+  controlUrl: string,
+  controlToken: string,
+  gatewayUrl: string,
+): Promise<{ removedLegacy: string[] }> {
   const path = join(projectPath, ".mcp.json");
   const existing = await readExisting(path);
-  const merged: McpServersFile = {
-    ...existing,
-    mcpServers: {
-      ...existing.mcpServers,
-      memory: {
-        command: process.execPath,
-        args: [shimPath],
-        env: { ELECTRON_RUN_AS_NODE: "1", YGGDRASIL_PROJECT_ROOT: projectPath },
-      },
+  const servers: Record<string, unknown> = { ...existing.mcpServers };
+  const removedLegacy: string[] = [];
+  for (const id of LEGACY_SERVER_IDS) {
+    if (id in servers && isLegacyShimEntry(servers[id])) {
+      delete servers[id];
+      removedLegacy.push(id);
+    }
+  }
+  servers.yggdrasil = {
+    command: process.execPath,
+    args: [shimPath],
+    env: {
+      ELECTRON_RUN_AS_NODE: "1",
+      PANE_CONTROL_URL: controlUrl,
+      PANE_CONTROL_TOKEN: controlToken,
+      YGGDRASIL_PROJECT_ROOT: projectPath,
+      WORKFLOWS_GATEWAY_URL: gatewayUrl,
     },
   };
-  await writeFile(path, JSON.stringify(merged, null, 2), "utf8");
-}
-
-/**
- * Upserts a "workflows" entry into the project's `.mcp.json` — same merge
- * caution as the others. Unlike panes/plugins (HTTP bridge into Electron
- * main) or documents/memory (plain filesystem), this shim
- * (workflowsMcpShim.ts) is a WS client of THIS project's own gateway
- * subprocess, so what it needs is that gateway's own loopback URL (the same
- * `ws://127.0.0.1:<port>` the renderer itself connects to — see
- * gateway.ts's `ensureGateway`), not a token: the gateway doesn't require
- * auth for a local connection by default (see packages/gateway/src/auth.ts's
- * `isWsAuthenticatedByDefault`).
- */
-export async function writeWorkflowsMcpConfig(projectPath: string, shimPath: string, gatewayUrl: string): Promise<void> {
-  const path = join(projectPath, ".mcp.json");
-  const existing = await readExisting(path);
-  const merged: McpServersFile = {
-    ...existing,
-    mcpServers: {
-      ...existing.mcpServers,
-      workflows: {
-        command: "node",
-        args: [shimPath],
-        env: { WORKFLOWS_GATEWAY_URL: gatewayUrl },
-      },
-    },
-  };
-  await writeFile(path, JSON.stringify(merged, null, 2), "utf8");
+  await writeFile(path, JSON.stringify({ ...existing, mcpServers: servers }, null, 2), "utf8");
+  return { removedLegacy };
 }
 
 /**
@@ -182,41 +95,21 @@ export async function writeWorkflowsMcpConfig(projectPath: string, shimPath: str
  * this function runs again on every subsequent project open in this app,
  * so it self-heals from that point on).
  */
-export async function trustPaneControlMcpServer(projectPath: string): Promise<void> {
-  await trustMcpServer(projectPath, "panes");
+export async function trustYggdrasilMcpServer(projectPath: string, removedLegacy: string[] = []): Promise<void> {
+  await trustMcpServer(projectPath, "yggdrasil", removedLegacy);
 }
 
-/** Same trust-bypass as trustPaneControlMcpServer, for the "documents" server (documentsControlMcpShim.ts). */
-export async function trustDocumentsMcpServer(projectPath: string): Promise<void> {
-  await trustMcpServer(projectPath, "documents");
-}
-
-/** Same trust-bypass as trustPaneControlMcpServer, for the "plugins" server (pluginsControlMcpShim.ts). */
-export async function trustPluginsMcpServer(projectPath: string): Promise<void> {
-  await trustMcpServer(projectPath, "plugins");
-}
-
-/** Same trust-bypass as trustPaneControlMcpServer, for the "memory" server (memoryControlMcpShim.ts). */
-export async function trustMemoryMcpServer(projectPath: string): Promise<void> {
-  await trustMcpServer(projectPath, "memory");
-}
-
-/** Same trust-bypass as trustPaneControlMcpServer, for the "workflows" server (workflowsMcpShim.ts). */
-export async function trustWorkflowsMcpServer(projectPath: string): Promise<void> {
-  await trustMcpServer(projectPath, "workflows");
-}
-
-async function trustMcpServer(projectPath: string, serverId: string): Promise<void> {
+async function trustMcpServer(projectPath: string, serverId: string, legacyIds: string[] = []): Promise<void> {
   // Newer Claude Code keeps per-project approvals in <project>/.claude/
   // settings.local.json; older versions in ~/.claude.json. Writing both covers
   // either, and the local-settings one works even before Claude has created
   // this project's entry in ~/.claude.json (a brand-new project).
-  await trustInLocalSettings(projectPath, serverId);
-  await trustInClaudeJson(projectPath, serverId);
+  await trustInLocalSettings(projectPath, serverId, legacyIds);
+  await trustInClaudeJson(projectPath, serverId, legacyIds);
 }
 
 /** Upserts serverId into <project>/.claude/settings.local.json's enabledMcpjsonServers, leaving every other key untouched. */
-async function trustInLocalSettings(projectPath: string, serverId: string): Promise<void> {
+async function trustInLocalSettings(projectPath: string, serverId: string, legacyIds: string[]): Promise<void> {
   const path = join(projectPath, ".claude", "settings.local.json");
   let root: Record<string, unknown> = {};
   try {
@@ -227,10 +120,11 @@ async function trustInLocalSettings(projectPath: string, serverId: string): Prom
     if ((err as NodeJS.ErrnoException).code !== "ENOENT") return;
   }
 
-  const enabled = Array.isArray(root.enabledMcpjsonServers) ? (root.enabledMcpjsonServers as string[]) : [];
+  const enabledAll = Array.isArray(root.enabledMcpjsonServers) ? (root.enabledMcpjsonServers as string[]) : [];
+  const enabled = enabledAll.filter((s) => !legacyIds.includes(s));
   const disabled = Array.isArray(root.disabledMcpjsonServers) ? (root.disabledMcpjsonServers as string[]) : [];
-  const nextDisabled = disabled.filter((s) => s !== serverId);
-  if (enabled.includes(serverId) && nextDisabled.length === disabled.length) return;
+  const nextDisabled = disabled.filter((s) => s !== serverId && !legacyIds.includes(s));
+  if (enabled.includes(serverId) && enabled.length === enabledAll.length && nextDisabled.length === disabled.length) return;
 
   root.enabledMcpjsonServers = enabled.includes(serverId) ? enabled : [...enabled, serverId];
   if (disabled.length > 0) root.disabledMcpjsonServers = nextDisabled;
@@ -238,7 +132,7 @@ async function trustInLocalSettings(projectPath: string, serverId: string): Prom
   await writeFile(path, JSON.stringify(root, null, 2), "utf8");
 }
 
-async function trustInClaudeJson(projectPath: string, serverId: string): Promise<void> {
+async function trustInClaudeJson(projectPath: string, serverId: string, legacyIds: string[]): Promise<void> {
   const claudeJsonPath = join(homedir(), ".claude.json");
 
   let root: Record<string, unknown>;
@@ -252,13 +146,12 @@ async function trustInClaudeJson(projectPath: string, serverId: string): Promise
   const project = projects?.[projectPath];
   if (!project) return;
 
-  const enabled = new Set(
-    Array.isArray(project.enabledMcpjsonServers) ? (project.enabledMcpjsonServers as string[]) : [],
-  );
+  const enabledAll = Array.isArray(project.enabledMcpjsonServers) ? (project.enabledMcpjsonServers as string[]) : [];
+  const enabled = new Set(enabledAll.filter((s) => !legacyIds.includes(s)));
   const disabled = Array.isArray(project.disabledMcpjsonServers) ? (project.disabledMcpjsonServers as string[]) : [];
-  const nextDisabled = disabled.filter((s) => s !== serverId);
+  const nextDisabled = disabled.filter((s) => s !== serverId && !legacyIds.includes(s));
 
-  if (enabled.has(serverId) && nextDisabled.length === disabled.length) return;
+  if (enabled.has(serverId) && enabled.size === enabledAll.length && nextDisabled.length === disabled.length) return;
 
   enabled.add(serverId);
   project.enabledMcpjsonServers = [...enabled];

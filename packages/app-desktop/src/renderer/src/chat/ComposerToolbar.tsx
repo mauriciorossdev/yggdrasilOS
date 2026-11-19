@@ -1,6 +1,7 @@
 import type { AgentInfo, ApprovalMode, ProviderInfo } from "../types.js";
 import type { ModelOverride } from "./chatReducer.js";
 import { useI18n } from "../i18n/index.js";
+import type { TerminalPaneSummary } from "../terminal/terminalPanesStore.js";
 
 type Props = {
   agents: AgentInfo[];
@@ -13,6 +14,9 @@ type Props = {
   onSelectModel: (override: ModelOverride | null) => void;
   mode: ApprovalMode;
   onSelectMode: (mode: ApprovalMode) => void;
+  /** Live terminal panes that can be shown beside the chat (read-only mirror). */
+  terminalPanes?: TerminalPaneSummary[];
+  onOpenTerminalPanel?: (paneId: string) => void;
 };
 
 /** Not an agent id: picking it opens Settings → Agents and leaves the selection as it was. */
@@ -38,6 +42,8 @@ export function ComposerToolbar({
   onSelectModel,
   mode,
   onSelectMode,
+  terminalPanes,
+  onOpenTerminalPanel,
 }: Props) {
   const { t } = useI18n();
   return (
@@ -88,6 +94,23 @@ export function ComposerToolbar({
         <option value="restrict">{t("chat.composer.modeRestrict")}</option>
         <option value="yolo">{t("chat.composer.modeYolo")}</option>
       </select>
+
+      {onOpenTerminalPanel && terminalPanes && terminalPanes.length > 0 && (
+        // Always back on the placeholder: this is an action, not a setting.
+        <select
+          className="composer-pill"
+          value=""
+          onChange={(e) => e.target.value && onOpenTerminalPanel(e.target.value)}
+          title={t("chat.composer.terminalPanelTitle")}
+        >
+          <option value="">{t("chat.composer.terminalPanel")}</option>
+          {terminalPanes.map((p) => (
+            <option key={p.id} value={p.id}>
+              {p.title}
+            </option>
+          ))}
+        </select>
+      )}
     </div>
   );
 }

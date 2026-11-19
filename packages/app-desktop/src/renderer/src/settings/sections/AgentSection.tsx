@@ -9,6 +9,7 @@ type Props = {
   config: ConfigShape;
   setConfig: (config: ConfigShape) => void;
   providers: ProviderInfo[];
+  onGoToProviders?: () => void;
 };
 
 /**
@@ -16,7 +17,7 @@ type Props = {
  * prompt/model/tools (AgentManager). The manager saves through the gateway right
  * away, unlike the rest of Settings (the Save button's config.patch).
  */
-export function AgentSection({ config, setConfig, providers }: Props) {
+export function AgentSection({ config, setConfig, onGoToProviders }: Props) {
   const { t } = useI18n();
   const { call } = useGateway();
   const [agents, setAgents] = useState<AgentInfo[]>([]);
@@ -40,63 +41,27 @@ export function AgentSection({ config, setConfig, providers }: Props) {
       // Leave the form as is; the list itself already reflects the change.
     }
   }, [call, config, setConfig]);
-  const defaultAgent = config.agents?.find((a) => a.id === config.defaultAgent) ?? config.agents?.[0];
-  const models = providers.find((p) => p.id === defaultAgent?.provider)?.models ?? [];
-
-  const updateDefaultAgent = (field: "provider" | "model", value: string) => {
-    if (!defaultAgent) return;
-    const agents = (config.agents ?? []).map((a) => (a.id === defaultAgent.id ? { ...a, [field]: value } : a));
-    setConfig({ ...config, agents });
+  // Setting the default is immediate (like every other change in this list), not a Save-button field.
+  const setDefaultAgent = async (id: string) => {
+    try {
+      await call("config.patch", { defaultAgent: id });
+      setConfig({ ...config, defaultAgent: id });
+    } catch (err) {
+      setListError(err instanceof Error ? err.message : String(err));
+    }
   };
 
   return (
     <section className="settings-section">
       <h3>{t("set.agent.title")}</h3>
-      <label>
-        {t("set.agent.default")}
-        <select
-          value={config.defaultAgent ?? ""}
-          onChange={(e) => setConfig({ ...config, defaultAgent: e.target.value })}
-        >
-          {(config.agents ?? []).map((a) => (
-            <option key={a.id} value={a.id}>
-              {a.label ?? a.id}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        {t("set.agent.provider")}
-        <select value={defaultAgent?.provider ?? ""} onChange={(e) => updateDefaultAgent("provider", e.target.value)}>
-          <option value="">{t("set.agent.none")}</option>
-          {providers.map((p) => (
-            <option key={p.id} value={p.id}>
-              {p.label}
-            </option>
-          ))}
-        </select>
-      </label>
-      <label>
-        {t("set.agent.model")}
-        <select
-          value={defaultAgent?.model ?? ""}
-          onChange={(e) => updateDefaultAgent("model", e.target.value)}
-          disabled={models.length === 0}
-        >
-          <option value="">{t("set.agent.modelDefault")}</option>
-          {models.map((m) => (
-            <option key={m.id} value={m.id}>
-              {m.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
       <h4>{t("set.agent.listTitle")}</h4>
       <p className="muted">{t("set.agent.listIntro")}</p>
       {listError && <p className="error">{listError}</p>}
       <AgentManager
         agents={agents}
+        defaultAgentId={config.defaultAgent ?? config.agents?.[0]?.id}
+        onSetDefault={(id) => void setDefaultAgent(id)}
+        onGoToProviders={onGoToProviders}
         onCreated={(next, id) => {
           setAgents(next);
           emitAgentsChanged({ kind: "saved", agents: next, agentId: id });

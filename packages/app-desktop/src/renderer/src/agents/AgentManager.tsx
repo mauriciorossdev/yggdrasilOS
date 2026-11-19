@@ -16,7 +16,24 @@ type Props = {
   agents: AgentInfo[];
   onCreated: (agents: AgentInfo[], newAgentId: string) => void;
   onDeleted: (agents: AgentInfo[], deletedId: string) => void;
+  defaultAgentId?: string;
+  onSetDefault?: (agentId: string) => void;
+  onGoToProviders?: () => void;
 };
+
+/** "Code Reviewer" → "code-reviewer"; suffixes -2, -3… when the id is taken. */
+export function slugifyAgentId(label: string, taken: Set<string>): string {
+  const base =
+    label
+      .normalize("NFD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9]+/g, "-")
+      .replace(/^-+|-+$/g, "") || "agent";
+  let id = base;
+  for (let n = 2; taken.has(id); n++) id = `${base}-${n}`;
+  return id;
+}
 
 type FormState = {
   id: string;
@@ -38,7 +55,7 @@ const EMPTY_FORM: FormState = {
 };
 
 /** The agent list and its create/edit form, shown in Settings → Agents. */
-export function AgentManager({ agents, onCreated, onDeleted }: Props) {
+export function AgentManager({ agents, onCreated, onDeleted, defaultAgentId, onSetDefault, onGoToProviders }: Props) {
   const { call } = useGateway();
   const { t } = useI18n();
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
@@ -72,6 +89,10 @@ export function AgentManager({ agents, onCreated, onDeleted }: Props) {
     void window.yggdrasil.roles.listCustom().then(setCustomRoles);
   }, []);
 
+  // Ready-to-use connections only (key present, no error); the agent's current one stays
+  // listed while editing so an existing agent never shows a blank provider.
+  const usableProviders = providers.filter((p) => (p.configured ?? true) && !p.error && p.models.length > 0);
+  const providerChoices = providers.filter((p) => usableProviders.includes(p) || p.id === form.providerId);
   const selectedProvider = providers.find((p) => p.id === form.providerId);
   const models = useMemo(() => selectedProvider?.models ?? [], [selectedProvider]);
 
@@ -95,17 +116,19 @@ export function AgentManager({ agents, onCreated, onDeleted }: Props) {
   };
 
   const submit = async () => {
-    const id = form.id.trim();
-    if (!id) {
+    const name = form.label.trim();
+    if (!name) {
       setError(t("agents.manager.idRequired"));
       return;
     }
+    // The id is an internal slug: derived from the name on create, fixed afterwards.
+    const id = editingId ?? slugifyAgentId(name, new Set(agents.map((a) => a.id)));
     setSubmitting(true);
     setError(null);
     try {
       const payload = {
         id,
-        label: form.label.trim() || undefined,
+        label: name,
         provider: form.providerId || undefined,
         model: form.modelId || undefined,
         systemPrompt: form.systemPrompt.trim() || undefined,
@@ -167,6 +190,13 @@ export function AgentManager({ agents, onCreated, onDeleted }: Props) {
     }
   };
 
+  // Start from a working combo (first ready connection + its first model) instead of "(default)".
+  const startNew = () => {
+    const first = usableProviders[0];
+    setForm({ ...EMPTY_FORM, providerId: first?.id ?? "", modelId: first?.models[0]?.id ?? "" });
+    setShowForm(true);
+  };
+
   const cancelForm = () => {
     setShowForm(false);
     setEditingId(null);
@@ -186,11 +216,22 @@ export function AgentManager({ agents, onCreated, onDeleted }: Props) {
                   <div>
                     <div className="agent-row-title">{a.label ?? a.id}</div>
                     <div className="agent-row-meta">
-                      {a.provider ?? "?"}/{a.model ?? "?"}
+                      {providers.find((p) => p.id === a.provider)?.label ?? a.provider ?? "?"} · {a.model ?? "?"}
                       {a.scope && <span className="scope-tag">{a.scope}</span>}
                     </div>
                   </div>
                   <div className="agent-row-actions">
+                    {onSetDefault && (
+                      <button
+                        type="button"
+                        className="icon-btn"
+                        title={a.id === defaultAgentId ? t("agents.manager.isDefault") : t("agents.manager.setDefault")}
+                        onClick={() => onSetDefault(a.id)}
+                        disabled={a.id === defaultAgentId}
+                      >
+                        <StarIcon className="hero-icon" style={a.id === defaultAgentId ? { color: "var(--ygg-status-working)" } : { opacity: 0.4 }} />
+                      </button>
+                    )}
                     <button
                       type="button"
                       className="icon-btn"
@@ -214,7 +255,7 @@ export function AgentManager({ agents, onCreated, onDeleted }: Props) {
               ))}
               {agents.length === 0 && <li className="muted">{t("agents.manager.none")}</li>}
             </ul>
-            <button type="button" className="new-chat" onClick={() => setShowForm(true)}>
+            <button type="button" className="new-chat" onClick={startNew}>
               {t("agents.manager.new")}
             </button>
           </>
@@ -229,58 +270,34 @@ export function AgentManager({ agents, onCreated, onDeleted }: Props) {
             }}
           >
             <h3 className="agent-form-title">{editingId ? t("agents.manager.formEdit", { id: editingId }) : t("agents.manager.formNew")}</h3>
-            <label>
-              {t("agents.manager.id")}
-              <input
-                value={form.id}
-                onChange={(e) => setForm((f) => ({ ...f, id: e.target.value }))}
-                placeholder={t("agents.manager.idPlaceholder")}
-                autoFocus={!editingId}
-                disabled={Boolean(editingId)}
-              />
-            </label>
+            {usableProviders.length === 0 && !editingId && (
+              <p className="provider-warning">
+                {t("agents.manager.noProviders")}{" "}
+                {onGoToProviders && (
+                  <button type="button" onClick={onGoToProviders}>
+                    {t("agents.manager.goProviders")}
+                  </button>
+                )}
+              </p>
+            )}
             <label>
               {t("agents.manager.label")}
               <input
                 value={form.label}
                 onChange={(e) => setForm((f) => ({ ...f, label: e.target.value }))}
                 placeholder={t("agents.manager.labelPlaceholder")}
+                autoFocus={!editingId}
               />
-            </label>
-            <label>
-              {t("agents.manager.role")}
-              <select
-                value={pendingRoleId}
-                onChange={(e) => applyRole(e.target.value)}
-              >
-                <option value="">{t("agents.manager.rolePick")}</option>
-                <optgroup label={t("agents.manager.roleBuiltin")}>
-                  {BUILTIN_ROLES.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.labelKey ? t(r.labelKey) : r.label}
-                    </option>
-                  ))}
-                </optgroup>
-                {customRoles.length > 0 && (
-                  <optgroup label={t("agents.manager.roleCustom")}>
-                    {customRoles.map((r) => (
-                      <option key={r.id} value={r.id}>
-                        {r.label}
-                      </option>
-                    ))}
-                  </optgroup>
-                )}
-              </select>
             </label>
             <label>
               {t("agents.manager.provider")}
               <div className="provider-select-row">
                 <select
                   value={form.providerId}
-                  onChange={(e) => setForm((f) => ({ ...f, providerId: e.target.value, modelId: "" }))}
+                  onChange={(e) => setForm((f) => ({ ...f, providerId: e.target.value, modelId: providers.find((p) => p.id === e.target.value)?.models[0]?.id ?? "" }))}
                 >
-                  <option value="">{t("agents.manager.default")}</option>
-                  {providers.map((p) => (
+                  {providerChoices.length === 0 && <option value="">{t("agents.manager.default")}</option>}
+                  {providerChoices.map((p) => (
                     <option key={p.id} value={p.id}>
                       {p.label}
                     </option>
@@ -309,12 +326,37 @@ export function AgentManager({ agents, onCreated, onDeleted }: Props) {
                 onChange={(e) => setForm((f) => ({ ...f, modelId: e.target.value }))}
                 disabled={models.length === 0}
               >
-                <option value="">{t("agents.manager.default")}</option>
+                <option value="">{t("agents.manager.pickModel")}</option>
                 {models.map((m) => (
                   <option key={m.id} value={m.id}>
                     {m.label}
                   </option>
                 ))}
+              </select>
+            </label>
+            <label>
+              {t("agents.manager.role")}
+              <select
+                value={pendingRoleId}
+                onChange={(e) => applyRole(e.target.value)}
+              >
+                <option value="">{t("agents.manager.rolePick")}</option>
+                <optgroup label={t("agents.manager.roleBuiltin")}>
+                  {BUILTIN_ROLES.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.labelKey ? t(r.labelKey) : r.label}
+                    </option>
+                  ))}
+                </optgroup>
+                {customRoles.length > 0 && (
+                  <optgroup label={t("agents.manager.roleCustom")}>
+                    {customRoles.map((r) => (
+                      <option key={r.id} value={r.id}>
+                        {r.label}
+                      </option>
+                    ))}
+                  </optgroup>
+                )}
               </select>
             </label>
             <label>
@@ -326,6 +368,8 @@ export function AgentManager({ agents, onCreated, onDeleted }: Props) {
                 rows={4}
               />
             </label>
+            <details className="agent-form-advanced">
+              <summary>{t("agents.manager.advanced")}</summary>
             <label className="agent-form-check">
               <input
                 type="checkbox"
@@ -416,13 +460,15 @@ export function AgentManager({ agents, onCreated, onDeleted }: Props) {
               </div>
             </label>
 
+            </details>
+
             {error && <p className="error">{error}</p>}
 
             <div className="agent-form-actions">
               <button type="button" onClick={cancelForm} disabled={submitting}>
                 {t("agents.manager.cancel")}
               </button>
-              <button type="submit" disabled={submitting || !form.id.trim()}>
+              <button type="submit" disabled={submitting || !form.label.trim()}>
                 {submitting ? t("agents.manager.saving") : editingId ? t("agents.manager.saveChanges") : t("agents.manager.saveAgent")}
               </button>
             </div>
