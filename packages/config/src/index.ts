@@ -224,7 +224,7 @@ export {
   writeConfigFile,
   uniqueStrings,
 } from "./file.js";
-export { sanitizeConfigForClient } from "./sanitize.js";
+export { sanitizeConfigForClient, isMaskedSecret, restoreMaskedSecrets } from "./sanitize.js";
 export { validateConfigPatch, type ConfigPatchInput, type ConfigPatchResult } from "./patch.js";
 export {
   resolveGlobalAgentsPath,

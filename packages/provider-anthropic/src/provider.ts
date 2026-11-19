@@ -50,6 +50,36 @@ export function resolveAnthropicConfig(
   return { ...fromGlobal, ...fromCtx };
 }
 
+type AnthropicModelsResponse = { data?: Array<{ id?: string; display_name?: string }> };
+
+/**
+ * Live model catalog (GET /v1/models). Throws on a rejected key / unreachable
+ * host so Settings can show the failure; callers only invoke it with a key.
+ */
+export async function fetchAnthropicModels(
+  opts: { baseUrl: string; apiKey: string; fetchImpl?: typeof fetch },
+): Promise<ProviderModel[]> {
+  const doFetch = opts.fetchImpl ?? fetch;
+  const res = await doFetch(`${opts.baseUrl.replace(/\/+$/, "")}/v1/models?limit=100`, {
+    headers: { "x-api-key": opts.apiKey, "anthropic-version": "2023-06-01" },
+    signal: AbortSignal.timeout(10_000),
+  });
+  if (res.status === 401 || res.status === 403) {
+    throw new Error(`Anthropic rechazó la API key (HTTP ${res.status})`);
+  }
+  if (!res.ok) throw new Error(`Anthropic /v1/models respondió HTTP ${res.status}`);
+  const body = (await res.json()) as AnthropicModelsResponse;
+  return (body.data ?? [])
+    .filter((m): m is { id: string; display_name?: string } => typeof m.id === "string")
+    .map((m) => ({
+      id: m.id,
+      label: m.display_name || m.id,
+      provider: ANTHROPIC_PROVIDER_ID,
+      contextWindow: 200000,
+      supportsTools: true,
+    }));
+}
+
 export function createAnthropicProvider(options?: {
   globalConfig?: YggdrasilConfig;
 }): ProviderPlugin {
@@ -67,6 +97,17 @@ export function createAnthropicProvider(options?: {
 
     async listModels(ctx) {
       const cfg = resolveAnthropicConfig(options?.globalConfig, ctx);
+      const apiKey = cfg.apiKey ?? resolveApiKeyFromEnv();
+      if (apiKey) {
+        // Offline, a proxy without /v1/models or a key that can't list models must not empty the picker:
+        // chat still works, so fall back to the static list below.
+        try {
+          const live = await fetchAnthropicModels({ baseUrl: cfg.baseUrl ?? DEFAULT_BASE_URL, apiKey });
+          if (live.length > 0) return live;
+        } catch {
+          /* fall through to the static list */
+        }
+      }
       const defaultModel = cfg.defaultModel;
       if (defaultModel && !DEFAULT_MODELS.some((m) => m.id === defaultModel)) {
         return [

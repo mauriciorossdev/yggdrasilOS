@@ -1,4 +1,3 @@
-import { createInterface } from "node:readline";
 
 /**
  * Standalone entry (built by electron-vite as its own bundle — see
@@ -11,7 +10,6 @@ import { createInterface } from "node:readline";
  * server the panes tool already uses (same PANE_CONTROL_URL/TOKEN env vars).
  */
 
-type JsonRpcMessage = { jsonrpc: "2.0"; id?: string | number; method: string; params?: Record<string, unknown> };
 
 const CONTROL_URL = process.env.PANE_CONTROL_URL;
 const CONTROL_TOKEN = process.env.PANE_CONTROL_TOKEN;
@@ -35,7 +33,7 @@ async function callControl(path: string, init?: RequestInit): Promise<Record<str
   return body;
 }
 
-const TOOLS = [
+export const TOOLS = [
   {
     name: "scaffold_plugin",
     description:
@@ -153,7 +151,7 @@ let dynamicToolMap = new Map<string, { scope: string; id: string; tool: string }
  * keeps a project-scope and a global-scope plugin that happen to share an
  * id from colliding on the same MCP tool name.
  */
-async function listDynamicTools(): Promise<McpToolDef[]> {
+export async function listDynamicTools(): Promise<McpToolDef[]> {
   const body = await callControl("/plugins/tools");
   const entries = Array.isArray(body.tools) ? (body.tools as Array<Record<string, unknown>>) : [];
   const next = new Map<string, { scope: string; id: string; tool: string }>();
@@ -179,7 +177,7 @@ async function listDynamicTools(): Promise<McpToolDef[]> {
   return mcpTools;
 }
 
-async function callTool(name: string, args: Record<string, unknown>) {
+export async function callTool(name: string, args: Record<string, unknown>) {
   switch (name) {
     case "scaffold_plugin": {
       const body = await callControl("/plugins/scaffold", { method: "POST", body: JSON.stringify(args) });
@@ -225,69 +223,3 @@ async function callTool(name: string, args: Record<string, unknown>) {
     }
   }
 }
-
-function send(msg: Record<string, unknown>): void {
-  process.stdout.write(`${JSON.stringify(msg)}\n`);
-}
-
-async function handle(msg: JsonRpcMessage): Promise<void> {
-  const { id, method, params } = msg;
-
-  // Notifications (no id) never get a response, by spec.
-  if (id === undefined) return;
-
-  if (method === "initialize") {
-    send({
-      jsonrpc: "2.0",
-      id,
-      result: {
-        protocolVersion: (params?.protocolVersion as string) ?? "2024-11-05",
-        capabilities: { tools: {} },
-        serverInfo: { name: "yggdrasil-plugins-control", version: "0.1.0" },
-      },
-    });
-    return;
-  }
-
-  if (method === "tools/list") {
-    const dynamic = await listDynamicTools().catch((err) => {
-      logError("failed to fetch dynamic plugin tools", err);
-      return [];
-    });
-    send({ jsonrpc: "2.0", id, result: { tools: [...TOOLS, ...dynamic] } });
-    return;
-  }
-
-  if (method === "tools/call") {
-    const name = params?.name as string;
-    const args = (params?.arguments as Record<string, unknown>) ?? {};
-    try {
-      send({ jsonrpc: "2.0", id, result: await callTool(name, args) });
-    } catch (err) {
-      send({ jsonrpc: "2.0", id, result: textResult(err instanceof Error ? err.message : String(err), true) });
-    }
-    return;
-  }
-
-  if (method === "ping") {
-    send({ jsonrpc: "2.0", id, result: {} });
-    return;
-  }
-
-  send({ jsonrpc: "2.0", id, error: { code: -32601, message: `Method not found: ${method}` } });
-}
-
-const rl = createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const trimmed = line.trim();
-  if (!trimmed) return;
-  let msg: JsonRpcMessage;
-  try {
-    msg = JSON.parse(trimmed) as JsonRpcMessage;
-  } catch {
-    return;
-  }
-  void handle(msg).catch((err) => logError("unhandled error", err));
-});
-
-process.stdin.resume();

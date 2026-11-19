@@ -1,7 +1,7 @@
 import { useState } from "react";
-import { ExclamationTriangleIcon } from "@heroicons/react/20/solid";
 import type { PendingApproval } from "./chatReducer.js";
 import { useI18n } from "../i18n/index.js";
+import { summarizeArgs } from "./toolFormat.js";
 
 type Props = {
   approval: PendingApproval;
@@ -22,33 +22,43 @@ export function ApprovalBar({ approval, onRespond }: Props) {
   // gateway side regardless, so offering the checkbox there would lie.
   const canTrustDevice = !!approval.deviceId && approval.riskLevel !== "destructive";
 
+  const summary = summarizeArgs(approval.args);
+  const risky = approval.riskLevel === "destructive";
+
   return (
-    <div className={`approval-bar risk-${approval.riskLevel ?? "safe"}`}>
-      <div className="approval-info">
-        <strong className="approval-warning-label">
-          <ExclamationTriangleIcon className="hero-icon" /> {t("chat.approval.required", { tool: approval.toolName })}
-        </strong>
-        {approval.riskLevel && <span className="risk-tag">{approval.riskLevel}</span>}
+    <div className={`approval-bar approval-compact risk-${approval.riskLevel ?? "safe"}`}>
+      <div className="approval-main">
+        <span className="approval-dot" aria-hidden />
+        <div className="approval-text">
+          <div className="approval-title">
+            <strong>{t("chat.approval.required", { tool: approval.toolName })}</strong>
+            {risky && <span className="risk-tag">{approval.riskLevel}</span>}
+          </div>
+          {summary && <code className="approval-summary">{summary}</code>}
+        </div>
+        <div className="approval-actions">
+          <button type="button" className="deny" onClick={() => onRespond(approval.requestId, false)}>
+            {t("chat.approval.deny")}
+          </button>
+          <button
+            type="button"
+            className="approve"
+            onClick={() => onRespond(approval.requestId, true, trustDevice ? approval.deviceId : undefined)}
+          >
+            {t("chat.approval.approve")}
+          </button>
+        </div>
+      </div>
+      <details className="approval-details">
+        <summary>{t("chat.approval.details")}</summary>
         <pre>{JSON.stringify(approval.args, null, 2)}</pre>
-        {canTrustDevice && (
-          <label className="approval-trust-device">
-            <input type="checkbox" checked={trustDevice} onChange={(e) => setTrustDevice(e.target.checked)} />
-            {t("chat.approval.trustDevice")}
-          </label>
-        )}
-      </div>
-      <div className="approval-actions">
-        <button
-          type="button"
-          className="approve"
-          onClick={() => onRespond(approval.requestId, true, trustDevice ? approval.deviceId : undefined)}
-        >
-          {t("chat.approval.approve")}
-        </button>
-        <button type="button" className="deny" onClick={() => onRespond(approval.requestId, false)}>
-          {t("chat.approval.deny")}
-        </button>
-      </div>
+      </details>
+      {canTrustDevice && (
+        <label className="approval-trust-device">
+          <input type="checkbox" checked={trustDevice} onChange={(e) => setTrustDevice(e.target.checked)} />
+          {t("chat.approval.trustDevice")}
+        </label>
+      )}
     </div>
   );
 }

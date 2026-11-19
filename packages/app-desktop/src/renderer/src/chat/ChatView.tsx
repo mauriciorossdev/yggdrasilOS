@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useReducer, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
 import { chatReducer, initialChatState } from "./chatReducer.js";
 import { t as tStatic, useI18n } from "../i18n/index.js";
@@ -18,6 +18,9 @@ import { DocumentsView } from "../documents/DocumentsView.js";
 import { FilesView } from "../files/FilesView.js";
 import { MainTabs, type ExtraTab, type MainTab } from "./MainTabs.js";
 import { requestTab } from "./mainTabsBridge.js";
+import { ChatSplit } from "../workspace/ChatSplit.js";
+import { openWorkspaceTab, workspaceKindFor } from "../workspace/workspaceStore.js";
+import { handleEditorRequest } from "../workspace/editorBridge.js";
 import { onChatAttach } from "./chatAttachBridge.js";
 import { TerminalContainer } from "../terminal/TerminalContainer.js";
 import { PaneBranchProvider } from "../terminal/paneBranchContext.js";
@@ -32,8 +35,21 @@ import { usePlugins } from "../plugins/usePlugins.js";
 import { PluginFrame } from "../plugins/PluginFrame.js";
 import { PluginToolRuntime } from "../plugins/PluginToolRuntime.js";
 import { PluginPanel } from "../plugins/PluginPanel.js";
-import type { SidePanel } from "../plugins/pluginTypes.js";
-import { readPanelPinned, SIDE_PANEL_MOTION_MS, sidePanelReducer, writePanelPinned } from "./sidePanelMotion.js";
+import { sidePanelKey, type SidePanel } from "../plugins/pluginTypes.js";
+import { PanelTabs, type PanelTabInfo } from "./PanelTabs.js";
+import { TerminalSidePanel } from "./TerminalSidePanel.js";
+import { requestFocusPane, useTerminalPanes } from "../terminal/terminalPanesStore.js";
+import {
+  clampPanelWidth,
+  createSidePanelReducer,
+  defaultPanelWidth,
+  initialSidePanelState,
+  readPanelPinned,
+  SIDE_PANEL_MOTION_MS,
+  writePanelPinned,
+} from "./sidePanelMotion.js";
+
+const sidePanelReducer = createSidePanelReducer<SidePanel>(sidePanelKey);
 import { setBrowserTabCovered, setBrowserTabOcclusion } from "../browser/browserTabBridge.js";
 import { PanelPinButton } from "../files/PanelPinButton.js";
 import type {
@@ -65,27 +81,52 @@ export function ChatView() {
   const [state, dispatch] = useReducer(chatReducer, undefined, initialChatState);
   // Which Settings section is open (null = closed); the composer's "Manage agents…" opens it at Agents.
   const [settingsSection, setSettingsSection] = useState<SettingsSection | null>(null);
-  const [{ panel: sidePanel, phase: panelPhase }, dispatchPanel] = useReducer(sidePanelReducer<SidePanel>, {
-    panel: null,
-    phase: "open",
-  });
-  const [panelWidth, setPanelWidth] = useState(() => window.innerWidth * 0.6);
+  const [{ tabs: panelTabs, activeKey: activePanelKey, phase: panelPhase }, dispatchPanel] = useReducer(
+    sidePanelReducer,
+    undefined,
+    initialSidePanelState<SidePanel>,
+  );
+  // The tab that is showing; everything below that asked "is a panel open / what is it" reads this.
+  const sidePanel = panelTabs.find((p) => sidePanelKey(p) === activePanelKey) ?? panelTabs[0] ?? null;
+  const { panes: terminalPanes } = useTerminalPanes();
+  const [panelWidth, setPanelWidth] = useState(() => defaultPanelWidth(window.innerWidth));
 
   // Every time the panel becomes visible it should start at 60vw, not
   // whatever width a previous open session was resized/left at.
-  const openFile = useCallback((relativePath: string) => {
-    setPanelWidth(window.innerWidth * 0.6);
-    dispatchPanel({ type: "open", panel: { kind: "file", path: relativePath } });
+  const panelVisibleRef = useRef(false);
+  panelVisibleRef.current = panelTabs.length > 0 && panelPhase !== "exit";
+  const openInPanel = useCallback((panel: SidePanel) => {
+    if (!panelVisibleRef.current) setPanelWidth(defaultPanelWidth(window.innerWidth));
+    dispatchPanel({ type: "open", panel });
   }, []);
+  const openFile = useCallback(
+    (relativePath: string) => {
+      // Office files have their own editors in the container beside the chat, not the file side panel.
+      const kind = workspaceKindFor(relativePath);
+      if (kind) {
+        openWorkspaceTab(kind, relativePath);
+        requestTab("chat");
+        return;
+      }
+      openInPanel({ kind: "file", path: relativePath });
+    },
+    [openInPanel],
+  );
   useEffect(() => registerFallbackFileOpener(openFile), [openFile]);
-  const openDiff = useCallback((target: DiffTarget) => {
-    setPanelWidth(window.innerWidth * 0.6);
-    dispatchPanel({ type: "open", panel: { kind: "diff", ...target } });
-  }, []);
-  const openPluginPanel = useCallback((key: string) => {
-    setPanelWidth(window.innerWidth * 0.6);
-    dispatchPanel({ type: "open", panel: { kind: "plugin", key } });
-  }, []);
+  // An agent's office tool call (gateway → main → here): run it on the open editor and answer.
+  useEffect(
+    () =>
+      window.yggdrasil.editors.onRequest((req) => {
+        handleEditorRequest(req).then(
+          (result) => void window.yggdrasil.editors.reply(req.callId, true, result),
+          (err) => void window.yggdrasil.editors.reply(req.callId, false, err instanceof Error ? err.message : String(err)),
+        );
+      }),
+    [],
+  );
+  const openDiff = useCallback((target: DiffTarget) => openInPanel({ kind: "diff", ...target }), [openInPanel]);
+  const openPluginPanel = useCallback((key: string) => openInPanel({ kind: "plugin", key }), [openInPanel]);
+  const openTerminalPanel = useCallback((id: string) => openInPanel({ kind: "terminal", id }), [openInPanel]);
   useEffect(() => {
     if (panelPhase === "open") return;
     const reduced = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
@@ -471,7 +512,7 @@ export function ChatView() {
     if (overBrowser) setBrowserTabCovered(true);
     const startX = e.clientX;
     const startWidth = panelWidth;
-    const move = (m: PointerEvent) => setPanelWidth(Math.max(200, startWidth - (m.clientX - startX)));
+    const move = (m: PointerEvent) => setPanelWidth(clampPanelWidth(startWidth - (m.clientX - startX), window.innerWidth));
     const up = () => {
       handle.removeEventListener("pointermove", move);
       handle.removeEventListener("pointerup", up);
@@ -483,52 +524,76 @@ export function ChatView() {
     handle.addEventListener("pointercancel", up);
   };
 
-  /** One aside slot, two possible contents — same outer shell/CSS classes either way (FileContentPanel and PluginPanel both render `<aside className="file-content-panel ...">`), so the two resizer/positioning blocks below stay identical regardless of which is open. */
+  const panelTabInfos: PanelTabInfo[] = panelTabs.map((p) => {
+    const key = sidePanelKey(p);
+    switch (p.kind) {
+      case "file":
+        return { key, label: p.path.split("/").pop() ?? p.path, title: p.path };
+      case "diff":
+        return { key, label: `± ${p.path.split("/").pop() ?? p.path}`, title: p.path };
+      case "plugin":
+        return { key, label: pluginsByKey.get(p.key)?.manifest.name ?? p.key };
+      case "terminal":
+        return { key, label: terminalPanes.find((x) => x.id === p.id)?.title ?? "Terminal" };
+    }
+  });
+
+  /**
+   * The aside: one shell per open tab, all mounted (the inactive ones just hidden) so switching tabs
+   * never drops an unsaved edit or a running plugin's state. Every panel renders the same
+   * `<aside className="file-content-panel ...">` with the tab strip on top, so the two
+   * resizer/positioning blocks below stay identical whichever tab is showing.
+   */
   const renderSidePanel = (extraClassName?: string) => {
-    if (!sidePanel) return null;
+    if (panelTabs.length === 0) return null;
     const motionClass = panelPhase === "open" ? "" : `file-content-panel--${panelPhase}`;
     const className = [extraClassName, motionClass].filter(Boolean).join(" ") || undefined;
     const headerActions = <PanelPinButton pinned={panelPinned} onToggle={togglePanelPinned} />;
-    if (sidePanel.kind === "file") {
-      return (
-        <FileContentPanel
-          key={sidePanel.path}
-          relativePath={sidePanel.path}
-          headerActions={headerActions}
-          onClose={() => dispatchPanel({ type: "close" })}
-          className={className}
-          style={{ width: panelWidth }}
-        />
-      );
-    }
-    if (sidePanel.kind === "diff") {
-      return (
-        <DiffContentPanel
-          key={`diff:${sidePanel.path}`}
-          path={sidePanel.path}
-          filePath={sidePanel.filePath}
-          onOpenFile={openFile}
-          headerActions={headerActions}
-          onClose={() => dispatchPanel({ type: "close" })}
-          className={className}
-          style={{ width: panelWidth }}
-        />
-      );
-    }
-    const plugin = pluginsByKey.get(sidePanel.key);
-    if (!plugin) return null;
-    return (
-      <PluginPanel
-        plugin={plugin}
-        version={pluginsVersion}
-        headerActions={headerActions}
-        onClose={() => dispatchPanel({ type: "close" })}
-        onOpenFile={openFile}
-        onOpenTab={(tab) => requestTab(tab as MainTab)}
-        className={className}
-        style={{ width: panelWidth }}
+    const activeKey = sidePanel ? sidePanelKey(sidePanel) : null;
+    const tabStrip = (
+      <PanelTabs
+        tabs={panelTabInfos}
+        activeKey={activeKey}
+        onActivate={(key) => dispatchPanel({ type: "activate", key })}
+        onClose={(key) => dispatchPanel({ type: "closeTab", key })}
+        onCloseAll={() => dispatchPanel({ type: "close" })}
       />
     );
+    return panelTabs.map((panel) => {
+      const key = sidePanelKey(panel);
+      const style = { width: panelWidth, ...(key === activeKey ? null : { display: "none" }) };
+      const onClose = () => dispatchPanel({ type: "closeTab", key });
+      const common = { headerActions, tabStrip, className, style, onClose };
+      if (panel.kind === "file") return <FileContentPanel key={key} relativePath={panel.path} {...common} />;
+      if (panel.kind === "diff") {
+        return <DiffContentPanel key={key} path={panel.path} filePath={panel.filePath} onOpenFile={openFile} {...common} />;
+      }
+      if (panel.kind === "terminal") {
+        return (
+          <TerminalSidePanel
+            key={key}
+            paneId={panel.id}
+            onGoToPane={() => {
+              requestTab("terminal");
+              requestFocusPane(panel.id);
+            }}
+            {...common}
+          />
+        );
+      }
+      const plugin = pluginsByKey.get(panel.key);
+      if (!plugin) return null;
+      return (
+        <PluginPanel
+          key={key}
+          plugin={plugin}
+          version={pluginsVersion}
+          onOpenFile={openFile}
+          onOpenTab={(tab) => requestTab(tab as MainTab)}
+          {...common}
+        />
+      );
+    });
   };
 
   return (
@@ -557,6 +622,8 @@ export function ChatView() {
           <MainTabs
             homeContent={window.yggdrasil.isDefaultProject ? <HomeView /> : undefined}
             chatContent={
+              <ChatSplit
+                chat={
               <>
                 <MessageList
                   messages={state.messages}
@@ -564,6 +631,7 @@ export function ChatView() {
                   isStreaming={state.isStreaming}
                   isTurnActive={state.isTurnActive}
                   runningTools={runningTools}
+                  onOpenFile={openFile}
                 />
                 {state.pendingApproval && (
                   <ApprovalBar key={state.pendingApproval.requestId} approval={state.pendingApproval} onRespond={respondApproval} />
@@ -588,8 +656,12 @@ export function ChatView() {
                   onSelectModel={(override) => dispatch({ type: "SET_MODEL_OVERRIDE", override })}
                   mode={state.mode}
                   onSelectMode={setMode}
+                  terminalPanes={terminalPanes}
+                  onOpenTerminalPanel={openTerminalPanel}
                 />
               </>
+                }
+              />
             }
             terminalContent={<TerminalContainer />}
             agentFlowContent={<AgentFlowView />}

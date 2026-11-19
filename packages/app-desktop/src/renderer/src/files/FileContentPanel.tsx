@@ -20,8 +20,10 @@ type Props = {
   style?: React.CSSProperties;
   /** Extra class alongside "file-content-panel" — e.g. "file-content-panel-drawer" for the Terminal-tab overlay mode. */
   className?: string;
+  /** The side panel\'s tab strip, drawn above the header (ChatView). */
+  tabStrip?: ReactNode;
 };
-export function FileContentPanel({ relativePath, onClose, headerActions, style, className }: Props) {
+export function FileContentPanel({ relativePath, onClose, headerActions, style, className, tabStrip }: Props) {
   const { t } = useI18n();
   const { call, onEvent } = useGateway();
   const kind = previewKind(relativePath);
@@ -144,6 +146,7 @@ export function FileContentPanel({ relativePath, onClose, headerActions, style, 
 
   return (
     <aside className={`file-content-panel${className ? ` ${className}` : ""}`} style={style}>
+      {tabStrip}
       <div className="file-content-panel-header">
         <div className="file-content-panel-title">
           <span className="file-content-panel-path" title={relativePath}>

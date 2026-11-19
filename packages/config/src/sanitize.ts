@@ -2,6 +2,38 @@ import type { YggdrasilConfig } from "./index.js";
 
 const MASK = "***";
 
+/**
+ * True for the placeholder config.get shows in place of a secret. A client that sends a whole
+ * settings form back echoes it, and it must never be written over the real value.
+ */
+export function isMaskedSecret(value: unknown): boolean {
+  return value === MASK;
+}
+
+/**
+ * `incoming` is a config subtree a client sent back after loading it through config.get, so every
+ * secret in it is the mask. Replace each mask with the stored value at the same path (drop it where
+ * nothing was stored) so saving a form never overwrites a real token/key with "***". Other values,
+ * including a genuinely new secret, pass through; arrays are left alone.
+ */
+export function restoreMaskedSecrets<T>(incoming: T, existing: unknown): T {
+  if (!isPlainObject(incoming)) return incoming;
+  const stored = isPlainObject(existing) ? existing : {};
+  const out: Record<string, unknown> = {};
+  for (const [key, value] of Object.entries(incoming)) {
+    if (isMaskedSecret(value)) {
+      if (stored[key] !== undefined) out[key] = stored[key];
+    } else {
+      out[key] = restoreMaskedSecrets(value, stored[key]);
+    }
+  }
+  return out as T;
+}
+
+function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
 function maskSecret(value: unknown): string | undefined {
   if (value === undefined || value === null || value === "") return undefined;
   return MASK;

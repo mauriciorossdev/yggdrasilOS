@@ -1,8 +1,9 @@
 import { useEffect, useRef } from "react";
-import { CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
+import { ArrowTopRightOnSquareIcon, CheckIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { ChatMessage } from "./chatReducer.js";
 import { Markdown } from "./Markdown.js";
 import { useI18n } from "../i18n/index.js";
+import { formatToolResult, openableFilePath, summarizeArgs } from "./toolFormat.js";
 
 type Props = {
   messages: ChatMessage[];
@@ -10,21 +11,40 @@ type Props = {
   isStreaming: boolean;
   isTurnActive: boolean;
   runningTools: string[];
+  /** Opens a project file in the side panel (the "open" button on a tool card that names one). */
+  onOpenFile?: (relativePath: string) => void;
 };
 
-function ToolBubble({ message }: { message: ChatMessage }) {
+function ToolBubble({ message, onOpenFile }: { message: ChatMessage; onOpenFile?: (relativePath: string) => void }) {
   const { t } = useI18n();
   const ok = message.toolStatus === "ok";
+  const summary = summarizeArgs(message.toolArgs);
+  const openPath = onOpenFile ? openableFilePath(message.toolArgs, window.yggdrasil.projectPath ?? undefined) : null;
+  const { body, note } = formatToolResult(message.text ?? "");
+  const firstLine = body.split("\n", 1)[0] ?? "";
+  const multiline = body.includes("\n") || body.length > 100;
   return (
-    <div className={`bubble tool ${ok ? "tool-ok" : "tool-error"}`}>
+    <div className={`bubble tool tool-compact ${ok ? "tool-ok" : "tool-error"}`}>
       <div className="tool-header">
         <span className="tool-icon">{ok ? <CheckIcon className="hero-icon" /> : <XMarkIcon className="hero-icon" />}</span>
         <span className="tool-name">{message.toolName}</span>
-        {message.toolArgs && (
-          <span className="tool-args">{JSON.stringify(message.toolArgs)}</span>
+        {summary && <span className="tool-args">{summary}</span>}
+        {note && <span className="tool-note">{note}</span>}
+        {openPath && onOpenFile && (
+          <button type="button" className="tool-open" title={t("chat.messages.openInPanel")} onClick={() => onOpenFile(openPath)}>
+            <ArrowTopRightOnSquareIcon className="hero-icon" />
+          </button>
         )}
       </div>
-      {message.text && <pre className="tool-result">{message.text}</pre>}
+      {body &&
+        (multiline ? (
+          <details className="tool-output">
+            <summary>{firstLine.length > 90 ? `${firstLine.slice(0, 89)}…` : firstLine || t("chat.messages.viewOutput")}</summary>
+            <pre className="tool-result">{body}</pre>
+          </details>
+        ) : (
+          <div className="tool-output-inline">{body}</div>
+        ))}
       {message.toolImage && (
         <details className="tool-image">
           <summary>{message.toolImage.path ? message.toolImage.path : t("chat.messages.viewImage")}</summary>
@@ -40,7 +60,7 @@ function ToolBubble({ message }: { message: ChatMessage }) {
 
 const BOTTOM_THRESHOLD_PX = 48;
 
-export function MessageList({ messages, streamingText, isStreaming, isTurnActive, runningTools }: Props) {
+export function MessageList({ messages, streamingText, isStreaming, isTurnActive, runningTools, onOpenFile }: Props) {
   const { t } = useI18n();
   const endRef = useRef<HTMLDivElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
@@ -86,7 +106,7 @@ export function MessageList({ messages, streamingText, isStreaming, isTurnActive
       )}
       {messages.map((m) =>
         m.role === "tool" ? (
-          <ToolBubble key={m.id} message={m} />
+          <ToolBubble key={m.id} message={m} onOpenFile={onOpenFile} />
         ) : m.role === "assistant" ? (
           <div key={m.id} className="bubble assistant">
             <Markdown text={m.text} />

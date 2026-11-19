@@ -132,6 +132,10 @@ export type ProviderInfo = {
   id: string;
   label: string;
   models: ProviderModelInfo[];
+  /** Authenticates with an API key (set in config or env). */
+  needsKey?: boolean;
+  /** Ready to use: has its key (or needs none). */
+  configured?: boolean;
   error?: string;
 };
 

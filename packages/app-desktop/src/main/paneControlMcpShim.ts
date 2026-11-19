@@ -1,4 +1,3 @@
-import { createInterface } from "node:readline";
 
 /**
  * Standalone entry (built by electron-vite as its own bundle — see
@@ -13,7 +12,6 @@ import { createInterface } from "node:readline";
  * resolution.
  */
 
-type JsonRpcMessage = { jsonrpc: "2.0"; id?: string | number; method: string; params?: Record<string, unknown> };
 
 const CONTROL_URL = process.env.PANE_CONTROL_URL;
 const CONTROL_TOKEN = process.env.PANE_CONTROL_TOKEN;
@@ -56,7 +54,7 @@ async function resolveSelfPaneId(): Promise<string | undefined> {
   return selfPaneId ?? undefined;
 }
 
-const TOOLS = [
+export const TOOLS = [
   {
     name: "list_panes",
     description: "Lists the terminal panes this agent has created so far in this project, with id/title/cwd.",
@@ -379,7 +377,7 @@ function textResult(text: string, isError = false): { content: Array<{ type: "te
   return { content: [{ type: "text", text }], isError };
 }
 
-async function callTool(name: string, args: Record<string, unknown>) {
+export async function callTool(name: string, args: Record<string, unknown>) {
   switch (name) {
     case "list_panes": {
       const body = await callControl("/panes");
@@ -542,65 +540,3 @@ async function callTool(name: string, args: Record<string, unknown>) {
       return textResult(`Unknown tool "${name}"`, true);
   }
 }
-
-function send(msg: Record<string, unknown>): void {
-  process.stdout.write(`${JSON.stringify(msg)}\n`);
-}
-
-async function handle(msg: JsonRpcMessage): Promise<void> {
-  const { id, method, params } = msg;
-
-  // Notifications (no id) never get a response, by spec.
-  if (id === undefined) return;
-
-  if (method === "initialize") {
-    send({
-      jsonrpc: "2.0",
-      id,
-      result: {
-        protocolVersion: (params?.protocolVersion as string) ?? "2024-11-05",
-        capabilities: { tools: {} },
-        serverInfo: { name: "yggdrasil-pane-control", version: "0.1.0" },
-      },
-    });
-    return;
-  }
-
-  if (method === "tools/list") {
-    send({ jsonrpc: "2.0", id, result: { tools: TOOLS } });
-    return;
-  }
-
-  if (method === "tools/call") {
-    const name = params?.name as string;
-    const args = (params?.arguments as Record<string, unknown>) ?? {};
-    try {
-      send({ jsonrpc: "2.0", id, result: await callTool(name, args) });
-    } catch (err) {
-      send({ jsonrpc: "2.0", id, result: textResult(err instanceof Error ? err.message : String(err), true) });
-    }
-    return;
-  }
-
-  if (method === "ping") {
-    send({ jsonrpc: "2.0", id, result: {} });
-    return;
-  }
-
-  send({ jsonrpc: "2.0", id, error: { code: -32601, message: `Method not found: ${method}` } });
-}
-
-const rl = createInterface({ input: process.stdin });
-rl.on("line", (line) => {
-  const trimmed = line.trim();
-  if (!trimmed) return;
-  let msg: JsonRpcMessage;
-  try {
-    msg = JSON.parse(trimmed) as JsonRpcMessage;
-  } catch {
-    return;
-  }
-  void handle(msg).catch((err) => logError("unhandled error", err));
-});
-
-process.stdin.resume();

@@ -1,7 +1,7 @@
 import type { ConfigShape } from "../../types.js";
 import { LANGUAGES, useI18n } from "../../i18n/index.js";
 import { saveOnboarding, useOnboarding } from "../../onboarding/store.js";
-import { setScriptsInApp, setShowWorkflows, useScriptsInApp, useShowWorkflows } from "../../ui/sidebarStore.js";
+import { setScriptsInApp, setShowRamBar, setShowWorkflows, useScriptsInApp, useShowRamBar, useShowWorkflows } from "../../ui/sidebarStore.js";
 
 type Props = {
   config: ConfigShape;
@@ -11,6 +11,7 @@ type Props = {
 export function GeneralSection({ config, setConfig }: Props) {
   const { t } = useI18n();
   const showWorkflows = useShowWorkflows();
+  const showRamBar = useShowRamBar();
   const scriptsInApp = useScriptsInApp();
   const onboarding = useOnboarding();
   return (
@@ -54,6 +55,11 @@ export function GeneralSection({ config, setConfig }: Props) {
       <p className="muted">
         {t("set.general.showWorkflowsHelp")}
       </p>
+      <label className="settings-check">
+        <input type="checkbox" checked={showRamBar} onChange={(e) => setShowRamBar(e.target.checked)} />
+        {t("set.general.showRamBar")}
+      </label>
+      <p className="muted">{t("set.general.showRamBarHelp")}</p>
       <label>
         {t("set.general.scriptsOpenIn")}
         <select value={scriptsInApp ? "app" : "system"} onChange={(e) => setScriptsInApp(e.target.value === "app")}>

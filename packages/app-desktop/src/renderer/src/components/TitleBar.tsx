@@ -20,6 +20,8 @@ import logoUrl from "../assets/logo.png";
  * bar text, and the minimize/maximize/close buttons the OS would otherwise
  * have drawn.
  */
+let borderPulseTimer = 0;
+
 export function TitleBar() {
   const { t } = useI18n();
   const [maximized, setMaximized] = useState(false);
@@ -73,6 +75,16 @@ export function TitleBar() {
     // (the accent default follows the user's theme).
     const root = document.documentElement.style;
     if (borderColor) {
+      // Pulse the border glow a couple of times, then let it rest (see .app-shell::before).
+      const shell = document.querySelector(".app-shell");
+      if (shell) {
+        shell.classList.remove("border-pulsing");
+        void (shell as HTMLElement).offsetWidth; // restart the animation if it was already running
+        shell.classList.add("border-pulsing");
+        // 2 iterations of 2.6s; a timer rather than animationend, which other animations inside the shell would also trigger as they bubble.
+        window.clearTimeout(borderPulseTimer);
+        borderPulseTimer = window.setTimeout(() => shell.classList.remove("border-pulsing"), 5400);
+      }
       root.setProperty("--project-border-color", borderColor);
       root.setProperty("--project-panel-border-color", borderColor);
       root.setProperty("--project-accent-color", borderColor);

@@ -75,4 +75,16 @@ describe("validateConfigPatch", () => {
       validateConfigPatch({ mcpServers: { bad: { transport: "sse" } } }),
     ).toThrow(/transport must be "stdio" or "http"/);
   });
+
+  it("never stores the mask config.get shows in place of an API key", () => {
+    const { patch } = validateConfigPatch({
+      providers: {
+        anthropic: { apiKey: "***", baseUrl: "https://api.anthropic.com" },
+        openai: { apiKey: "sk-real" },
+      },
+    });
+    expect(patch.providers!.anthropic).toEqual({ baseUrl: "https://api.anthropic.com" });
+    expect(patch.providers!.anthropic).not.toHaveProperty("apiKey");
+    expect(patch.providers!.openai).toEqual({ apiKey: "sk-real" });
+  });
 });

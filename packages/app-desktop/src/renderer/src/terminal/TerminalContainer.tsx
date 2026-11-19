@@ -570,6 +570,7 @@ function TerminalContainerBody() {
         onToggleViewMode={() => dispatch({ type: "SET_VIEW_MODE", mode: viewMode === "canvas" ? "grid" : "canvas" })}
         onCompactAll={compactAllPanes}
         onSendCommand={sendCommandToOrchestrator}
+        panes={leaves.map((l) => ({ id: l.id, title: l.title }))}
       />
       <FeatureHeader />
       <div className={`terminal-body${visibleRoot ? "" : " terminal-body-empty"}`}>

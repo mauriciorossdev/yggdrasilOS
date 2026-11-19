@@ -1,6 +1,6 @@
 import { stat } from "node:fs/promises";
 import { homedir } from "node:os";
-import { isAbsolute, relative, resolve } from "node:path";
+import { isAbsolute, relative, resolve, sep } from "node:path";
 
 export type ResolvedPath = {
   /** Absolute path on disk. */
@@ -30,7 +30,7 @@ export function candidatePaths(raw: string, cwd: string | null, projectRoot: str
 export function relativeToRoot(abs: string, projectRoot: string | null): string | null {
   if (!projectRoot) return null;
   const rel = relative(resolve(projectRoot), abs);
-  if (rel.startsWith("..") || isAbsolute(rel)) return null;
+  if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) return null;
   return rel.split("\\").join("/");
 }
 

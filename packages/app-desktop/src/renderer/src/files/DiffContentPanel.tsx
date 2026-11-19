@@ -20,6 +20,8 @@ type Props = {
   style?: CSSProperties;
   /** Extra class alongside "file-content-panel" — same convention as FileContentPanel.tsx. */
   className?: string;
+  /** The side panel\'s tab strip, drawn above the header (ChatView). */
+  tabStrip?: ReactNode;
 };
 
 /**
@@ -28,7 +30,7 @@ type Props = {
  * opens. Same outer shell as FileContentPanel, so the side panel layout
  * doesn't change between the two.
  */
-export function DiffContentPanel({ path, filePath, onOpenFile, onClose, headerActions, style, className }: Props) {
+export function DiffContentPanel({ path, filePath, onOpenFile, onClose, headerActions, style, className, tabStrip }: Props) {
   const { t } = useI18n();
   const { call, onEvent } = useGateway();
   const [diff, setDiff] = useState<DiffContent | null>(null);
@@ -77,6 +79,7 @@ export function DiffContentPanel({ path, filePath, onOpenFile, onClose, headerAc
 
   return (
     <aside className={`file-content-panel${className ? ` ${className}` : ""}`} style={style}>
+      {tabStrip}
       <div className="file-content-panel-header">
         <div className="file-content-panel-title">
           <span className="file-content-panel-path" title={path}>

@@ -195,6 +195,8 @@ export async function startPaneControlServer(
   },
   /** Backs the /workspace/* routes (agent access to other linked projects' panes). */
   workspace?: WorkspaceBridge,
+  /** Backs POST /editors/call (the office tools' transport): runs an operation on an editor open in this project's window — see ChatView.tsx's editors.onRequest subscription. Rejects with a message the model can read. */
+  editors?: { call: (kind: string, op: string, params: Record<string, unknown>) => Promise<unknown> },
 ): Promise<PaneControlHandle> {
   const token = randomBytes(24).toString("hex");
   const panes = new Map<string, PaneRecord>();
@@ -774,6 +776,28 @@ export async function startPaneControlServer(
             (r.manifest.tools ?? []).map((tool) => ({ scope: r.scope, id: r.manifest.id, pluginName: r.manifest.name, tool })),
           );
         sendJson(res, 200, { tools });
+        return;
+      }
+
+      if (req.method === "POST" && parts.length === 2 && parts[0] === "editors" && parts[1] === "call") {
+        if (!editors) {
+          sendJson(res, 501, { error: "editors_unavailable", message: "This window has no in-app editors." });
+          return;
+        }
+        const body = await readJsonBody(req);
+        const kind = typeof body.kind === "string" ? body.kind : "";
+        const op = typeof body.op === "string" ? body.op : "";
+        if (!kind || !op) {
+          sendJson(res, 400, { error: "kind and op are required" });
+          return;
+        }
+        try {
+          const params = body.params && typeof body.params === "object" ? (body.params as Record<string, unknown>) : {};
+          sendJson(res, 200, { result: await editors.call(kind, op, params) });
+        } catch (err) {
+          // A failure of the operation itself (bad range, file missing...) is the model's to read and fix, not a server fault.
+          sendJson(res, 422, { error: "editor_error", message: err instanceof Error ? err.message : String(err) });
+        }
         return;
       }
 

@@ -18,6 +18,7 @@ import {
   readConfigFile,
   readGlobalAgents,
   resolveProviderConfig,
+  restoreMaskedSecrets,
   sanitizeConfigForClient,
   updateAgent,
   validateConfigPatch,
@@ -1151,15 +1152,24 @@ function registerBuiltinMethods(): void {
     const models = await Promise.all(
       providers.map(async (p) => {
         try {
+          const pctx = { config: resolveProviderConfig(ctx.config, p.id) };
+          // A provider that can resolve an API key authenticates with one: tell the UI
+          // whether it has it (config or env var) without ever sending the key itself.
+          const needsKey = typeof p.resolveApiKey === "function";
+          const configured = needsKey ? Boolean(await p.resolveApiKey!(pctx)) : true;
           return {
             id: p.id,
             label: p.label,
-            models: await p.listModels({ config: resolveProviderConfig(ctx.config, p.id) }),
+            needsKey,
+            configured,
+            models: await p.listModels(pctx),
           };
         } catch (err) {
           return {
             id: p.id,
             label: p.label,
+            needsKey: typeof p.resolveApiKey === "function",
+            configured: false,
             models: [],
             error: err instanceof Error ? err.message : String(err),
           };
@@ -2113,6 +2123,11 @@ function registerBuiltinMethods(): void {
 
     const { config: current } = await readConfigFile(workspaceRoot);
 
+    // A client that loaded config.get echoes the masks ("***") for tokens/keys back inside whatever it
+    // sends. Put the stored secret back so saving unrelated settings never overwrites one.
+    if (patch.channels) patch.channels = restoreMaskedSecrets(patch.channels, current.channels);
+    if (patch.auth) patch.auth = restoreMaskedSecrets(patch.auth, current.auth);
+
     // Deep-merge channels so partial updates don't wipe existing accounts
     let channels = current.channels;
     if (patch.channels) {
@@ -2178,6 +2193,11 @@ function registerBuiltinMethods(): void {
     const newConfig = mergeConfig(ctx.config, fullPatch);
     newConfig.agents = mergeAgentSources(newConfig.agents ?? [], globalAgents);
     ctx.config = newConfig;
+    // Plugins (providers, the LLM harness) captured the kernel's config object at
+    // register time and read it on every turn. Update it in place, or a key/baseUrl
+    // saved from Settings stays invisible to chat until the gateway restarts.
+    const kernelConfig = getKernelContext()?.config;
+    if (kernelConfig && kernelConfig !== newConfig) Object.assign(kernelConfig, newConfig);
     ctx.channelManager?.updateConfig(newConfig);
 
     // Hot-reload channels: stop disabled, start newly-enabled

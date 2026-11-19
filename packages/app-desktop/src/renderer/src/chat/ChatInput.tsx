@@ -194,24 +194,32 @@ export function ChatInput({ disabled, isStreaming, onSend, onStop, attachments, 
           />
           {mentionOpen && mentionResults.length > 0 && (
             <div className="mention-dropdown">
-              {mentionResults.map((entry, i) => (
-                <button
-                  type="button"
-                  key={entry.relativePath}
-                  className={`mention-item ${i === mentionIndex ? "active" : ""}`}
-                  onMouseDown={(e) => {
-                    e.preventDefault();
-                    pickMention(entry);
-                  }}
-                >
-                  {entry.type === "directory" ? (
-                    <FolderIcon className="hero-icon" />
-                  ) : (
-                    <DocumentIcon className="hero-icon" />
-                  )}{" "}
-                  {entry.relativePath}
-                </button>
-              ))}
+              {mentionResults.map((entry, i) => {
+                const isDir = entry.type === "directory";
+                const parts = entry.relativePath.split("/").filter(Boolean);
+                const name = parts[parts.length - 1] ?? entry.relativePath;
+                const dir = parts.slice(0, -1).join("/");
+                return (
+                  <button
+                    type="button"
+                    key={entry.relativePath}
+                    className={`mention-item ${i === mentionIndex ? "active" : ""}`}
+                    ref={i === mentionIndex ? (el) => el?.scrollIntoView({ block: "nearest" }) : undefined}
+                    title={entry.relativePath}
+                    onMouseDown={(e) => {
+                      e.preventDefault();
+                      pickMention(entry);
+                    }}
+                  >
+                    {isDir ? <FolderIcon className="hero-icon" /> : <DocumentIcon className="hero-icon" />}
+                    <span className="mention-name">
+                      {name}
+                      {isDir ? "/" : ""}
+                    </span>
+                    {dir && <span className="mention-dir">{dir}</span>}
+                  </button>
+                );
+              })}
             </div>
           )}
         </div>

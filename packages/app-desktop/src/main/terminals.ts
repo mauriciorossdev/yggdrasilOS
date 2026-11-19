@@ -1,8 +1,9 @@
 import { execFile } from "node:child_process";
 import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
+import os from "node:os";
 import { delimiter, join } from "node:path";
-import { ipcMain, type BrowserWindow } from "electron";
+import { app, ipcMain, type BrowserWindow } from "electron";
 import * as pty from "node-pty";
 // @xterm/headless ships as a bundled CJS module whose named exports aren't
 // statically analyzable under Node ESM interop (only `default` — the whole
@@ -464,6 +465,93 @@ async function parentPid(pid: number): Promise<number | undefined> {
 
 const MAX_ANCESTOR_HOPS = 12;
 
+export type TerminalMemory = {
+  /** Resident memory of the pane's process tree (pty process + every descendant), in bytes. */
+  rssBytes: number;
+  /** Per-process breakdown, biggest first (at most 8). */
+  processes: Array<{ pid: number; name: string; rssBytes: number }>;
+  processCount: number;
+};
+
+/** Machine-wide RAM in use, like Activity Monitor's "Memory Used" (macOS: active + wired + compressed; Linux: total − MemAvailable). */
+async function systemUsedBytes(): Promise<number> {
+  const total = os.totalmem();
+  try {
+    if (process.platform === "darwin") {
+      const out = await new Promise<string>((resolve, reject) =>
+        execFile("vm_stat", [], { timeout: 2000 }, (err, stdout) => (err ? reject(err) : resolve(stdout))),
+      );
+      const page = Number(/page size of (\d+) bytes/.exec(out)?.[1] ?? 16384);
+      const pages = (label: string) => Number(new RegExp(`${label}:\\s+(\\d+)`).exec(out)?.[1] ?? 0);
+      const used = (pages("Pages active") + pages("Pages wired down") + pages("Pages occupied by compressor")) * page;
+      if (used > 0) return Math.min(used, total);
+    } else if (process.platform === "linux") {
+      const { readFile } = await import("node:fs/promises");
+      const avail = Number(/MemAvailable:\s+(\d+)/.exec(await readFile("/proc/meminfo", "utf8"))?.[1]) * 1024;
+      if (avail > 0) return total - avail;
+    }
+  } catch {
+    // fall through to the portable estimate
+  }
+  return total - os.freemem();
+}
+
+/** RAM of every live pane (one `ps` per pane), Yggdrasil's own processes, and the machine's used/total RAM, for the Terminal navbar's usage bar. */
+export async function terminalMemoryAll(): Promise<{
+  totalBytes: number;
+  usedBytes: number;
+  appBytes: number;
+  panes: Array<{ id: TerminalId; rssBytes: number }>;
+}> {
+  const ids = [...terminals.keys()];
+  const [panes, usedBytes] = await Promise.all([
+    Promise.all(ids.map(async (id) => ({ id, rssBytes: (await terminalMemory(id))?.rssBytes ?? 0 }))),
+    systemUsedBytes(),
+  ]);
+  const appBytes = app.getAppMetrics().reduce((n, m) => n + m.memory.workingSetSize * 1024, 0);
+  return { totalBytes: os.totalmem(), usedBytes, appBytes, panes };
+}
+
+/** RAM of a pane: sums `rss` over the pty process and all its descendants (`ps`; not available on Windows → undefined). */
+export function terminalMemory(id: TerminalId): Promise<TerminalMemory | undefined> {
+  const handle = terminals.get(id);
+  if (!handle || process.platform === "win32") return Promise.resolve(undefined);
+  const root = handle.proc.pid;
+  return new Promise((resolve) => {
+    execFile("ps", ["-Ao", "pid=,ppid=,rss=,comm="], { timeout: 3000, maxBuffer: 8 * 1024 * 1024 }, (err, stdout) => {
+      if (err) return resolve(undefined);
+      const rows = new Map<number, { ppid: number; rssBytes: number; name: string }>();
+      const children = new Map<number, number[]>();
+      for (const line of stdout.split("\n")) {
+        const m = /^\s*(\d+)\s+(\d+)\s+(\d+)\s+(.*)$/.exec(line);
+        if (!m) continue;
+        const pid = Number(m[1]);
+        const ppid = Number(m[2]);
+        rows.set(pid, { ppid, rssBytes: Number(m[3]) * 1024, name: m[4].trim().split("/").pop() ?? m[4] });
+        children.set(ppid, [...(children.get(ppid) ?? []), pid]);
+      }
+      if (!rows.has(root)) return resolve(undefined);
+      const procs: TerminalMemory["processes"] = [];
+      const stack = [root];
+      const seen = new Set<number>();
+      while (stack.length) {
+        const pid = stack.pop()!;
+        if (seen.has(pid)) continue;
+        seen.add(pid);
+        const r = rows.get(pid);
+        if (r) procs.push({ pid, name: r.name, rssBytes: r.rssBytes });
+        stack.push(...(children.get(pid) ?? []));
+      }
+      procs.sort((a, b) => b.rssBytes - a.rssBytes);
+      resolve({
+        rssBytes: procs.reduce((n, p) => n + p.rssBytes, 0),
+        processes: procs.slice(0, 8),
+        processCount: procs.length,
+      });
+    });
+  });
+}
+
 /**
  * The terminal whose process is `pid` or an ancestor of it, e.g. a pane that
  * launched `claude` directly, or through a shell. The Worktrees view uses it to
@@ -625,6 +713,8 @@ export function registerTerminalIpc(
   ipcMain.handle("terminal:dispose", (_event, id: TerminalId) => disposeTerminal(id));
   ipcMain.handle("terminal:read", (_event, id: TerminalId, maxChars?: number) => readTerminalOutput(id, maxChars));
   ipcMain.handle("terminal:forPid", (_event, pid: number) => findTerminalForPid(pid));
+  ipcMain.handle("terminal:memory", (_event, id: TerminalId) => terminalMemory(id));
+  ipcMain.handle("terminal:memoryAll", () => terminalMemoryAll());
   ipcMain.handle("terminal:snapshot", (_event, id: TerminalId) => snapshotTerminal(id));
   ipcMain.handle("terminal:getLayout", (_event, projectId: string) => readTerminalLayout(projectId));
   ipcMain.handle("terminal:saveLayout", (_event, projectId: string, layout: TerminalLayout) =>

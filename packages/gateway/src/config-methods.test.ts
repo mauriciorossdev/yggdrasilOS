@@ -13,7 +13,7 @@ vi.mock("node:os", async (importOriginal) => {
 });
 
 import { homedir } from "node:os";
-import { mergeConfig, writeConfigFile } from "@yggdrasil/config";
+import { mergeConfig, readConfigFile, writeConfigFile } from "@yggdrasil/config";
 import { resetRegistryForTest, registerProvider } from "@yggdrasil/kernel";
 import type { ProviderPlugin } from "@yggdrasil/sdk";
 import { invokeGatewayMethod } from "./server.js";
@@ -205,5 +205,34 @@ describe("config gateway methods", () => {
     expect(brokenEntry?.models).toEqual([]);
     expect(brokenEntry?.error).toMatch(/unreachable/);
     expect(healthyEntry?.models).toEqual([{ id: "m1", label: "M1", provider: "healthy" }]);
+  });
+
+  it("saving what config.get returned never overwrites stored secrets with the mask (provider key, channel token, gateway key)", async () => {
+    const root = await mkdtemp(join(tmpdir(), "ygg-cfg-mask-"));
+    await writeConfigFile(root, {
+      providers: { anthropic: { apiKey: "sk-ant-real" } },
+      channels: { telegram: { enabled: true, accounts: { default: { botToken: "bot-real" } } } },
+      auth: { gateway: { apiKey: "gw-real", required: true } },
+    });
+    const config = mergeConfig({}, {});
+
+    const shown = (await invokeGatewayMethod("config.get", {}, config, null, root)) as {
+      config: { providers: unknown; channels: unknown; auth: unknown };
+    };
+    expect(JSON.stringify(shown)).not.toContain("sk-ant-real");
+
+    // A settings form saves everything it loaded.
+    await invokeGatewayMethod(
+      "config.patch",
+      { providers: shown.config.providers, channels: shown.config.channels, auth: shown.config.auth },
+      config,
+      null,
+      root,
+    );
+
+    const { config: onDisk } = await readConfigFile(root);
+    expect(onDisk.providers?.anthropic?.apiKey).toBe("sk-ant-real");
+    expect((onDisk.channels?.telegram?.accounts as Record<string, { botToken?: string }>).default?.botToken).toBe("bot-real");
+    expect(onDisk.auth?.gateway?.apiKey).toBe("gw-real");
   });
 });
