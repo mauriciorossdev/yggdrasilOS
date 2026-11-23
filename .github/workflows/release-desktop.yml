@@ -58,8 +58,20 @@ jobs:
       # falls back to an ad-hoc signing path that needs symlink permissions
       # it doesn't have here — this variable stops it from even trying.
       # Remove once real CSC_LINK/CSC_KEY_PASSWORD secrets are wired in.
+      #
+      # On macOS the app is signed ad-hoc (electron-builder.yml). With asar
+      # off, @electron/osx-sign opens every file of the app at once to find
+      # the binaries, which is more than the runner's limits allow (EMFILE).
+      # Raise the kernel's per-process cap first: ulimit can't go past it.
       - name: Build installer
-        run: pnpm --filter @yggdrasil/app-desktop exec electron-builder --publish never
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then
+            sudo sysctl -w kern.maxfiles=524288 kern.maxfilesperproc=262144
+            ulimit -n 262144
+            echo "open files limit: $(ulimit -n)"
+          fi
+          pnpm --filter @yggdrasil/app-desktop exec electron-builder --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
