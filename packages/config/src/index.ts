@@ -221,11 +221,30 @@ export {
   CONFIG_FILENAME,
   resolveConfigPath,
   readConfigFile,
+  readRawConfigFile,
+  readProjectProviders,
+  readEffectiveConfig,
   writeConfigFile,
   uniqueStrings,
 } from "./file.js";
 export { sanitizeConfigForClient, isMaskedSecret, restoreMaskedSecrets } from "./sanitize.js";
 export { validateConfigPatch, type ConfigPatchInput, type ConfigPatchResult } from "./patch.js";
+export {
+  resolveGlobalProvidersPath,
+  readGlobalProviders,
+  writeGlobalProviders,
+  cleanProviders,
+  applyProviderEdits,
+  removeProviderFields,
+  projectOwnProviders,
+  mergeProviderSources,
+  providerKeyEnvVar,
+  PROVIDER_FIELDS,
+  type ProvidersMap,
+  type ProviderField,
+  type ProviderFieldSource,
+  type ProviderSources,
+} from "./global-providers.js";
 export {
   resolveGlobalAgentsPath,
   readGlobalAgents,

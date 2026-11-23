@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useI18n } from "../i18n/index.js";
 import { TrashIcon, XMarkIcon } from "@heroicons/react/20/solid";
-import type { AgentFlowHarness, AgentFlowNode, AgentInfo } from "../types.js";
+import type { AgentFlowHarness, AgentFlowNode, AgentInfo, UserMcpServer } from "../types.js";
+import { UserMcpPicker } from "../settings/UserMcpPicker.js";
 import { AgentTemplatePicker } from "./AgentTemplatePicker.js";
 import { isCliVisible } from "../onboarding/harnessFilter.js";
 import { useOnboarding } from "../onboarding/store.js";
@@ -87,6 +88,13 @@ export function NodeConfigDrawer({
   const [newAgentId, setNewAgentId] = useState("");
 
   const setHarness = (harness: AgentFlowHarness) => onChange({ ...node, harness });
+  // User-scope MCP servers for a claude node's own MCP choice (claudePaneSettings.ts).
+  const [userMcpServers, setUserMcpServers] = useState<UserMcpServer[] | null>(null);
+  const isClaude = node.harness.type === "claude";
+  useEffect(() => {
+    if (isClaude && userMcpServers === null)
+      void window.yggdrasil.claudePaneSettings.get().then((r) => setUserMcpServers(r.userMcpServers)).catch(() => setUserMcpServers([]));
+  }, [isClaude, userMcpServers]);
   const addDirsValue = (dirs?: string[]) => (dirs ?? []).join(", ");
   const parseAddDirs = (v: string) =>
     v
@@ -288,6 +296,17 @@ export function NodeConfigDrawer({
                     ))}
                   </select>
                 </label>
+                {!claude.cloud && (
+                  <div className="flow-drawer-field">
+                    <span>{t("set.cliAgents.userMcp")}</span>
+                    <UserMcpPicker
+                      value={claude.userMcp}
+                      servers={userMcpServers ?? []}
+                      allowGlobal
+                      onChange={(userMcp) => setHarness({ ...claude, userMcp })}
+                    />
+                  </div>
+                )}
                 <label>
                   {t("flow.drawer.session")}
                   <select

@@ -4,7 +4,7 @@
   "license": "MIT",
   "private": true,
   "type": "module",
-  "description": "Desktop client (Windows/Mac/Linux) for the Yggdrasil gateway — agent picker, multi-session chat, tool-call approvals.",
+  "description": "Desktop client (Windows/Mac/Linux) for the Yggdrasil gateway \u2014 agent picker, multi-session chat, tool-call approvals.",
   "author": {
     "name": "Mauricio Ross",
     "email": "mauriciorossdev@users.noreply.github.com"
@@ -72,6 +72,7 @@
     "@yggdrasil/tool-system": "workspace:*",
     "@yggdrasil/tool-weather": "workspace:*",
     "@yggdrasil/tools-sdk": "workspace:*",
+    "@yggdrasil/ui-kit": "workspace:*",
     "chokidar": "^5.0.0",
     "electron-updater": "^6.8.11",
     "monaco-editor": "^0.57.0",

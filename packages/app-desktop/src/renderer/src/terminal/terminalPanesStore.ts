@@ -55,3 +55,19 @@ export function onFocusPane(fn: FocusListener): () => void {
 export function requestFocusPane(id: string): void {
   focusListener?.(id);
 }
+
+type CloseListener = (ids: string[]) => void;
+let closeListener: CloseListener | null = null;
+
+/** TerminalContainer registers how to close panes (the same as their ✕: the pty is disposed). */
+export function onClosePanes(fn: CloseListener): () => void {
+  closeListener = fn;
+  return () => {
+    if (closeListener === fn) closeListener = null;
+  };
+}
+
+/** Closes panes from outside the Terminal tab (Worktrees' bulk cleanup). */
+export function requestClosePanes(ids: string[]): void {
+  if (ids.length > 0) closeListener?.(ids);
+}

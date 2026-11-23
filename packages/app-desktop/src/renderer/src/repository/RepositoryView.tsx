@@ -10,6 +10,9 @@ import { readDiffLayout, writeDiffLayout } from "./diffLayout.js";
 import { RepoSelector } from "./RepoSelector.js";
 import { splitPath } from "./format.js";
 import { useRepo } from "./useRepo.js";
+import { useRepoColumns } from "./repoColumns.js";
+import { ReviewBar } from "../review/ReviewBar.js";
+import { useRepoLocation } from "../review/useRepoLocation.js";
 import type { CommitDetail, DiffContent, DiffSelection, GitChange } from "./types.js";
 import { useI18n } from "../i18n/index.js";
 
@@ -38,6 +41,10 @@ export function RepositoryView() {
   const [commitSha, setCommitSha] = useState<string | null>(null);
   const [detail, setDetail] = useState<CommitDetail | null>(null);
   const lastCheckout = useRef<{ branch: string; remote: boolean } | null>(null);
+  // Resizable columns: changes and diff ≥ 30% of the row, the diff ≥ 50% in split mode.
+  const columns = useRepoColumns(diffLayout === "split");
+  // Review comments live per repo/worktree root (notes/features/code-review-comments.md).
+  const location = useRepoLocation(repo);
 
   // Selection belongs to one repo.
   useEffect(() => {
@@ -249,8 +256,9 @@ export function RepositoryView() {
         </div>
       )}
 
-      <div className="repo-body">
+      <div className="repo-body" ref={columns.rowRef}>
         <BranchesPanel
+          width={columns.rail}
           branches={r.branches}
           stashes={r.stashes}
           remotes={r.remotes}
@@ -271,7 +279,9 @@ export function RepositoryView() {
           }}
         />
 
-        <div className="repo-center">
+        <div {...columns.railHandle} aria-label={t("repo.view.resizeBranches")} />
+
+        <div className="repo-center" style={{ width: columns.center }}>
           <div className="repo-tabs" role="tablist">
             <button type="button" role="tab" aria-selected={tab === "changes"} className={`repo-tab${tab === "changes" ? " active" : ""}`} onClick={() => setTab("changes")}>
               {t("repo.view.tabChanges")}
@@ -321,6 +331,8 @@ export function RepositoryView() {
           </div>
         </div>
 
+        <div {...columns.centerHandle} aria-label={t("repo.view.resizeChanges")} />
+
         <div className="repo-diff">
           <div className="repo-diff-title">
             {selection ? (
@@ -351,8 +363,24 @@ export function RepositoryView() {
               content={selection ? diff : null}
               loading={diffLoading}
               sideBySide={diffLayout === "split"}
+              review={selection ? { root: location?.root, path: selection.path, commitSha: selection.kind === "commit" ? selection.sha : undefined } : undefined}
             />
           </div>
+          {location && (
+            <ReviewBar
+              root={location.root}
+              name={location.root.split("/").pop() ?? location.root}
+              onOpen={(c) => {
+                if (c.commitSha) {
+                  setSelection({ kind: "commit", sha: c.commitSha, path: c.path });
+                  return;
+                }
+                const change = status?.changes.find((x) => x.path === c.path);
+                const staged = change && change.kind !== "untracked" && change.worktree === ".";
+                setSelection({ kind: "change", path: c.path, mode: staged ? "staged" : "unstaged" });
+              }}
+            />
+          )}
         </div>
       </div>
 

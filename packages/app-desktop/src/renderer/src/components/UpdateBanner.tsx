@@ -1,5 +1,5 @@
 import { useEffect, useState } from "react";
-import { Button } from "../ui/Button.js";
+import { Button } from "@yggdrasil/ui-kit";
 import { useI18n } from "../i18n/index.js";
 
 type Update = { version: string; url: string };

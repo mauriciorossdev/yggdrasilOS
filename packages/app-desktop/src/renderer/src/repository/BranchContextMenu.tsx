@@ -1,7 +1,7 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
 import { branchRemoteTarget, branchUrl, compareUrl, remoteWeb } from "./branchUrl.js";
 import type { BranchInfo, RemoteInfo } from "./types.js";
-import { useDismiss } from "../ui/useDismiss.js";
+import { useDismiss } from "@yggdrasil/ui-kit";
 import { useI18n } from "../i18n/index.js";
 
 type Props = {

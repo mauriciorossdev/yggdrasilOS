@@ -14,6 +14,8 @@ type Health = {
   ok: boolean;
   version?: string;
   authRequired?: boolean;
+  /** Whether the gateway has any API key at all. From another device, none means it can't connect yet. */
+  keyConfigured?: boolean;
   ui?: boolean;
 };
 

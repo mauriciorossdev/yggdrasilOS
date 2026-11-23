@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from "react";
 import { useI18n } from "../i18n/index.js";
 import type { LeafPane } from "./paneTree.js";
+import { useAttention } from "./attentionStore.js";
+import { useQueues } from "./queueStore.js";
 
 type Props = {
   panes: LeafPane[];
@@ -48,25 +50,47 @@ function useWorkingPanes(): Set<string> {
  * as chips — click to restore. Purely a display of TerminalContainer's own
  * `minimizedIds` state; the panes themselves (and their ptys) keep running
  * untouched while minimized, see projectVisibleTree in paneTree.ts. A chip
- * pulses while its pane is producing output.
+ * pulses while its pane is producing output; a claude pane waiting for the
+ * user or done gets that state's color (attentionStore.ts).
  */
 export function MinimizedDock({ panes, onRestore }: Props) {
   const { t } = useI18n();
   const working = useWorkingPanes();
+  const attention = useAttention();
+  const queues = useQueues();
 
   return (
     <div className="minimized-dock">
-      {panes.map((pane) => (
-        <button
-          key={pane.id}
-          type="button"
-          className={`minimized-chip${working.has(pane.id) ? " working" : ""}`}
-          title={t(working.has(pane.id) ? "term.dock.restoreTitleWorking" : "term.dock.restoreTitle", { title: pane.title })}
-          onClick={() => onRestore(pane.id)}
-        >
-          {pane.title}
-        </button>
-      ))}
+      {panes.map((pane) => {
+        const status = attention[pane.id]?.status;
+        const stateClass =
+          status === "waiting" ? " attention-waiting" : status === "done" ? " attention-done" : working.has(pane.id) ? " working" : "";
+        const titleKey =
+          status === "waiting"
+            ? "term.dock.restoreTitleWaiting"
+            : status === "done"
+              ? "term.dock.restoreTitleDone"
+              : working.has(pane.id)
+                ? "term.dock.restoreTitleWorking"
+                : "term.dock.restoreTitle";
+        return (
+          <button
+            key={pane.id}
+            type="button"
+            className={`minimized-chip${stateClass}`}
+            title={t(titleKey, { title: pane.title })}
+            onClick={() => onRestore(pane.id)}
+          >
+            {(status === "waiting" || status === "done") && <span className="minimized-chip-dot" aria-hidden />}
+            {pane.title}
+            {(queues[pane.id]?.items.length ?? 0) > 0 && (
+              <span className="minimized-chip-queue" title={t("queue.dockTitle", { count: queues[pane.id]!.items.length })}>
+                {queues[pane.id]!.items.length}
+              </span>
+            )}
+          </button>
+        );
+      })}
     </div>
   );
 }

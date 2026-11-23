@@ -29,6 +29,8 @@ export function WorkspaceSection() {
   }, []);
 
   useEffect(refresh, [refresh]);
+  // The home window's Workspaces canvas (or another window) can change links/trust meanwhile.
+  useEffect(() => window.yggdrasil.workspace.onChanged(refresh), [refresh]);
 
   const toggleLink = async (targetId: string, linked: boolean) => {
     await window.yggdrasil.workspace.setLink(targetId, linked);

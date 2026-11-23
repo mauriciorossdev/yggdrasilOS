@@ -9,6 +9,7 @@ import {
 } from "@heroicons/react/20/solid";
 import { SettingsView } from "../settings/SettingsView.js";
 import { ClaudeUsage } from "./ClaudeUsage.js";
+import { AttentionCounter } from "./AttentionCounter.js";
 import { useActiveTab, useExtraTabs, viewLabel } from "../ui/mainTabsStore.js";
 import { useI18n } from "../i18n/index.js";
 import logoUrl from "../assets/logo.png";
@@ -138,6 +139,7 @@ export function TitleBar() {
         )}
       </div>
       <div className="title-bar-controls">
+        {projectId && <AttentionCounter />}
         <ClaudeUsage />
         {!window.yggdrasil.isDefaultProject && (
           <button

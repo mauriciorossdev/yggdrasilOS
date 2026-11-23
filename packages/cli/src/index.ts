@@ -4,7 +4,7 @@ import http from "node:http";
 import { watch } from "node:fs";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
-import { mergeConfig, type YggdrasilConfig } from "@yggdrasil/config";
+import { mergeConfig, readEffectiveConfig, type YggdrasilConfig } from "@yggdrasil/config";
 import { createTuiApprovalPrompt } from "@yggdrasil/channel-tui";
 import { startGatewayServer } from "@yggdrasil/gateway";
 import type { ToolApprovalHandler } from "@yggdrasil/sdk";
@@ -24,7 +24,9 @@ import { resolveWorkspaceRoot } from "./workspace.js";
 
 async function loadConfig(): Promise<YggdrasilConfig> {
   const workspaceRoot = await resolveWorkspaceRoot();
-  const { config } = await readConfigFile(workspaceRoot);
+  // Providers resolved as defaults < ~/.yggdrasil/providers.json < project, so the
+  // TUI and every desktop project window share them (notes/features/global-providers.md).
+  const { config } = await readEffectiveConfig(workspaceRoot);
   return config;
 }
 

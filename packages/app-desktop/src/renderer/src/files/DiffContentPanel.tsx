@@ -1,3 +1,5 @@
+import { ReviewBar } from "../review/ReviewBar.js";
+import { useRepoLocation } from "../review/useRepoLocation.js";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { DocumentTextIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
@@ -38,6 +40,8 @@ export function DiffContentPanel({ path, filePath, onOpenFile, onClose, headerAc
   const [error, setError] = useState<string | null>(null);
   const [layout, setLayout] = useState<DiffLayout>(readDiffLayout);
   const [version, setVersion] = useState(0);
+  // `path` is relative to the repo that holds the project: the project folder itself resolves that repo.
+  const location = useRepoLocation(filePath ?? ".");
   const timer = useRef<number | undefined>(undefined);
 
   // Keeps the previous diff on screen while a refresh loads, so an agent's edits don't flicker it.
@@ -115,9 +119,17 @@ export function DiffContentPanel({ path, filePath, onOpenFile, onClose, headerAc
         {error ? (
           <p className="error">{error}</p>
         ) : (
-          <DiffViewer path={path} modelKey={`side:${path}`} content={diff} loading={loading} sideBySide={layout === "split"} />
+          <DiffViewer
+            path={path}
+            modelKey={`side:${path}`}
+            content={diff}
+            loading={loading}
+            sideBySide={layout === "split"}
+            review={{ root: location?.root, path }}
+          />
         )}
       </div>
+      {location && <ReviewBar root={location.root} name={location.root.split("/").pop() ?? location.root} />}
     </aside>
   );
 }

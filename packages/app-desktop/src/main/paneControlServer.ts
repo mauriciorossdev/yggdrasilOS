@@ -1,3 +1,6 @@
+import type { QueueSource } from "./paneQueue.js";
+import type { SubmitResult, SubmitWhen } from "./paneQueueHost.js";
+import { parseAttentionEvent, type AttentionEvent } from "./attention.js";
 import { randomBytes, randomUUID } from "node:crypto";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { execFile } from "node:child_process";
@@ -13,6 +16,8 @@ import {
   readTerminalOutputAtWidth,
   readTranscript,
   restoreTerminalNativeSize,
+  setFlowNodeId,
+  submitToTerminal,
   terminalExists,
   writeToTerminal,
 } from "./terminals.js";
@@ -68,7 +73,13 @@ export type PaneControlHandle = {
   /** Same as POST /panes — see createPane below. */
   createPane: (spec: CreatePaneSpec) => Promise<{ id: string; worktree?: CreatedWorktree }>;
   /** Same as POST /panes/:id/write — see writePane below. */
-  writePane: (id: string, text: string, pressEnter: boolean, sourcePaneId?: string) => Promise<void>;
+  writePane: (
+    id: string,
+    text: string,
+    pressEnter: boolean,
+    sourcePaneId?: string,
+    meta?: { source?: QueueSource; when?: SubmitWhen },
+  ) => Promise<SubmitResult>;
   /** Recent plain-text output of a live pane (undefined if it is gone) — what the cross-project workspace reads through. */
   readPane: (id: string, maxChars: number) => string | undefined;
 };
@@ -197,6 +208,10 @@ export async function startPaneControlServer(
   workspace?: WorkspaceBridge,
   /** Backs POST /editors/call (the office tools' transport): runs an operation on an editor open in this project's window — see ChatView.tsx's editors.onRequest subscription. Rejects with a message the model can read. */
   editors?: { call: (kind: string, op: string, params: Record<string, unknown>) => Promise<unknown> },
+  /** Backs POST /attention (attentionBridge.ts, run by a claude pane's hooks): this project's AttentionTracker, see main/index.ts. */
+  attention?: (paneId: string, event: AttentionEvent) => void,
+  /** Review comments on code (codeCommentsHost.ts): the agent's code_comment_done. */
+  codeComments?: { commentDone: (id: string) => Promise<boolean> },
 ): Promise<PaneControlHandle> {
   const token = randomBytes(24).toString("hex");
   const panes = new Map<string, PaneRecord>();
@@ -343,11 +358,17 @@ export async function startPaneControlServer(
             name: panes.get(sourcePaneId)?.title ?? "Orchestrator",
           }
         : undefined;
-      void recordAutoCapturedNode(
+      // A role this orchestrator already has a node for reuses that node
+      // (agentTeams.ts) — point the live pane at it, so its own sub-agents,
+      // its write_pane edges and the canvas below all land on that one node
+      // instead of a duplicate. A failed write only loses the bookkeeping,
+      // never the pane itself.
+      const nodeId = await recordAutoCapturedNode(
         projectPath,
         { id, name: title, initialPrompt: purpose, specPath: resolvedSpec?.projectRelativePath },
         source,
-      );
+      ).catch(() => id);
+      if (nodeId !== id) setFlowNodeId(id, nodeId);
       // Live mirror for whichever Agent Flow canvas is open right now —
       // recordAutoCapturedNode above only persists to agent-teams.json,
       // invisible until the user manually reopens that team. This lets
@@ -357,7 +378,7 @@ export async function startPaneControlServer(
       // recordAutoCapturedNode's own upsertTeamNode builds.
       if (win && !win.isDestroyed()) {
         win.webContents.send("agentFlow:autoCapture", {
-          node: { id, name: title, initialPrompt: purpose, specPath: resolvedSpec?.projectRelativePath },
+          node: { id: nodeId, name: title, initialPrompt: purpose, specPath: resolvedSpec?.projectRelativePath },
           source,
         });
       }
@@ -366,17 +387,28 @@ export async function startPaneControlServer(
     return worktree ? { id, worktree } : { id };
   }
 
-  async function doWritePane(id: string, text: string, pressEnter: boolean, sourcePaneId?: string): Promise<void> {
+  async function doWritePane(
+    id: string,
+    text: string,
+    pressEnter: boolean,
+    sourcePaneId?: string,
+    meta: { source?: QueueSource; when?: SubmitWhen } = {},
+  ): Promise<SubmitResult> {
     if (!terminalExists(id)) throw new Error("unknown pane id");
-    writeToTerminal(id, text);
+    let result: SubmitResult = { queued: false };
     if (pressEnter) {
-      // A composer (Claude Code's included) can't tell a burst of
-      // `text + "\r"` written in one shot apart from a multi-line paste — it
-      // inserts the \r as a literal newline instead of submitting, same as
-      // pasting multi-line text never auto-submits for a human either.
-      // Sending Enter as its own write, after the text has had a moment to
-      // land, makes it read as a genuinely separate keystroke.
-      setTimeout(() => writeToTerminal(id, "\r"), 80);
+      // A message to submit: one bracketed paste once the app is ready, then
+      // Enter as its own keystroke once the app has taken the paste in — a
+      // fixed-delay Enter could submit a long message only partly (see
+      // terminalSubmit.ts). Without Enter it's raw input (keys, "y", control
+      // characters) and must stay unbracketed.
+      // A busy claude pane queues it (paneQueueHost.ts): the source labels it in the pane's queue list.
+      result = await submitToTerminal(id, text, undefined, {
+        source: meta.source ?? (sourcePaneId ? { kind: "orchestrator", paneId: sourcePaneId } : { kind: "app" }),
+        when: meta.when,
+      });
+    } else {
+      writeToTerminal(id, text);
     }
 
     // Live "who's talking to whom" pulse for AgentFlowCanvas — same stable-
@@ -393,6 +425,7 @@ export async function startPaneControlServer(
         });
       }
     }
+    return result;
   }
 
   async function handleRequest(req: IncomingMessage, res: ServerResponse): Promise<void> {
@@ -491,6 +524,9 @@ export async function startPaneControlServer(
         let specRelativePath: string | null = null;
         const pressEnter = body.pressEnter !== false;
         const sourcePaneId = typeof body.sourcePaneId === "string" ? body.sourcePaneId : undefined;
+        const when = body.when === "now" ? "now" : "auto";
+        // The gateway's terminals.write (phone, web console) says so; anything else without a source pane is the app.
+        const source: QueueSource | undefined = body.source === "remote" ? { kind: "remote" } : undefined;
         // specPath: hand the worker a feature doc by reference. Validated
         // before anything is written so a bad path never reaches the pty (and
         // isn't mistaken for the 404 below).
@@ -508,8 +544,9 @@ export async function startPaneControlServer(
           sendJson(res, 400, { error: "write_pane needs `text` or `specPath`" });
           return;
         }
+        let result: SubmitResult;
         try {
-          await doWritePane(id, text, pressEnter, sourcePaneId);
+          result = await doWritePane(id, text, pressEnter, sourcePaneId, { source, when });
         } catch (err) {
           sendJson(res, 404, { error: err instanceof Error ? err.message : "unknown pane id" });
           return;
@@ -520,6 +557,26 @@ export async function startPaneControlServer(
           const win = getWindow();
           if (win && !win.isDestroyed()) win.webContents.send("pane:spec", { paneId: id, specPath: specRelativePath });
         }
+        sendJson(res, 200, { ok: true, ...result });
+        return;
+      }
+
+      if (req.method === "POST" && parts.length === 1 && parts[0] === "attention") {
+        // Posted by attentionBridge.ts from a claude pane's hooks. The pane id
+        // comes from the pane's own env (YGG_PANE_ID); only this project's
+        // live panes are accepted.
+        const body = await readJsonBody(req);
+        const paneId = typeof body.paneId === "string" ? body.paneId : "";
+        const event = parseAttentionEvent(body);
+        if (!event) {
+          sendJson(res, 400, { error: "unknown attention event" });
+          return;
+        }
+        if (!listTerminals().some((t) => t.id === paneId && t.projectId === projectId)) {
+          sendJson(res, 404, { error: "no such pane in this project" });
+          return;
+        }
+        attention?.(paneId, event);
         sendJson(res, 200, { ok: true });
         return;
       }
@@ -634,6 +691,17 @@ export async function startPaneControlServer(
         if (win && !win.isDestroyed()) win.webContents.send("browserTab:requestShow");
         const picked = await browserTab.startPick(timeoutMs);
         sendJson(res, 200, { picked });
+        return;
+      }
+
+      if (req.method === "POST" && parts.length === 2 && parts[0] === "code" && parts[1] === "comment-done") {
+        const body = await readJsonBody(req);
+        const id = typeof body.commentId === "string" ? body.commentId : "";
+        if (!id) {
+          sendJson(res, 400, { error: "commentId is required" });
+          return;
+        }
+        sendJson(res, 200, { ok: codeComments ? await codeComments.commentDone(id) : false });
         return;
       }
 

@@ -1,0 +1,37 @@
+{
+  "name": "@yggdrasil/ui-kit",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "UI shared by app-desktop and web-console: theme tokens, primitives and the UI-language store. Source-only (no build): each app's Vite compiles it.",
+  "exports": {
+    ".": "./src/index.ts",
+    "./ui.css": "./src/ui/ui.css",
+    "./tokens.css": "./src/theme/tokens.css",
+    "./components.css": "./src/components.css",
+    "./types": "./src/types.ts"
+  },
+  "scripts": {
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "sync-css": "node scripts/sync-css.mjs"
+  },
+  "peerDependencies": {
+    "@heroicons/react": "^2.2.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1"
+  },
+  "devDependencies": {
+    "@heroicons/react": "^2.2.0",
+    "@types/react": "^19.1.2",
+    "@types/react-dom": "^19.3.0",
+    "react": "^19.3.1",
+    "react-dom": "^19.3.1",
+    "typescript": "^7.0.2",
+    "@types/node": "^22.15.0"
+  },
+  "dependencies": {
+    "@yggdrasil/client-web": "workspace:*",
+    "react-markdown": "^9.0.1",
+    "remark-gfm": "^4.0.0"
+  }
+}

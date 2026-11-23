@@ -8,6 +8,8 @@ export type RepoInfo = {
   name: string;
   branch?: string;
   relation: RepoRelation;
+  /** A linked worktree opened from the Worktrees tab (git.repos never lists those). */
+  worktree?: boolean;
   /** Only on "parent": where the project sits inside the repo ("packages/x"). */
   prefix?: string;
 };

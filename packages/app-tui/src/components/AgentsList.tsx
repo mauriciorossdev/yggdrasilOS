@@ -8,16 +8,23 @@ type Props = {
   activeAgentId: string | null;
   onSelect: (agentId: string) => void;
   onCreate: () => void;
+  /** Edit the highlighted agent ("e"). */
+  onEdit?: (agent: AgentInfo) => void;
   onClose: () => void;
 };
 
-export function AgentsList({ agents, activeAgentId, onSelect, onCreate, onClose }: Props): React.ReactElement {
+export function AgentsList({ agents, activeAgentId, onSelect, onCreate, onEdit, onClose }: Props): React.ReactElement {
   const [selectedIndex, setSelectedIndex] = useState(0);
   const rowCount = agents.length + 1; // +1 for "create new"
 
-  useInput((_input, key) => {
+  useInput((input, key) => {
     if (key.escape) {
       onClose();
+      return;
+    }
+    if (input === "e" && onEdit && selectedIndex > 0) {
+      const agent = agents[selectedIndex - 1];
+      if (agent) onEdit(agent);
       return;
     }
     if (key.upArrow) {
@@ -61,7 +68,7 @@ export function AgentsList({ agents, activeAgentId, onSelect, onCreate, onClose 
         </Box>
       ))}
       <Box marginTop={1}>
-        <Text color={theme.dim}>↑↓ navigate · enter select/create · esc back</Text>
+        <Text color={theme.dim}>↑↓ navigate · enter select/create · e edit · esc back</Text>
       </Box>
     </Box>
   );

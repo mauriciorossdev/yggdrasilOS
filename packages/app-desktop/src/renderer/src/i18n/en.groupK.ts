@@ -21,7 +21,6 @@ export const enGroupK = {
   "set.general.scriptsOpenInHelp": "Scripts from the sidebar's Scripts section. Inside the app they show their status and can be stopped or restarted from the sidebar.",
   "claudeUsage.session": "Session resets {time}",
   "claudeUsage.week": "Week resets {time}",
-  "ui.tabs.closeNamed": "Close {name}",
   "home.title": "Projects",
   "home.searchPlaceholder": "Search projects…",
   "home.searchAria": "Search projects",

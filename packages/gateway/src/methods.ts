@@ -1,5 +1,6 @@
 import type { AgentConfig, YggdrasilConfig } from "@yggdrasil/config";
 import { registerGitMethods } from "./git-methods.js";
+import { refreshProviders, saveProviderEdits, scopeProvider, type ProvidersScope } from "./globalProviders.js";
 import { searchContent } from "./fs-search-content.js";
 import { indexNotes } from "./documents-index.js";
 import { QUEUEABLE_TOOLS, drainDeviceQueue, type QueuedCall } from "./assistant/deviceQueue.js";
@@ -16,6 +17,7 @@ import {
   mergeAgentSources,
   mergeConfig,
   readConfigFile,
+  readEffectiveConfig,
   readGlobalAgents,
   resolveProviderConfig,
   restoreMaskedSecrets,
@@ -948,9 +950,13 @@ function registerBuiltinMethods(): void {
       const res = await fetch(`${url}/panes/${encodeURIComponent(id)}/write`, {
         method: "POST",
         headers: { "content-type": "application/json", authorization: `Bearer ${token}` },
-        body: JSON.stringify({ text, pressEnter: params.pressEnter !== false }),
+        // "remote": the desktop labels it (phone / web console) in a busy pane's message queue.
+        body: JSON.stringify({ text, pressEnter: params.pressEnter !== false, source: "remote", when: params.when === "now" ? "now" : "auto" }),
       });
-      return { ok: res.ok };
+      if (!res.ok) return { ok: false };
+      // { queued, position } when the pane's agent was busy and the message waits for its turn to end.
+      const body = (await res.json().catch(() => ({}))) as { queued?: boolean; position?: number };
+      return { ok: true, ...(body.queued ? { queued: true, position: body.position } : {}) };
     } catch {
       return { ok: false };
     }
@@ -2103,11 +2109,14 @@ function registerBuiltinMethods(): void {
         configPath: null,
       };
     }
-    const { config, path } = await readConfigFile(workspaceRoot);
+    // Providers come resolved (defaults < ~/.yggdrasil/providers.json < project), with
+    // where each field came from, so Settings can say "global" or "this project".
+    const { config, path, providerSources } = await readEffectiveConfig(workspaceRoot);
     const globalAgents = await readGlobalAgents();
     const mergedConfig = { ...config, agents: mergeAgentSources(config.agents ?? [], globalAgents) };
     return {
       config: sanitizeConfigForClient(mergedConfig),
+      providerSources,
       workspaceRoot,
       configPath: path,
     };
@@ -2117,9 +2126,13 @@ function registerBuiltinMethods(): void {
     const workspaceRoot = ctx.workspaceRoot;
     if (!workspaceRoot) throw new Error("workspaceRoot not configured");
 
-    const { patch, hotReloadedKeys, restartRequiredKeys } = validateConfigPatch(
-      params as Record<string, unknown>,
-    );
+    // Not a config key: where provider edits go (notes/features/global-providers.md).
+    const { providersScope: rawScope, ...patchParams } = params as Record<string, unknown>;
+    if (rawScope !== undefined && rawScope !== "global" && rawScope !== "project") {
+      throw new Error(`config.patch: providersScope must be "global" or "project", got ${JSON.stringify(rawScope)}`);
+    }
+    const providersScope: ProvidersScope = rawScope ?? "global";
+    const { patch, hotReloadedKeys, restartRequiredKeys } = validateConfigPatch(patchParams);
 
     const { config: current } = await readConfigFile(workspaceRoot);
 
@@ -2156,19 +2169,15 @@ function registerBuiltinMethods(): void {
       agents = [...byId.values()];
     }
 
-    // Merge providers per-id-and-per-field against current on-disk state,
-    // same reasoning as the agents merge above: a naive replace would let
-    // editing one provider's baseUrl silently drop another provider's (or
-    // that same provider's own untouched) apiKey/defaultModel.
-    let providers = current.providers;
-    if (patch.providers) {
-      providers = { ...current.providers };
-      for (const [id, p] of Object.entries(patch.providers)) {
-        providers[id] = { ...providers[id], ...p };
-      }
-    }
+    // Provider edits are per field (an omitted field is left alone, so a form that never
+    // saw the real key can't wipe it). By default they go to the global file, shared by
+    // every project and the TUI, and the project loses those fields; with
+    // providersScope "project" they stay in this project only.
+    const providers = patch.providers
+      ? await saveProviderEdits(workspaceRoot, patch.providers, providersScope)
+      : undefined;
 
-    // Same per-id field merge as providers above, and for the same reason:
+    // Same per-id field merge as agents above, and for the same reason:
     // env/headers are stripped out of every config.get response (see
     // sanitizeConfigForClient), so a patch only carries them when the user
     // actually edited that server's secrets — anything else in the patch
@@ -2183,7 +2192,7 @@ function registerBuiltinMethods(): void {
       }
     }
 
-    const fullPatch = { ...patch, channels, pluginConfig, agents, providers, mcpServers };
+    const fullPatch = { ...patch, channels, pluginConfig, agents, mcpServers, ...(providers ? { providers } : {}) };
 
     // Write to disk
     const filePath = await writeConfigFile(workspaceRoot, fullPatch);
@@ -2192,6 +2201,8 @@ function registerBuiltinMethods(): void {
     const globalAgents = await readGlobalAgents();
     const newConfig = mergeConfig(ctx.config, fullPatch);
     newConfig.agents = mergeAgentSources(newConfig.agents ?? [], globalAgents);
+    const effective = await readEffectiveConfig(workspaceRoot);
+    newConfig.providers = effective.config.providers;
     ctx.config = newConfig;
     // Plugins (providers, the LLM harness) captured the kernel's config object at
     // register time and read it on every turn. Update it in place, or a key/baseUrl
@@ -2239,7 +2250,26 @@ function registerBuiltinMethods(): void {
       restartRequiredKeys,
       channelChanges,
       config: sanitizeConfigForClient(newConfig),
+      providerSources: effective.providerSources,
     };
+  });
+
+  // Settings' "Move to global" / "Use global" for a provider this project overrides
+  // (notes/features/global-providers.md). Either way the project stops overriding it.
+  registerCoreMethod("providers.scope", async (params, ctx) => {
+    const workspaceRoot = ctx.workspaceRoot;
+    if (!workspaceRoot) throw new Error("providers.scope: this gateway has no workspaceRoot");
+    const id = String(params.id ?? "").trim();
+    const action = params.action;
+    if (!id) throw new Error("providers.scope: id is required");
+    if (action !== "moveToGlobal" && action !== "useGlobal") {
+      throw new Error(`providers.scope: action must be "moveToGlobal" or "useGlobal", got ${JSON.stringify(action)}`);
+    }
+    const providers = await scopeProvider(workspaceRoot, id, action);
+    await writeConfigFile(workspaceRoot, { providers });
+    await refreshProviders(ctx);
+    const effective = await readEffectiveConfig(workspaceRoot);
+    return { ok: true, config: sanitizeConfigForClient(ctx.config), providerSources: effective.providerSources };
   });
 
   // "Paired devices" screen (remote-access-analysis.md §5 point 4). Reads

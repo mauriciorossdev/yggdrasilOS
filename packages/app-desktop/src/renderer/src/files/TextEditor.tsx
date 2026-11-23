@@ -1,3 +1,6 @@
+import { ReviewBar } from "../review/ReviewBar.js";
+import { useRepoLocation } from "../review/useRepoLocation.js";
+import { useReviewComments } from "../review/useReviewComments.js";
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
 import type { Editor } from "@tiptap/react";
 import type { editor as MonacoEditorNS } from "monaco-editor";
@@ -223,8 +226,10 @@ export function TextEditor({ path, value, onChange, readOnly, status, reveal, wi
         <div className="text-editor-body">
           <div className="text-editor-main">
             <CodeEditor path={path} value={value} onChange={onChange} readOnly={readOnly} onMount={setSource} />
+            <CodeReview editor={source} path={path} />
           </div>
         </div>
+        <CodeReviewBar path={path} />
         <CodeStatusBar editor={source} status={status} />
       </div>
     );
@@ -282,4 +287,15 @@ export function TextEditor({ path, value, onChange, readOnly, status, reveal, wi
       <TextStatusBar value={value} previewing={previewing} onModeChange={setPreviewing} status={status} />
     </div>
   );
+}
+
+/** Review comments on a code file (not Markdown): cards and composer in the editor. See review/useReviewComments.tsx. */
+function CodeReview({ editor, path }: { editor: Parameters<typeof useReviewComments>[0]; path: string }) {
+  const location = useRepoLocation(path);
+  return useReviewComments(location?.path ? editor : null, { root: location?.root, path: location?.path, side: "modified" });
+}
+
+function CodeReviewBar({ path }: { path: string }) {
+  const location = useRepoLocation(path);
+  return location ? <ReviewBar root={location.root} name={location.root.split("/").pop() ?? location.root} /> : null;
 }

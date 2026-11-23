@@ -1,10 +1,6 @@
 import type { enGroupG } from "./en.groupG.js";
 
 export const esGroupG: Record<keyof typeof enGroupG, string> = {
-  "term.spec.working": "Trabajando",
-  "term.spec.checking": "Revisando",
-  "term.spec.ready": "Listo",
-  "term.spec.needsDecision": "Necesita tu decisión",
   "term.spec.openTitle": "{path} — clic para abrir",
   "term.spec.progressLabel": "Avance de la feature",
   "term.speakMode.summary": "Resumen",
@@ -78,6 +74,7 @@ export const esGroupG: Record<keyof typeof enGroupG, string> = {
   "term.pane.transcribing": "Transcribiendo…",
   "term.pane.stop": "Parar",
   "term.pane.dismiss": "Cerrar",
+  "term.pane.cwdMissing": "La carpeta de este panel ya no existe ({missing}). Se abrió en {cwd}.",
   "term.pane.focusOnMobile": "Foco en el móvil",
   "term.pane.restart": "Reiniciar",
   "term.pane.delegateFrom": "Delegar desde {title}",

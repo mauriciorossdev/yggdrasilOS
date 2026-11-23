@@ -1,17 +1,17 @@
 import { useEffect, useRef, useState } from "react";
-import { isHexColor } from "../../ui/theme/color.js";
-import { PRESETS, findPreset } from "../../ui/theme/presets.js";
-import { resolveCore, themeWarnings } from "../../ui/theme/resolve.js";
-import { applyTheme } from "../../ui/theme/themeRuntime.js";
+import { isHexColor } from "@yggdrasil/ui-kit";
+import { PRESETS, findPreset } from "@yggdrasil/ui-kit";
+import { resolveCore, themeWarnings } from "@yggdrasil/ui-kit";
+import { applyTheme } from "@yggdrasil/ui-kit";
 import { useI18n } from "../../i18n/index.js";
 import { Catalog } from "../../ui/Catalog.js";
-import { CORE_KEYS, CORE_LABELS, type CoreKey, type ThemeSettings } from "../../ui/theme/types.js";
+import { CORE_KEYS, CORE_LABELS, type CoreKey, type ThemeSettings } from "@yggdrasil/ui-kit";
 
 const PERSIST_DELAY_MS = 150;
 
 /**
  * Theme picker: a preset plus overrides for the four core colors (everything
- * else in the UI is derived from them, see ui/theme/tokens.css). Changes apply
+ * else in the UI is derived from them, see @yggdrasil/ui-kit tokens.css). Changes apply
  * to this window immediately and are persisted + broadcast to every other
  * window by main (theme:set), debounced so dragging a color picker doesn't
  * write the settings file on every pixel.

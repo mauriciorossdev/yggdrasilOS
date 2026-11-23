@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
-import { Modal } from "../ui/Modal.js";
+import { Modal } from "@yggdrasil/ui-kit";
 import { useI18n } from "../i18n/index.js";
 import { useOnboarding } from "../onboarding/store.js";
 import { terminalLaunchClis } from "../onboarding/harnessFilter.js";

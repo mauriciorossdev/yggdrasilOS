@@ -41,6 +41,15 @@ import type {
   PluginTabsLayout,
   ProjectRecord,
   RateLimitsPayload,
+  PaneAttention,
+  PaneQueueView,
+  SubmitResult,
+  CodeComment,
+  CodeCommentStatus,
+  CodeCommentTarget,
+  CodeCommentTargets,
+  NewCodeComment,
+  RepoLocation,
   SttCloudSettings,
   SttSettings,
   SyncSettings,
@@ -155,6 +164,11 @@ const api = {
       return () => ipcRenderer.removeListener("update:available", listener);
     },
   },
+  /** Settings -> Agent CLIs -> Claude Code (main/claudePaneSettings.ts). */
+  claudePaneSettings: {
+    get: (): Promise<unknown> => ipcRenderer.invoke("claudePaneSettings:get"),
+    set: (settings: unknown): Promise<unknown> => ipcRenderer.invoke("claudePaneSettings:set", settings),
+  },
   editorSettings: {
     get: (): Promise<unknown> => ipcRenderer.invoke("editorSettings:get"),
     set: (settings: unknown): Promise<unknown> => ipcRenderer.invoke("editorSettings:set", settings),
@@ -170,6 +184,23 @@ const api = {
     setLink: (targetId: string, linked: boolean): Promise<void> =>
       ipcRenderer.invoke("workspace:setLink", readArg("--ygg-project-id"), targetId, linked),
     revokeTrust: (key: string): Promise<void> => ipcRenderer.invoke("workspace:revokeTrust", key),
+    /** Workspaces canvas (home window) — see main/workspace.ts graph/connect/setTrust. */
+    graph: (): Promise<unknown> => ipcRenderer.invoke("workspace:graph"),
+    connect: (a: string, b: string): Promise<void> => ipcRenderer.invoke("workspace:connect", a, b),
+    disconnect: (a: string, b: string): Promise<void> => ipcRenderer.invoke("workspace:disconnect", a, b),
+    setTrust: (from: string, to: string, action: string, trusted: boolean): Promise<void> =>
+      ipcRenderer.invoke("workspace:setTrust", from, to, action, trusted),
+    setPosition: (projectId: string, position: { x: number; y: number }): Promise<void> =>
+      ipcRenderer.invoke("workspace:setPosition", projectId, position),
+    saveZone: (zone: unknown, positions?: Record<string, { x: number; y: number }>): Promise<void> =>
+      ipcRenderer.invoke("workspace:saveZone", zone, positions),
+    deleteZone: (id: string): Promise<void> => ipcRenderer.invoke("workspace:deleteZone", id),
+    /** Links, trust, layout, audit or the set of open projects changed (any window). */
+    onChanged: (handler: () => void): (() => void) => {
+      const listener = () => handler();
+      ipcRenderer.on("workspace:changed", listener);
+      return () => ipcRenderer.removeListener("workspace:changed", listener);
+    },
     answer: (id: string, answer: { allow: boolean; trust: boolean }): Promise<void> =>
       ipcRenderer.invoke("workspace:answer", id, answer),
     /** An agent in this project wants to read/write another project's pane and needs the human's OK. */
@@ -243,6 +274,10 @@ const api = {
       initialPromptFlag?: string;
     }): Promise<void> => ipcRenderer.invoke("terminal:create", { ...params, projectId: readArg("--ygg-project-id") }),
     write: (id: string, data: string): Promise<void> => ipcRenderer.invoke("terminal:write", id, data),
+    /** Types a whole message and presses Enter once the app has taken it in — see main/terminalSubmit.ts. */
+    /** Types a message in and submits it; a busy claude pane queues it instead (paneQueueHost.ts). */
+    submit: (id: string, text: string, when?: "auto" | "now"): Promise<SubmitResult> =>
+      ipcRenderer.invoke("terminal:submit", id, text, when),
     resize: (id: string, cols: number, rows: number): Promise<void> =>
       ipcRenderer.invoke("terminal:resize", id, cols, rows),
     dispose: (id: string): Promise<void> => ipcRenderer.invoke("terminal:dispose", id),
@@ -258,6 +293,9 @@ const api = {
       ipcRenderer.invoke("terminal:memoryAll"),
     snapshot: (id: string): Promise<{ data: string; cols: number; rows: number; seq: number } | undefined> =>
       ipcRenderer.invoke("terminal:snapshot", id),
+    /** Set when the pane's saved folder was gone and it started elsewhere (spawnCwd.ts). */
+    cwdFallback: (id: string): Promise<{ missing: string; cwd: string } | undefined> =>
+      ipcRenderer.invoke("terminal:cwdFallback", id),
     getLayout: (): Promise<TerminalLayout> => ipcRenderer.invoke("terminal:getLayout", readArg("--ygg-project-id")),
     saveLayout: (layout: TerminalLayout): Promise<void> =>
       ipcRenderer.invoke("terminal:saveLayout", readArg("--ygg-project-id"), layout),
@@ -346,6 +384,76 @@ const api = {
       const listener = (_event: IpcRendererEvent, payload: { code: string; state: string }) => handler(payload);
       ipcRenderer.on("connectors:oauthCallback", listener);
       return () => ipcRenderer.removeListener("connectors:oauthCallback", listener);
+    },
+  },
+  /** Attention states of claude panes — main/attentionHost.ts, notes/features/attention-inbox.md. */
+  codeComments: {
+    locate: (target: string): Promise<RepoLocation | undefined> => ipcRenderer.invoke("codeComments:locate", readArg("--ygg-project-id"), target),
+    list: (root: string): Promise<CodeComment[]> => ipcRenderer.invoke("codeComments:list", readArg("--ygg-project-id"), root),
+    add: (root: string, input: NewCodeComment): Promise<CodeComment> =>
+      ipcRenderer.invoke("codeComments:add", readArg("--ygg-project-id"), root, input),
+    update: (root: string, id: string, text: string): Promise<void> =>
+      ipcRenderer.invoke("codeComments:update", readArg("--ygg-project-id"), root, id, text),
+    remove: (root: string, id: string): Promise<void> => ipcRenderer.invoke("codeComments:remove", readArg("--ygg-project-id"), root, id),
+    clearDone: (root: string): Promise<void> => ipcRenderer.invoke("codeComments:clearDone", readArg("--ygg-project-id"), root),
+    setStatus: (ids: string[], status: CodeCommentStatus): Promise<boolean> =>
+      ipcRenderer.invoke("codeComments:setStatus", readArg("--ygg-project-id"), ids, status),
+    /** A worktree was removed (absolute path): its comments go. */
+    dropRoot: (path: string): Promise<void> => ipcRenderer.invoke("codeComments:dropRoot", readArg("--ygg-project-id"), path),
+    targets: (): Promise<CodeCommentTargets> => ipcRenderer.invoke("codeComments:targets", readArg("--ygg-project-id")),
+    send: (req: {
+      root: string;
+      ids?: string[];
+      target: CodeCommentTarget;
+    }): Promise<{ ok: boolean; error?: string; queued?: boolean; position?: number }> =>
+      ipcRenderer.invoke("codeComments:send", readArg("--ygg-project-id"), req),
+    /** A repo root's comments changed (added, sent, resolved by an agent). */
+    onChanged: (handler: (root: string) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, root: string) => handler(root);
+      ipcRenderer.on("codeComments:changed", listener);
+      return () => ipcRenderer.removeListener("codeComments:changed", listener);
+    },
+  },
+  queue: {
+    get: (): Promise<Record<string, PaneQueueView>> => ipcRenderer.invoke("queue:get", readArg("--ygg-project-id")),
+    onUpdate: (handler: (queues: Record<string, PaneQueueView>) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, queues: Record<string, PaneQueueView>) => handler(queues);
+      ipcRenderer.on("queue:update", listener);
+      return () => ipcRenderer.removeListener("queue:update", listener);
+    },
+    /** A pane closed (or its session ended) with messages still queued. */
+    onDropped: (handler: (info: { paneId: string; title: string; count: number }) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, info: { paneId: string; title: string; count: number }) => handler(info);
+      ipcRenderer.on("queue:dropped", listener);
+      return () => ipcRenderer.removeListener("queue:dropped", listener);
+    },
+    edit: (paneId: string, id: string, text: string): Promise<void> =>
+      ipcRenderer.invoke("queue:edit", readArg("--ygg-project-id"), paneId, id, text),
+    move: (paneId: string, id: string, delta: -1 | 1): Promise<void> =>
+      ipcRenderer.invoke("queue:move", readArg("--ygg-project-id"), paneId, id, delta),
+    remove: (paneId: string, id: string): Promise<void> => ipcRenderer.invoke("queue:remove", readArg("--ygg-project-id"), paneId, id),
+    clear: (paneId: string): Promise<void> => ipcRenderer.invoke("queue:clear", readArg("--ygg-project-id"), paneId),
+    pause: (paneId: string, paused: boolean): Promise<void> =>
+      ipcRenderer.invoke("queue:pause", readArg("--ygg-project-id"), paneId, paused),
+    sendNow: (paneId: string, id: string): Promise<void> => ipcRenderer.invoke("queue:sendNow", readArg("--ygg-project-id"), paneId, id),
+  },
+  attention: {
+    get: (): Promise<Record<string, PaneAttention>> => ipcRenderer.invoke("attention:get", readArg("--ygg-project-id")),
+    onUpdate: (handler: (panes: Record<string, PaneAttention>) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, panes: Record<string, PaneAttention>) => handler(panes);
+      ipcRenderer.on("attention:update", listener);
+      return () => ipcRenderer.removeListener("attention:update", listener);
+    },
+    /** The pane on screen (active, Terminal tab, not minimized), or null. */
+    setViewing: (paneId: string | null): Promise<void> =>
+      ipcRenderer.invoke("attention:viewing", readArg("--ygg-project-id"), paneId),
+    seen: (paneId: string): Promise<void> => ipcRenderer.invoke("attention:seen", readArg("--ygg-project-id"), paneId),
+    clearDone: (): Promise<void> => ipcRenderer.invoke("attention:clearDone", readArg("--ygg-project-id")),
+    /** A click on a system notification asks to bring this pane to front. */
+    onReveal: (handler: (paneId: string) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, paneId: string) => handler(paneId);
+      ipcRenderer.on("attention:reveal", listener);
+      return () => ipcRenderer.removeListener("attention:reveal", listener);
     },
   },
   statusline: {

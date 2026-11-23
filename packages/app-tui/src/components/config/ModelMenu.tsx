@@ -27,7 +27,6 @@ export function ModelMenu({
   onChangeProvider,
   backLabel = "back",
 }: Props): React.ReactElement {
-  const [selectedIndex, setSelectedIndex] = useState(0);
   const models = provider?.models ?? [];
 
   const currentAgent = agentId
@@ -37,6 +36,8 @@ export function ModelMenu({
     currentAgent && provider && currentAgent.provider === provider.id
       ? (currentAgent.model as string | undefined)
       : undefined;
+  // Start on the current model, so Enter keeps it (e.g. when editing an agent).
+  const [selectedIndex, setSelectedIndex] = useState(() => Math.max(0, models.findIndex((m) => m.id === currentModelId)));
 
   useInput((input, key) => {
     if (key.escape) {

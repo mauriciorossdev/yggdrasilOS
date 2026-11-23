@@ -14,12 +14,12 @@ type Props = {
 };
 
 export function ProviderMenu({ providers, config, agentId, onSelect, onBack, backLabel = "back" }: Props): React.ReactElement {
-  const [selectedIndex, setSelectedIndex] = useState(0);
-
   const currentProviderId = agentId
     ? (((config?.agents as Array<Record<string, unknown>> | undefined) ?? []).find((a) => a.id === agentId)
         ?.provider as string | undefined)
     : undefined;
+  // Start on the current provider, so Enter keeps it (e.g. when editing an agent).
+  const [selectedIndex, setSelectedIndex] = useState(() => Math.max(0, providers.findIndex((p) => p.id === currentProviderId)));
 
   useInput((_input, key) => {
     if (key.escape) {

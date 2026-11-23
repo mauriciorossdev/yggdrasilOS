@@ -22,7 +22,6 @@ export const esGroupK: Record<keyof typeof enGroupK, string> = {
   "set.general.scriptsOpenInHelp": "Scripts de la sección Scripts del sidebar. Dentro de la app muestran su estado y se pueden detener o reiniciar desde el sidebar.",
   "claudeUsage.session": "La sesión se reinicia {time}",
   "claudeUsage.week": "La semana se reinicia {time}",
-  "ui.tabs.closeNamed": "Cerrar {name}",
   "home.title": "Proyectos",
   "home.searchPlaceholder": "Buscar proyectos…",
   "home.searchAria": "Buscar proyectos",

@@ -9,6 +9,7 @@ import {
   GlobeAltIcon,
   HomeIcon,
   QueueListIcon,
+  Squares2X2Icon,
   RectangleGroupIcon,
   ShareIcon,
   SparklesIcon,
@@ -30,6 +31,7 @@ const SECTIONS: BuiltinMainTab[] = ["chat", "terminal", "agentFlow", "worktrees"
 
 const SECTION_ICONS: Partial<Record<BuiltinMainTab, typeof HomeIcon>> = {
   home: HomeIcon,
+  workspaces: Squares2X2Icon,
   chat: ChatBubbleLeftRightIcon,
   terminal: CommandLineIcon,
   agentFlow: ShareIcon,
@@ -209,6 +211,7 @@ export function MainNav({ collapsed = false }: { collapsed?: boolean }) {
   return (
     <nav className="main-nav" aria-label={t("chat.mainNav.sections")}>
       {isMainWindow && builtin("home")}
+      {isMainWindow && builtin("workspaces")}
       {SECTIONS.filter((id) => id !== "workflows" || showWorkflows).map(builtin)}
       {extraTabs.map((tab) => (
         <NavItem

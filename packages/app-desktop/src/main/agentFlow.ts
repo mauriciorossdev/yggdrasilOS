@@ -16,6 +16,8 @@ export type AgentFlowHarness =
     }
   | {
       type: "claude";
+      /** Which user-scope MCP servers this node's pane loads; unset = Settings → Agent CLIs (claudePaneSettings.ts). */
+      userMcp?: { mode: "all" | "none" | "pick"; allowed: string[]; known?: string[] };
       systemPromptAppend?: string;
       model?: string;
       effort?: "low" | "medium" | "high" | "xhigh" | "max";

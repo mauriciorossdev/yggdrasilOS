@@ -48,7 +48,9 @@ nothing else parses `yggdrasil.config.json` directly.
 - `resolveConfigPath(workspaceRoot)` — joins workspace root + filename.
 - `readConfigFile(workspaceRoot)` — reads and JSON-parses the file, merges onto `DEFAULT_CONFIG`; if the
   file is missing/unparseable, returns `{config: {...DEFAULT_CONFIG}, exists: false}` (never throws).
-- `writeConfigFile(workspaceRoot, partial)` — reads current config, merges the partial in, writes it back
+- `writeConfigFile(workspaceRoot, partial)` — reads current config, merges the partial in, writes it back (providers: only the project's own, never the built-in defaults)
+- `readEffectiveConfig(workspaceRoot)` — the config a gateway runs with: providers resolved field by field as defaults < `~/.yggdrasil/providers.json` < project, plus `providerSources`
+- `readGlobalProviders()` / `writeGlobalProviders(providers)` — the global providers file shared by every project and the TUI (0600)
   pretty-printed.
 - `uniqueStrings(values)` — trims, dedupes, drops empties from a string array (small utility used for plugin lists).
 

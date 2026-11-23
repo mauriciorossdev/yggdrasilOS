@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
-import { Modal } from "../ui/Modal.js";
+import { Modal } from "@yggdrasil/ui-kit";
 import { useI18n } from "../i18n/index.js";
 import type { CommitInfo, RemoteInfo, RepoStatus, WorktreeInfo } from "../repository/types.js";
 import { confirmsName, defaultPrBody, defaultPrTitle } from "./actions.js";
@@ -72,6 +72,8 @@ export function MergeDialog({
           path: worktree.path,
           deleteBranch: true,
         });
+        // Its review comments go with it (notes/features/worktree-bulk-actions.md).
+        void window.yggdrasil.codeComments.dropRoot(worktree.path);
         note += removed.branchDeleted
           ? t("wt.merge.cleanedAll")
           : t("wt.merge.cleanedKept", { reason: removed.branchError ?? t("wt.merge.branchDeleteFailed") });
@@ -330,6 +332,7 @@ export function DiscardDialog({ repo, worktree, onClose, onDone }: Common) {
     setError(null);
     try {
       await call("git.worktreeRemove", { repo, path: worktree.path, force: true, deleteBranch: true });
+      void window.yggdrasil.codeComments.dropRoot(worktree.path);
       onDone();
       onClose();
     } catch (err) {

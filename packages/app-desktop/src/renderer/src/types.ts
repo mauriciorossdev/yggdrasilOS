@@ -1,3 +1,29 @@
+import type { ConfigShape } from "@yggdrasil/ui-kit/types";
+export type {
+  ChatDeltaPayload,
+  ChatFinalPayload,
+  TurnEndPayload,
+  ToolExecutePayload,
+  ToolApprovalRequestedPayload,
+  ToolApprovalResolvedPayload,
+  ApprovalMode,
+  ApprovalModeChangedPayload,
+  AgentInfo,
+  CreateAgentResult,
+  GetAgentResult,
+  ProviderModelInfo,
+  ProviderInfo,
+  SessionInfo,
+  ConfigAgent,
+  ConfigProvider,
+  ConfigMcpServer,
+  ConfigShape,
+  ProviderFieldSource,
+  ProviderSources,
+  ConfigGetResult,
+  CustomRole,
+} from "@yggdrasil/ui-kit/types";
+
 // Ad hoc RPC/event payload types for whatever this renderer calls, mirroring
 // web-console's convention (no shared, type-safe RPC registry — see
 // @yggdrasil/client-web's README). Subset ported from app-tui's
@@ -18,77 +44,57 @@ export type ChatSendResult = {
   harnessId: string;
 };
 
-export type ChatDeltaPayload = {
-  sessionKey: string;
-  text: string;
-};
-
-export type ChatFinalPayload = {
-  sessionKey: string;
-  text: string;
-  harnessId: string;
-  usage?: { inputTokens?: number; outputTokens?: number };
-};
-
 export type TurnStartPayload = {
   sessionKey: string;
   agentId: string;
   harnessId: string;
 };
 
-export type TurnEndPayload = {
-  sessionKey: string;
-  classification: "ok" | "error" | "retry" | "fallback";
-  durationMs: number;
-};
-
-export type ToolExecutePayload = {
-  sessionKey: string;
-  toolName: string;
-  status: "running" | "ok" | "error";
-  args?: Record<string, unknown>;
-  result?: string;
-  error?: string;
-  image?: { base64: string; mimeType: string; path?: string };
-};
-
-export type ToolApprovalRequestedPayload = {
-  requestId: string;
-  sessionKey: string;
-  toolName: string;
-  args: Record<string, unknown>;
-  riskLevel?: "destructive" | "moderate" | "safe";
-  /** The requesting connection's registered device id, when known — see gateway's requireFsApproval. Lets ApprovalBar offer "trust this device" instead of just "approve this one call". */
-  deviceId?: string;
-};
-
 /** Claude Code's own session (5h) / weekly (7d) rate-limit usage — see statuslineBridge.ts and paneControlServer.ts's /statusline route. */
 export type RateLimitWindow = { usedPercentage: number; resetsAt: number };
 export type RateLimitsPayload = { fiveHour?: RateLimitWindow; sevenDay?: RateLimitWindow };
 
-export type ToolApprovalResolvedPayload = {
-  requestId: string;
-  sessionKey: string;
-  toolName: string;
-  approved: boolean;
-};
+/** Mirrors main/attention.ts: a claude pane's attention state (absent = nothing pending). */
+export type AttentionStatus = "working" | "waiting" | "done";
+export type PaneAttention = { status: AttentionStatus; since: number; message?: string };
 
-export type ApprovalMode = "auto" | "plan" | "restrict" | "yolo";
+/** Mirrors main/paneQueue.ts: a message waiting for a busy claude pane's turn to end. */
+export type QueueSource =
+  | { kind: "app" }
+  | { kind: "remote" }
+  | { kind: "orchestrator"; paneId: string }
+  | { kind: "review" }
+  | { kind: "browser" }
+  | { kind: "workspace"; from?: string }
+  | { kind: "plugin" };
+export type QueuedMessage = { id: string; text: string; source: QueueSource; createdAt: number; sourceLabel?: string };
+export type PaneQueueView = { items: QueuedMessage[]; paused: boolean };
+export type SubmitResult = { queued: boolean; position?: number };
 
-export type ApprovalModeChangedPayload = {
-  sessionKey: string;
-  mode: ApprovalMode;
-};
-
-export type AgentInfo = {
+/** Mirrors main/codeComments.ts: a review comment on a line range of a diff or a file. */
+export type CodeCommentStatus = "idle" | "sent" | "done";
+export type CodeCommentSide = "modified" | "original";
+export type CodeComment = {
   id: string;
-  label?: string;
-  model?: string;
-  provider?: string;
-  systemPrompt?: string;
-  /** Omitted = every tool; `{ allow: [] }` = no tools at all. Patterns may use `*`. */
-  tools?: { allow?: string[] };
-  scope?: "local" | "global";
+  /** Relative to the repo/worktree root. */
+  path: string;
+  side: CodeCommentSide;
+  startLine: number;
+  endLine: number;
+  snippet: string;
+  commitSha?: string;
+  comment: string;
+  createdAt: number;
+  status: CodeCommentStatus;
+  sentTo?: string;
+};
+export type NewCodeComment = Pick<CodeComment, "path" | "side" | "startLine" | "endLine" | "snippet" | "commitSha" | "comment">;
+/** Where a project path lives, git-wise (main/codeCommentsHost.ts). */
+export type RepoLocation = { root: string; path: string; label: string };
+export type CodeCommentTarget = { kind: "pane"; paneId: string; name?: string } | { kind: "new"; command: string; label: string };
+export type CodeCommentTargets = {
+  panes: Array<{ id: string; title: string; command?: string; cwd?: string }>;
+  providers: Array<{ id: string; label: string; command: string }>;
 };
 
 export type CreateAgentParams = {
@@ -99,11 +105,6 @@ export type CreateAgentParams = {
   model?: string;
   tools?: { allow?: string[] };
   scope: "local" | "global";
-};
-
-export type CreateAgentResult = {
-  ok: true;
-  agent: AgentInfo;
 };
 
 export type UpdateAgentParams = {
@@ -118,63 +119,13 @@ export type UpdateAgentParams = {
 
 export type GetAgentParams = { id: string; scope: "local" | "global" };
 
-export type GetAgentResult = { agent: AgentInfo };
-
-export type ProviderModelInfo = {
-  id: string;
-  label: string;
-  provider: string;
-  contextWindow?: number;
-  supportsTools?: boolean;
-};
-
-export type ProviderInfo = {
-  id: string;
-  label: string;
-  models: ProviderModelInfo[];
-  /** Authenticates with an API key (set in config or env). */
-  needsKey?: boolean;
-  /** Ready to use: has its key (or needs none). */
-  configured?: boolean;
-  error?: string;
-};
-
-export type SessionInfo = {
-  sessionKey: string;
-  title?: string;
-  messageCount: number;
-  updatedAt: number;
-};
-
 export type SessionRecord = {
   sessionKey: string;
   title?: string;
   messages: Array<{ role: string; content: string; timestamp?: number }>;
 };
 
-export type ConfigAgent = { id: string; label?: string; provider?: string; model?: string };
-
 export type HarnessInfo = { id: string; label: string };
-
-export type ConfigProvider = { baseUrl?: string; apiKey?: string; defaultModel?: string };
-
-// env/headers are intentionally absent here — sanitizeConfigForClient strips
-// them from every config.get response (see packages/config/src/sanitize.ts),
-// so this shape only ever carries the non-secret fields. Secrets are edited
-// write-only via McpSection's mcpSecretEdits, mirroring apiKeyEdits.
-export type ConfigMcpServer =
-  | { transport: "stdio"; command?: string; args?: string[]; autoStart?: boolean }
-  | { transport: "http"; url?: string; autoStart?: boolean };
-
-export type ConfigShape = {
-  agents?: ConfigAgent[];
-  defaultAgent?: string;
-  language?: string;
-  harness?: { policy?: string; pinnedId?: string };
-  channels?: Record<string, { enabled?: boolean }>;
-  providers?: Record<string, ConfigProvider>;
-  mcpServers?: Record<string, ConfigMcpServer>;
-};
 
 export type McpServerStatus = {
   id: string;
@@ -193,12 +144,6 @@ export type McpTestResult = {
   tools: string[];
   durationMs: number;
   error?: string;
-};
-
-export type ConfigGetResult = {
-  config: ConfigShape;
-  workspaceRoot: string | null;
-  configPath: string | null;
 };
 
 export type ConfigPatchResult = {
@@ -254,6 +199,22 @@ export type WhisperSettings = {
   backend: WhisperBackend;
 };
 
+// Mirrors main/claudePaneSettings.ts (main and renderer keep separate
+// tsconfigs). "inherit" = pass nothing; the pane uses ~/.claude/settings.json.
+/** Mirrors main/claudePaneSettings.ts UserMcpChoice: user-scope MCP servers a claude pane loads. */
+export type UserMcpChoice = { mode: "all" | "none" | "pick"; allowed: string[]; known?: string[] };
+export type UserMcpServer = { name: string; kind: "local" | "remote" };
+
+export type ClaudePaneSettings = {
+  caveman: "inherit" | "full" | "lite" | "ultra" | "off";
+  advisor: "inherit" | "off" | "model";
+  advisorModel: string;
+  promptSuggestions: "inherit" | "on" | "off";
+  extraSettings: string;
+  userMcp: UserMcpChoice;
+  attention: { enabled: boolean; notifyWaiting: boolean; notifyDone: boolean; holdMessages: boolean };
+};
+
 // Mirrors main/whisperSettings.ts's STT cloud dispatcher.
 export type SttCloudProvider = "openai" | "replicate" | "custom";
 
@@ -277,15 +238,6 @@ export type TtsSettings = {
   enabled: boolean;
   voiceId: string;
   apiToken: string;
-};
-
-// Mirrors main/roles.ts's CustomRole — same "main and renderer keep separate
-// copies" convention as WhisperSettings/SttSettings above.
-export type CustomRole = {
-  id: string;
-  label: string;
-  summary?: string;
-  systemPrompt: string;
 };
 
 // Mirrors main/flowTemplates.ts's CustomFlowTemplate — same shape as
@@ -457,6 +409,8 @@ export type PaneNode =
       initialPrompt?: string;
       /** How to pass initialPrompt to this harness's CLI — undefined means a bare positional, e.g. "-i" for antigravity. See buildLaunchCommand.ts. */
       initialPromptFlag?: string;
+      /** A claude node's own user-MCP choice (harness.userMcp), applied by main at spawn; unset = the global setting. */
+      claudeUserMcp?: UserMcpChoice;
       /** Feature doc this pane was handed (create_pane/write_pane specPath) — seeds the status chip after a Team reload. */
       specPath?: string;
       /** Free-form position for Terminal Canvas mode (TerminalNavbar's "Canvas" toggle) — undefined until dragged at least once; TerminalCanvasView computes a cascade default when absent. */
@@ -543,6 +497,20 @@ export type WorkspaceView = {
   trust: Array<{ key: string; toName: string; action: WorkspaceAction }>;
   audit: Array<{ at: number; from: string; to: string; pane: string; action: WorkspaceAction; via: "ask" | "trust" | "denied" }>;
 };
+/** Mirrors main/workspace.ts WorkspaceGraph — everything the home window's Workspaces canvas draws. */
+export type WorkspaceGraph = {
+  projects: Array<{ id: string; name: string; color: string | null; open: boolean }>;
+  /** projectId -> projects its agents may ask to reach (directional). */
+  links: Record<string, string[]>;
+  /** `${from}>${to}:${action}` keys that skip the prompt. */
+  trust: string[];
+  layout: Record<string, { x: number; y: number }>;
+  zones: WorkspaceZone[];
+  audit: WorkspaceView["audit"];
+};
+/** A named, colored rectangle on the Workspaces canvas — visual only (main/workspace.ts). */
+/** `locked` (the default): moving the zone moves the projects inside it; unlocked, only the zone moves. */
+export type WorkspaceZone = { id: string; name: string; color: string; x: number; y: number; width: number; height: number; locked: boolean };
 
 // Electron main-process concept (packages/app-desktop/src/main/paneControlServer.ts)
 // — mirrored here structurally, same convention as ProjectRecord/PaneNode
@@ -585,6 +553,8 @@ export type AgentFlowHarness =
     }
   | {
       type: "claude";
+      /** Which user-scope MCP servers this node's pane loads; unset = Settings → Agent CLIs. See main/claudePaneSettings.ts. */
+      userMcp?: UserMcpChoice;
       systemPromptAppend?: string;
       model?: string;
       effort?: "low" | "medium" | "high" | "xhigh" | "max";

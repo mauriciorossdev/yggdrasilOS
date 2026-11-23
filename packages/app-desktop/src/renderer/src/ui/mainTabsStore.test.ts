@@ -15,6 +15,8 @@ describe("resolveActiveTab", () => {
   it("only the main window has Home", () => {
     expect(resolveActiveTab("home", [], true)).toBe("home");
     expect(resolveActiveTab("home", [], false)).toBe("chat");
+    expect(resolveActiveTab("workspaces", [], true)).toBe("workspaces");
+    expect(resolveActiveTab("workspaces", [], false)).toBe("chat");
   });
 });
 

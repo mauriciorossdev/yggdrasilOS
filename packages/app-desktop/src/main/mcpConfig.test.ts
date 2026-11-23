@@ -132,8 +132,27 @@ describe("writeYggdrasilMcpConfig → .mcp.json", () => {
         },
       }),
     );
-    const { removedLegacy } = await writeYggdrasilMcpConfig(dir, "/app/yggdrasilMcpShim.js", "u", "t", "g");
+    const { removedLegacy, staleApprovals } = await writeYggdrasilMcpConfig(dir, "/app/yggdrasilMcpShim.js", "u", "t", "g");
     expect(removedLegacy.sort()).toEqual(["documents", "panes", "plugins", "workflows"]);
+    // The hand-authored "memory" is still defined, so it isn't stale.
+    expect(staleApprovals.sort()).toEqual(["documents", "panes", "plugins", "workflows"]);
     expect(Object.keys((await readMcp(dir)).mcpServers).sort()).toEqual(["memory", "other", "yggdrasil"]);
+  });
+
+  it("drops approvals an earlier migration left behind, on every later open", async () => {
+    const dir = await project();
+    // Already migrated: .mcp.json only has yggdrasil, but the old names are still approved.
+    await writeFile(join(dir, ".mcp.json"), JSON.stringify({ mcpServers: { yggdrasil: { command: "x", args: ["/a/yggdrasilMcpShim.js"] } } }));
+    await mkdir(join(dir, ".claude"), { recursive: true });
+    await writeFile(
+      join(dir, ".claude", "settings.local.json"),
+      JSON.stringify({ enabledMcpjsonServers: ["yggdrasil", "panes", "documents", "plugins", "memory", "workflows", "mine"], other: 1 }),
+    );
+    const { removedLegacy, staleApprovals } = await writeYggdrasilMcpConfig(dir, "/app/yggdrasilMcpShim.js", "u", "t", "g");
+    expect(removedLegacy).toEqual([]);
+    await trustYggdrasilMcpServer(dir, staleApprovals);
+    const local = JSON.parse(await readFile(join(dir, ".claude", "settings.local.json"), "utf8"));
+    expect(local.enabledMcpjsonServers).toEqual(["yggdrasil", "mine"]);
+    expect(local.other).toBe(1);
   });
 });

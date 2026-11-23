@@ -1,8 +1,8 @@
 import { useEffect, useRef } from "react";
 import { Terminal } from "@xterm/xterm";
 import "@xterm/xterm/css/xterm.css";
-import { getThemeColors, onThemeApplied } from "../ui/theme/themeRuntime.js";
-import { terminalColors } from "../ui/theme/surfaces.js";
+import { getThemeColors, onThemeApplied } from "@yggdrasil/ui-kit";
+import { terminalColors } from "@yggdrasil/ui-kit";
 
 /**
  * Read-only second view of a running pty. It starts from the main process'

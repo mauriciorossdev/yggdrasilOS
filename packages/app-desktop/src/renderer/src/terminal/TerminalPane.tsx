@@ -1,6 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { usePaneBranch } from "./paneBranchContext.js";
 import { PaneBranchChip } from "./PaneBranchChip.js";
+import { AttentionBadge } from "./AttentionBadge.js";
+import { QueueChip } from "./QueueChip.js";
+import { usePaneAttention } from "./attentionStore.js";
 import { createPortal } from "react-dom";
 import {
   ArrowRightIcon,
@@ -40,9 +43,9 @@ import { requestOpenDocument } from "../chat/documentsBridge.js";
 import { requestTab } from "../chat/mainTabsBridge.js";
 import { usePaneSpec } from "./usePaneSpec.js";
 import { Chip, IconButton, Menu, MenuItem, MenuSeparator, statusTone } from "../ui/index.js";
-import { useElementWidth } from "../ui/useElementWidth.js";
-import { getThemeColors, onThemeApplied } from "../ui/theme/themeRuntime.js";
-import { terminalColors } from "../ui/theme/surfaces.js";
+import { useElementWidth } from "@yggdrasil/ui-kit";
+import { getThemeColors, onThemeApplied } from "@yggdrasil/ui-kit";
+import { terminalColors } from "@yggdrasil/ui-kit";
 
 // Path links resolve through main (stat only). Cached briefly so hovering
 // over the same output doesn't stat the disk again and again; a path that
@@ -148,6 +151,12 @@ export function TerminalPane({
   const { specPath, badge: specBadge } = usePaneSpec(leaf.id, leaf.specPath);
   const containerRef = useRef<HTMLDivElement>(null);
   const [exited, setExited] = useState(false);
+  // The saved folder was gone, so the pane started in the project root (spawnCwd.ts).
+  const [cwdFallback, setCwdFallback] = useState<{ missing: string; cwd: string }>();
+  const checkCwdFallback = useCallback(
+    () => void window.yggdrasil.terminals.cwdFallback(leaf.id).then(setCwdFallback),
+    [leaf.id],
+  );
   const [taskSent, setTaskSent] = useState(false);
   const [editingTitle, setEditingTitle] = useState(false);
   const [titleDraft, setTitleDraft] = useState(leaf.title);
@@ -212,7 +221,8 @@ export function TerminalPane({
       registry.set(leaf.id, entry);
 
       const spawn = () =>
-        void window.yggdrasil.terminals.create({
+        void window.yggdrasil.terminals
+          .create({
           id: leaf.id,
           cwd: leaf.cwd,
           cols: 80,
@@ -226,7 +236,9 @@ export function TerminalPane({
           flowNodeId: leaf.flowNodeId,
           initialPrompt: leaf.initialPrompt,
           initialPromptFlag: leaf.initialPromptFlag,
-        });
+          claudeUserMcp: leaf.claudeUserMcp,
+        })
+          .then(checkCwdFallback);
 
       if (leaf.attach) {
         // A create_pane MCP call already spawned this pty in the main
@@ -237,7 +249,10 @@ export function TerminalPane({
         void window.yggdrasil.terminals.read(leaf.id).then((backlog) => {
           if (cancelled) return;
           if (backlog === undefined) spawn();
-          else if (backlog) term.write(backlog);
+          else {
+            if (backlog) term.write(backlog);
+            checkCwdFallback();
+          }
         });
       } else {
         spawn();
@@ -310,7 +325,8 @@ export function TerminalPane({
     entry.exited = false;
     setExited(false);
     markRestarted(leaf.id);
-    void window.yggdrasil.terminals.create({
+    void window.yggdrasil.terminals
+      .create({
       id: leaf.id,
       cwd: leaf.cwd,
       cols: entry.term.cols,
@@ -324,7 +340,9 @@ export function TerminalPane({
       flowNodeId: leaf.flowNodeId,
       initialPrompt: leaf.initialPrompt,
       initialPromptFlag: leaf.initialPromptFlag,
-    });
+      claudeUserMcp: leaf.claudeUserMcp,
+    })
+      .then(checkCwdFallback);
   };
 
   const commitTitle = () => {
@@ -378,14 +396,13 @@ export function TerminalPane({
   // The stored task (leaf.initialPrompt) is never auto-submitted on spawn —
   // instantiating a pane must never trigger work by itself (see
   // main/terminals.ts). This is the explicit human action that actually
-  // delivers it: same write+delayed-Enter mechanism as write_pane
-  // (paneControlServer.ts) and the delegate flow below, so a burst of
-  // multi-line text reads as a genuine submit, not a paste.
+  // delivers it: same submit path as write_pane (main/terminalSubmit.ts —
+  // waits for the app to be ready, one bracketed paste, Enter once the app
+  // has taken it in) so a long prompt never lands cut or half-submitted.
   const sendInitialTask = () => {
     const entry = registry.get(leaf.id);
     if (!leaf.initialPrompt || !entry) return;
-    void window.yggdrasil.terminals.write(leaf.id, leaf.initialPrompt);
-    setTimeout(() => void window.yggdrasil.terminals.write(leaf.id, "\r"), 80);
+    void window.yggdrasil.terminals.submit(leaf.id, leaf.initialPrompt);
     entry.taskSent = true;
     setTaskSent(true);
   };
@@ -396,8 +413,7 @@ export function TerminalPane({
       setDelegateError(t("term.pane.targetClosed"));
       return;
     }
-    target.term.paste(delegateDraft);
-    void window.yggdrasil.terminals.write(delegateTargetId, "\r");
+    void window.yggdrasil.terminals.submit(delegateTargetId, delegateDraft);
     onDelegated?.(delegateTargetId);
     setDelegateOpen(false);
   };
@@ -425,6 +441,13 @@ export function TerminalPane({
     onFocus();
   };
 
+  const attention = usePaneAttention(leaf.id);
+  const onPaneMouseDown = () => {
+    onFocus();
+    // Clicking a finished pane counts as having looked at it (also when it was already the active one).
+    if (attention?.status === "done") void window.yggdrasil.attention.seen(leaf.id);
+  };
+
   const paneContent = (
     <>
       {isExpanded && (
@@ -436,14 +459,14 @@ export function TerminalPane({
       <div
         className={`terminal-pane${active ? " active" : ""}${isExpanded ? " expanded" : ""}${
           isClosingExpanded ? " closing" : ""
-        }`}
+        }${attention?.status === "waiting" ? " attention-waiting" : ""}`}
         onAnimationEnd={(e) => {
           if (e.animationName === "terminal-pane-collapse") {
             setIsExpanded(false);
             setIsClosingExpanded(false);
           }
         }}
-        onMouseDown={onFocus}
+        onMouseDown={onPaneMouseDown}
         onDragOver={(e) => {
           e.preventDefault();
         }}
@@ -516,6 +539,8 @@ export function TerminalPane({
               {leaf.title}
             </span>
           )}
+          <AttentionBadge paneId={leaf.id} />
+          <QueueChip paneId={leaf.id} />
           {branch && <PaneBranchChip branch={branch} />}
           {specPath && specBadge && (
             <Chip
@@ -629,6 +654,14 @@ export function TerminalPane({
         </div>
         <div className="terminal-pane-body-wrapper">
           <div className={`terminal-pane-body${exited ? " terminal-pane-exited" : ""}`} ref={containerRef} />
+          {cwdFallback && (
+            <div className="terminal-voice-bar warning" title={cwdFallback.missing}>
+              <span>{t("term.pane.cwdMissing", { missing: cwdFallback.missing, cwd: cwdFallback.cwd })}</span>
+              <button type="button" className="terminal-voice-stop" onClick={() => setCwdFallback(undefined)}>
+                {t("term.pane.dismiss")}
+              </button>
+            </div>
+          )}
           {dictation.phase !== "idle" && (
             <div className="terminal-voice-bar">
               <span className={`terminal-voice-dot${dictation.phase === "recording" ? "" : " idle"}`} />
