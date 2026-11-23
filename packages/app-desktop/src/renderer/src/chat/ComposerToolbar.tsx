@@ -1,5 +1,5 @@
 import type { AgentInfo, ApprovalMode, ProviderInfo } from "../types.js";
-import type { ModelOverride } from "./chatReducer.js";
+import type { ModelOverride } from "@yggdrasil/ui-kit";
 import { useI18n } from "../i18n/index.js";
 import type { TerminalPaneSummary } from "../terminal/terminalPanesStore.js";
 

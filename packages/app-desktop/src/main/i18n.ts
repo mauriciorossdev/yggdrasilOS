@@ -32,6 +32,11 @@ const en = {
   "settings.exportTitle": "Export settings",
   "settings.importTitle": "Import settings",
   "ide.pickCustom": "Select IDE executable or app",
+  "attention.waitingTitle": "{pane} is waiting for you",
+  "attention.waitingBody": "It needs an answer to continue",
+  "attention.doneTitle": "{pane} finished",
+  "attention.doneBody": "Its turn is done",
+  "attention.manyDoneTitle": "{count} panes finished",
 } as const;
 
 export type MainMessageKey = keyof typeof en;
@@ -62,6 +67,11 @@ const es: Record<MainMessageKey, string> = {
   "settings.exportTitle": "Exportar ajustes",
   "settings.importTitle": "Importar ajustes",
   "ide.pickCustom": "Elige el ejecutable o la app del IDE",
+  "attention.waitingTitle": "{pane} espera tu respuesta",
+  "attention.waitingBody": "Necesita una respuesta para seguir",
+  "attention.doneTitle": "{pane} terminó",
+  "attention.doneBody": "Terminó su turno",
+  "attention.manyDoneTitle": "{count} paneles terminaron",
 };
 
 const dictionaries: Record<MainLanguage, Record<MainMessageKey, string>> = { en, es };

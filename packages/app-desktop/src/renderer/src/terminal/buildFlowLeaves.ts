@@ -3,18 +3,25 @@ import type { LeafPane } from "./paneTree.js";
 import { buildLaunchCommand } from "../agentFlow/buildLaunchCommand.js";
 
 /**
- * When `node` has outgoing edges (it's an orchestrator whose team members
- * are being spawned in this same batch — see buildFlowLeaves below),
+ * When `node` has outgoing edges (it's an orchestrator with team members),
  * appends a roster of those members' names/tasks to its initialPrompt.
- * Without this, a reloaded/re-materialized orchestrator has zero memory of
- * having "created" its team last time (each `claude` pane is a fresh
- * process/conversation — there's no session-resume unless the node sets continueSession/resumeSession) and
- * would try to create_pane duplicates of workers that are already starting
- * right alongside it. Only claude/antigravity/omp/copilot nodes have initialPrompt;
- * yggdrasil nodes are excluded (no such field, and edges are only ever
- * populated by auto-capture, which never creates yggdrasil nodes anyway).
+ * Members spawned in this same batch (Agent Flow's "Load into Terminal") are
+ * listed as already live; members that aren't (a saved Team loaded from the
+ * Terminal tab spawns only its root, see selectTeamRootNodes) are listed as
+ * ones to create with create_pane. Without this, a reloaded/re-materialized
+ * orchestrator has zero memory of its team (each `claude` pane is a fresh
+ * process/conversation — there's no session-resume unless the node sets
+ * continueSession/resumeSession). Only claude/antigravity/omp/copilot nodes
+ * have initialPrompt; yggdrasil nodes are excluded (no such field, and edges
+ * are only ever populated by auto-capture, which never creates yggdrasil nodes anyway).
  */
-function withTeamRosterNote(node: AgentFlowNode, nodes: AgentFlowNode[], edges: AgentTeamEdge[]): AgentFlowNode {
+function withTeamRosterNote(
+  node: AgentFlowNode,
+  nodes: AgentFlowNode[],
+  edges: AgentTeamEdge[],
+  /** Ids of the nodes being spawned as panes in this same batch. */
+  spawned: ReadonlySet<string>,
+): AgentFlowNode {
   if (node.harness.type === "yggdrasil") return node;
 
   const childIds = edges.filter((e) => e.from === node.id).map((e) => e.to);
@@ -22,26 +29,42 @@ function withTeamRosterNote(node: AgentFlowNode, nodes: AgentFlowNode[], edges: 
   const children = childIds.map((cid) => nodes.find((n) => n.id === cid)).filter((n): n is AgentFlowNode => !!n);
   if (children.length === 0) return node;
 
-  const roster = children
-    .map((c) => {
-      const task = c.harness.initialPrompt;
-      const doc = c.specPath ? ` (feature doc: ${c.specPath})` : "";
-      return `- ${c.name}: ${task ?? "(no stated task)"}${doc}`;
-    })
-    .join("\n");
+  const line = (c: AgentFlowNode) => {
+    const task = c.harness.initialPrompt;
+    const doc = c.specPath ? ` (feature doc: ${c.specPath})` : "";
+    return `- ${c.name}: ${task ?? "(no stated task)"}${doc}`;
+  };
+  // A saved Team loaded from the Terminal tab spawns only its root(s)
+  // (selectTeamRootNodes), so its members don't exist yet: telling the root
+  // they're "spawned alongside you" made it wait for panes that never came.
+  const live = children.filter((c) => spawned.has(c.id));
+  const missing = children.filter((c) => !spawned.has(c.id));
 
-  const note = [
-    "",
-    "",
-    "--- Your team (spawned alongside you) ---",
-    "These are separate live terminal panes being started in this same batch — not something you need to create:",
-    roster,
-    "",
-    "Use write_pane/read_pane to coordinate them directly, or list_panes to confirm their current live ids. " +
-      "Only call create_pane if you need members beyond these.",
-  ].join("\n");
+  const note: string[] = [""];
+  if (live.length > 0) {
+    note.push(
+      "",
+      "--- Your team (spawned alongside you) ---",
+      "These are separate live terminal panes being started in this same batch — not something you need to create:",
+      live.map(line).join("\n"),
+      "",
+      "Use write_pane/read_pane to coordinate them directly, or list_panes to confirm their current live ids. " +
+        "Only call create_pane if you need members beyond these.",
+    );
+  }
+  if (missing.length > 0) {
+    note.push(
+      "",
+      "--- Your team (not started yet) ---",
+      "These members are part of your saved team but have no pane yet — create each one with create_pane " +
+        '(command "claude", title = the name below, purpose = its role) before handing it work:',
+      missing.map(line).join("\n"),
+      "",
+      "Use exactly these names as titles so the saved team keeps one node per member. Then use write_pane/read_pane to coordinate them.",
+    );
+  }
 
-  return { ...node, harness: { ...node.harness, initialPrompt: (node.harness.initialPrompt ?? "") + note } };
+  return { ...node, harness: { ...node.harness, initialPrompt: (node.harness.initialPrompt ?? "") + note.join("\n") } };
 }
 
 /**
@@ -96,6 +119,7 @@ export function buildFlowLeaves(
 ): { leaves: LeafPane[]; nodeIdToLeafId: Map<string, string> } {
   const projectCwd = projectPath ?? ".";
   const nodeIdToLeafId = new Map<string, string>(nodes.map((node) => [node.id, crypto.randomUUID()]));
+  const spawned = new Set(nodes.map((n) => n.id));
 
   const leaves: LeafPane[] = nodes.map((node) => {
     const id = nodeIdToLeafId.get(node.id)!;
@@ -123,7 +147,7 @@ export function buildFlowLeaves(
           : `tui:default:desktop-${crypto.randomUUID()}`,
       };
     }
-    const rostered = withTeamRosterNote(node, allNodes, edges);
+    const rostered = withTeamRosterNote(node, allNodes, edges, spawned);
     const { command, args, initialPromptFlag, env } = buildLaunchCommand(rostered);
     return {
       type: "leaf",
@@ -136,6 +160,7 @@ export function buildFlowLeaves(
       flowNodeId: node.id,
       initialPrompt: rostered.harness.initialPrompt,
       initialPromptFlag,
+      claudeUserMcp: rostered.harness.type === "claude" ? rostered.harness.userMcp : undefined,
       specPath: node.specPath,
     };
   });

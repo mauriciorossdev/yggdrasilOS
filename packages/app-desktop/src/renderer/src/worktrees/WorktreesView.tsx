@@ -5,6 +5,7 @@ import { setActiveTab, useActiveTab } from "../ui/mainTabsStore.js";
 import { TerminalMirror } from "../terminal/TerminalMirror.js";
 import { requestFocusPane, useTerminalPanes, type TerminalPaneSummary } from "../terminal/terminalPanesStore.js";
 import { RepoSelector } from "../repository/RepoSelector.js";
+import { requestOpenRepo } from "../repository/openRepoRequest.js";
 import type { CommitInfo, RepoInfo, RepoStatus, WorktreeInfo } from "../repository/types.js";
 import { worktreeDisplayPath, worktreeRepoParam } from "./paths.js";
 import { addPidPanes, panesByWorktree } from "./panes.js";
@@ -12,6 +13,9 @@ import { NewWorktreeDialog } from "./NewWorktreeDialog.js";
 import { ORIGIN_LABEL, worktreeState, type Msg } from "./status.js";
 import { closeOptions, isAbandoned } from "./actions.js";
 import { DiscardDialog, MergeDialog, PullRequestDialog } from "./CloseDialogs.js";
+import { BulkDialog } from "./BulkDialog.js";
+import { bulkGroup, type BulkGroup, type BulkItem, type Grouped } from "./bulk.js";
+import { useAttention } from "../terminal/attentionStore.js";
 
 const REFRESH_MS = 5000;
 const LOG_LIMIT = 30;
@@ -47,6 +51,10 @@ export function WorktreesView() {
   const [closing, setClosing] = useState<{ kind: DialogKind; worktree: WorktreeInfo; canCleanup: boolean } | null>(null);
   // Pane behind each live Claude session lock (worktree path → pane id), resolved by pid in main.
   const [pidPane, setPidPane] = useState<Record<string, string>>({});
+  // Bulk actions (notes/features/worktree-bulk-actions.md): checked worktree paths, and the batch dialog.
+  const [checked, setChecked] = useState<Set<string>>(new Set());
+  const [bulk, setBulk] = useState<{ kind: "merge" | "remove"; items: BulkItem[] } | null>(null);
+  const attention = useAttention();
 
   const loadRepos = useCallback(async () => {
     try {
@@ -104,7 +112,24 @@ export function WorktreesView() {
     [panes, worktrees, pidPane],
   );
 
-  if (repos === null) return <div className="repo-view"><div className="repo-empty">{t("wt.view.searching")}</div></div>;
+  const groups = useMemo(() => {
+    const out = new Map<string, Grouped>();
+    for (const w of worktrees) {
+      const g = bulkGroup(w, data?.base, linkedPanes.get(w.path) ?? [], attention);
+      if (g) out.set(w.path, g);
+    }
+    return out;
+  }, [worktrees, data?.base, linkedPanes, attention]);
+
+  // A worktree that left its group (an agent started, it was removed) leaves the selection.
+  useEffect(() => {
+    setChecked((cur) => {
+      const next = new Set([...cur].filter((p) => groups.get(p) && groups.get(p)!.group !== "busy"));
+      return next.size === cur.size ? cur : next;
+    });
+  }, [groups]);
+
+    if (repos === null) return <div className="repo-view"><div className="repo-empty">{t("wt.view.searching")}</div></div>;
   if (repos.length === 0) {
     return (
       <div className="repo-view">
@@ -143,25 +168,72 @@ export function WorktreesView() {
       {error && <div className="repo-banner error">{error}</div>}
       <div className="repo-body">
         <div className="wt-list">
-          {worktrees.map((w) => {
-            const state = worktreeState(w);
+          {checked.size > 0 && (
+            <BulkBar
+              checked={checked}
+              groups={groups}
+              base={data?.base}
+              onClear={() => setChecked(new Set())}
+              onRun={(kind) => {
+                const want: BulkGroup = kind === "merge" ? "ready" : "empty";
+                const items = worktrees
+                  .filter((w) => checked.has(w.path) && groups.get(w.path)?.group === want)
+                  .map((w) => ({ worktree: w, name: label(w, t), paneIds: (linkedPanes.get(w.path) ?? []).map((p) => p.id) }));
+                if (items.length > 0) setBulk({ kind, items });
+              }}
+            />
+          )}
+          {worktrees
+            .filter((w) => !groups.has(w.path))
+            .map((w) => (
+              <WorktreeRow key={w.path} w={w} active={current?.path === w.path} onSelect={() => setSelected(w.path)} noAgent={false} />
+            ))}
+          {(["ready", "empty", "busy"] as const).map((group) => {
+            const members = worktrees.filter((w) => groups.get(w.path)?.group === group);
+            if (members.length === 0) return null;
+            const allChecked = members.every((w) => checked.has(w.path));
             return (
-              <button
-                key={w.path}
-                type="button"
-                className={`wt-row${current?.path === w.path ? " active" : ""}`}
-                onClick={() => setSelected(w.path)}
-              >
-                <span className="wt-row-top">
-                  <span className="wt-name">{label(w, t)}</span>
-                  <span className="wt-chip">{t(ORIGIN_LABEL[w.origin])}</span>
-                  <span className={`wt-state ${state.tone}`}>{t(state.label.key, state.label.vars)}</span>
-                </span>
-                <span className="wt-sub">
-                  {w.branch ?? t("wt.view.noBranch")}
-                  {isAbandoned(w, (linkedPanes.get(w.path) ?? []).length) ? t("wt.view.noAgent") : ""}
-                </span>
-              </button>
+              <div key={group} className="wt-group">
+                <div className={`wt-group-head ${group}`}>
+                  <span>{t(`wt.bulk.group.${group}`)}</span>
+                  <span className="wt-group-n">{members.length}</span>
+                  <span className="wt-group-sp" />
+                  {group !== "busy" && members.length > 1 && (
+                    <button
+                      type="button"
+                      className="wt-group-all"
+                      onClick={() =>
+                        setChecked((cur) => {
+                          const next = new Set(cur);
+                          members.forEach((w) => (allChecked ? next.delete(w.path) : next.add(w.path)));
+                          return next;
+                        })
+                      }
+                    >
+                      {allChecked ? t("wt.bulk.none") : t("wt.bulk.all")}
+                    </button>
+                  )}
+                </div>
+                {members.map((w) => (
+                  <WorktreeRow
+                    key={w.path}
+                    w={w}
+                    active={current?.path === w.path}
+                    onSelect={() => setSelected(w.path)}
+                    noAgent={isAbandoned(w, (linkedPanes.get(w.path) ?? []).length)}
+                    reason={groups.get(w.path)?.reason}
+                    checked={group === "busy" ? undefined : checked.has(w.path)}
+                    onCheck={(on) =>
+                      setChecked((cur) => {
+                        const next = new Set(cur);
+                        if (on) next.add(w.path);
+                        else next.delete(w.path);
+                        return next;
+                      })
+                    }
+                  />
+                ))}
+              </div>
             );
           })}
           {data && linked.length === 0 && (
@@ -185,6 +257,20 @@ export function WorktreesView() {
           />
         )}
       </div>
+      {bulk && repo !== null && root !== null && data?.base && (
+        <BulkDialog
+          kind={bulk.kind}
+          repo={repo}
+          base={data.base}
+          items={bulk.items}
+          repoParamOf={(path) => worktreeRepoParam(root, path)}
+          onClose={() => {
+            setBulk(null);
+            setChecked(new Set());
+          }}
+          onDone={() => void loadWorktrees()}
+        />
+      )}
       {closing && repo !== null && root !== null && (
         <ClosingDialog
           repo={repo}
@@ -195,6 +281,94 @@ export function WorktreesView() {
           onChanged={() => void loadWorktrees()}
         />
       )}
+    </div>
+  );
+}
+
+function WorktreeRow({
+  w,
+  active,
+  onSelect,
+  noAgent,
+  reason,
+  checked,
+  onCheck,
+}: {
+  w: WorktreeInfo;
+  active: boolean;
+  onSelect: () => void;
+  noAgent: boolean;
+  /** Why it's in its bulk group ("3 cambios sin commitear", "ya integrado"…). */
+  reason?: Msg;
+  /** Undefined: no checkbox (the main checkout, or a worktree that can't be batched). */
+  checked?: boolean;
+  onCheck?: (on: boolean) => void;
+}) {
+  const { t } = useI18n();
+  const state = worktreeState(w);
+  return (
+    <div className={`wt-row-wrap${active ? " active" : ""}${checked ? " checked" : ""}`}>
+      {checked !== undefined && (
+        <input
+          type="checkbox"
+          className="wt-check"
+          checked={checked}
+          aria-label={t("wt.bulk.select", { name: label(w, t) })}
+          onChange={(e) => onCheck?.(e.target.checked)}
+        />
+      )}
+      <button type="button" className={`wt-row${active ? " active" : ""}`} onClick={onSelect}>
+        <span className="wt-row-top">
+          <span className="wt-name">{label(w, t)}</span>
+          <span className="wt-chip">{t(ORIGIN_LABEL[w.origin])}</span>
+          <span className={`wt-state ${state.tone}`}>{t(state.label.key, state.label.vars)}</span>
+        </span>
+        <span className="wt-sub">
+          {reason ? t(reason.key, reason.vars) : (w.branch ?? t("wt.view.noBranch"))}
+          {noAgent ? t("wt.view.noAgent") : ""}
+        </span>
+      </button>
+    </div>
+  );
+}
+
+/** Shows over the list while worktrees are checked: what each batch would act on. */
+function BulkBar({
+  checked,
+  groups,
+  base,
+  onClear,
+  onRun,
+}: {
+  checked: Set<string>;
+  groups: Map<string, Grouped>;
+  base?: string;
+  onClear: () => void;
+  onRun: (kind: "merge" | "remove") => void;
+}) {
+  const { t } = useI18n();
+  const ready = [...checked].filter((p) => groups.get(p)?.group === "ready").length;
+  const empty = [...checked].filter((p) => groups.get(p)?.group === "empty").length;
+  return (
+    <div className="wt-bulkbar">
+      <div className="wt-bulkbar-sel">
+        <span>{t(checked.size === 1 ? "wt.bulk.selectedOne" : "wt.bulk.selected", { count: checked.size })}</span>
+        <button type="button" className="wt-group-all" onClick={onClear}>
+          {t("wt.bulk.clear")}
+        </button>
+      </div>
+      <div className="wt-bulkbar-row">
+        {ready > 0 && base && (
+          <button type="button" className="repo-btn primary small" onClick={() => onRun("merge")}>
+            {t("wt.bulk.merge", { count: ready, base })}
+          </button>
+        )}
+        {empty > 0 && (
+          <button type="button" className="repo-btn danger small" onClick={() => onRun("remove")}>
+            {t("wt.bulk.remove", { count: empty })}
+          </button>
+        )}
+      </div>
     </div>
   );
 }
@@ -334,6 +508,18 @@ function WorktreeDetail({
         )}
         {!worktree.main && (
           <div className="wt-actions">
+            {param !== null && !worktree.missing && (
+              <button
+                type="button"
+                className="repo-btn small"
+                onClick={() => {
+                  requestOpenRepo(param, worktree.path.split(/[\\/]/).pop() ?? param, worktree.branch);
+                  setActiveTab("repository");
+                }}
+              >
+                {t("wt.view.review")}
+              </button>
+            )}
             <button
               type="button"
               className="repo-btn small"

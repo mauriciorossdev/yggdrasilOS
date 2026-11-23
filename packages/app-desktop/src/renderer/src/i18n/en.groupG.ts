@@ -1,9 +1,5 @@
 // Group G. Keys: <area>.<name>.
 export const enGroupG = {
-  "term.spec.working": "Working",
-  "term.spec.checking": "Checking",
-  "term.spec.ready": "Ready",
-  "term.spec.needsDecision": "Needs your decision",
   "term.spec.openTitle": "{path} — click to open",
   "term.spec.progressLabel": "Feature progress",
   "term.speakMode.summary": "Summary",
@@ -77,6 +73,7 @@ export const enGroupG = {
   "term.pane.transcribing": "Transcribing…",
   "term.pane.stop": "Stop",
   "term.pane.dismiss": "Dismiss",
+  "term.pane.cwdMissing": "This pane's folder no longer exists ({missing}). It opened in {cwd} instead.",
   "term.pane.focusOnMobile": "Focus on mobile",
   "term.pane.restart": "Restart",
   "term.pane.delegateFrom": "Delegate from {title}",

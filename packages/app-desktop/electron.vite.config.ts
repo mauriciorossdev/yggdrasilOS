@@ -22,6 +22,8 @@ export default defineConfig({
           // (as this project's `statusLine` command) rather than by the
           // `claude` CLI's MCP client — see statuslineBridge.ts.
           statuslineBridge: resolve(__dirname, "src/main/statuslineBridge.ts"),
+          // Run by the attention hooks of every claude pane — see attentionBridge.ts.
+          attentionBridge: resolve(__dirname, "src/main/attentionBridge.ts"),
         },
       },
     },

@@ -162,6 +162,14 @@ export const TOOLS = [
             "first. The call fails, typing nothing, if it is missing or outside notes/.",
         },
         pressEnter: { type: "boolean", description: "Defaults to true." },
+        when: {
+          type: "string",
+          enum: ["auto", "now"],
+          description:
+            'Defaults to "auto": if the target is a claude pane that is mid-turn or waiting for an answer, the ' +
+            'message waits in that pane\'s queue and goes in when its current turn ends. "now" types it in ' +
+            "immediately (Claude Code then folds it into the running turn) — only to change course on the spot.",
+        },
       },
       required: ["id"],
     },
@@ -354,6 +362,18 @@ export const TOOLS = [
     },
   },
   {
+    name: "code_comment_done",
+    description:
+      "Marks a code review comment from the desktop app as resolved. When the user sends you review comments on " +
+      "code (from a diff or a file), each one has an id; call this with that id as soon as you have addressed it, " +
+      "so the user sees it resolved next to the code.",
+    inputSchema: {
+      type: "object",
+      properties: { commentId: { type: "string", description: "The id given in the review comment." } },
+      required: ["commentId"],
+    },
+  },
+  {
     name: "browser_pick_element",
     description:
       "Arms an element picker on whatever page is currently loaded in the desktop app's Browser tab, switches the " +
@@ -399,10 +419,16 @@ export async function callTool(name: string, args: Record<string, unknown>) {
       // this one, i.e. actually show "who's talking to whom" instead of
       // just "who's running".
       const sourcePaneId = await resolveSelfPaneId();
-      await callControl(`/panes/${encodeURIComponent(id)}/write`, {
+      const written = await callControl(`/panes/${encodeURIComponent(id)}/write`, {
         method: "POST",
         body: JSON.stringify(sourcePaneId ? { ...rest, sourcePaneId } : rest),
       });
+      if (written?.queued) {
+        return textResult(
+          `Queued (position ${written.position ?? "?"}): that agent is busy, so the message goes in when its current turn ends. ` +
+            'Pass when: "now" only if it must interrupt the running turn.',
+        );
+      }
       return textResult("ok");
     }
     case "show_pane": {
@@ -526,6 +552,14 @@ export async function callTool(name: string, args: Record<string, unknown>) {
         body: JSON.stringify({ commentId }),
       });
       return textResult(body.ok ? "Marked as done." : "No comment with that id (already deleted?).");
+    }
+    case "code_comment_done": {
+      const { commentId } = args as { commentId: string };
+      const body = await callControl("/code/comment-done", {
+        method: "POST",
+        body: JSON.stringify({ commentId }),
+      });
+      return textResult(body.ok ? "Marked as resolved." : "No review comment with that id (already deleted?).");
     }
     case "browser_pick_element": {
       const { timeoutMs } = args as { timeoutMs?: number };

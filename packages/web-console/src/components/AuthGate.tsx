@@ -28,6 +28,23 @@ export function AuthGate({ children }: { children: React.ReactNode }) {
     }
   };
 
+  // From another device a key is always required; a gateway with none configured can't be
+  // reached until one exists (notes/features/web-console-upgrade.md, "Seguridad").
+  if (health && health.keyConfigured === false) {
+    return (
+      <div className="auth-gate">
+        <div className="card auth-card">
+          <h1>Yggdrasil Console</h1>
+          <p className="muted">
+            Este gateway solo acepta otros dispositivos con una API key, y no tiene ninguna. Vincula este dispositivo desde
+            la app (Ajustes → Dispositivos vinculados) o configura <code>auth.gateway.apiKey</code>, y vuelve a entrar con
+            esa key. Desde el mismo computador la consola entra sin key.
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="auth-gate">
       <form className="card auth-card" onSubmit={onSubmit}>

@@ -28,7 +28,7 @@ describe("sanitizeWorkspaceState", () => {
   });
 
   it("returns an empty state for garbage", () => {
-    expect(sanitizeWorkspaceState(null)).toEqual({ links: {}, trust: [], audit: [] });
+    expect(sanitizeWorkspaceState(null)).toEqual({ links: {}, trust: [], audit: [], layout: {}, zones: [] });
   });
 });
 
@@ -197,5 +197,118 @@ describe("workspace broker", () => {
     answer = { allow: true, trust: false };
     await b.readPane("lib", "app", "Artist");
     expect(ask).toHaveBeenCalledTimes(2);
+  });
+  describe("Workspaces canvas", () => {
+    it("connect links both directions without granting trust, so reads still ask", async () => {
+      const b = await broker();
+      await b.connect("lib", "app");
+      const g = await b.graph();
+      expect(g.links).toEqual({ lib: ["app"], app: ["lib"] });
+      expect(g.trust).toEqual([]);
+      await b.readPane("lib", "app", "Artist");
+      expect(ask).toHaveBeenCalledTimes(1);
+    });
+
+    it("setTrust grants per direction + action, and lets that action through without asking", async () => {
+      const b = await broker();
+      await b.connect("lib", "app");
+      await b.setTrust("lib", "app", "read", true);
+      await b.readPane("lib", "app", "Artist");
+      expect(ask).not.toHaveBeenCalled();
+      expect((await b.graph()).trust).toEqual([trustKey("lib", "app", "read")]);
+      await b.setTrust("lib", "app", "read", false);
+      expect((await b.graph()).trust).toEqual([]);
+    });
+
+    it("setTrust refuses to grant without the link in that direction", async () => {
+      const b = await broker();
+      await b.setLink("app", "lib", true);
+      await expect(b.setTrust("lib", "app", "write", true)).rejects.toMatchObject({ status: 409 });
+    });
+
+    it("disconnect removes both directions and every trust between the two", async () => {
+      const b = await broker();
+      await b.connect("lib", "app");
+      await b.setTrust("lib", "app", "write", true);
+      await b.setTrust("app", "lib", "read", true);
+      await b.disconnect("app", "lib");
+      const g = await b.graph();
+      expect(g.links).toEqual({});
+      expect(g.trust).toEqual([]);
+    });
+
+    it("keeps positions, and survives a reload", async () => {
+      const b = await broker();
+      await b.setPosition("lib", { x: 10, y: 20 });
+      await b.setPosition("app", { x: Number.NaN, y: 1 });
+      expect((await (await broker()).graph()).layout).toEqual({ lib: { x: 10, y: 20 } });
+    });
+
+    it("forgetProject drops a removed project's links, trust and position", async () => {
+      const b = await broker();
+      await b.connect("lib", "app");
+      await b.setTrust("app", "lib", "read", true);
+      await b.setPosition("app", { x: 1, y: 1 });
+      await b.forgetProject("app");
+      const g = await b.graph();
+      expect(g.links).toEqual({});
+      expect(g.trust).toEqual([]);
+      expect(g.layout).toEqual({});
+    });
+
+    it("graph reports which project windows are open and calls onChange after each change", async () => {
+      const onChange = vi.fn();
+      const b = await createWorkspaceBroker({ userDataDir: dir, listProjects: async () => projects, paneApi: (id) => (open.has(id) ? appApi : undefined), ask, notify, onChange });
+      expect((await b.graph()).projects).toEqual([
+        { id: "lib", name: "lib", color: null, open: false },
+        { id: "app", name: "app", color: null, open: true },
+      ]);
+      await b.connect("lib", "app");
+      await b.setPosition("lib", { x: 0, y: 0 });
+      expect(onChange).toHaveBeenCalledTimes(2);
+    });
+  });
+  describe("zones", () => {
+    const zone = { id: "z1", name: "Acme", color: "#22c55e", x: 0, y: 0, width: 400, height: 300, locked: true };
+
+    it("saves, updates and deletes zones, surviving a reload", async () => {
+      const b = await broker();
+      await b.saveZone(zone);
+      await b.saveZone({ ...zone, name: "Acme CL", x: 50 });
+      expect((await (await broker()).graph()).zones).toEqual([{ ...zone, name: "Acme CL", x: 50 }]);
+      await b.deleteZone("z1");
+      expect((await b.graph()).zones).toEqual([]);
+    });
+
+    it("moves the carried projects in the same save", async () => {
+      const b = await broker();
+      await b.saveZone(zone, { lib: { x: 10, y: 20 }, app: { x: Number.NaN, y: 0 } });
+      expect((await b.graph()).layout).toEqual({ lib: { x: 10, y: 20 } });
+    });
+
+    it("rejects malformed zones and fixes bad colors and tiny sizes", async () => {
+      const b = await broker();
+      await expect(b.saveZone({ ...zone, id: "" })).rejects.toMatchObject({ status: 400 });
+      await b.saveZone({ ...zone, color: "red", width: 5 });
+      const [saved] = (await b.graph()).zones;
+      expect(saved).toMatchObject({ color: "#6b7280", width: 80 });
+    });
+
+    it("is locked unless explicitly unlocked (older files have no flag)", async () => {
+      const b = await broker();
+      const { locked: _omit, ...legacy } = zone;
+      await b.saveZone(legacy as typeof zone);
+      expect((await b.graph()).zones[0]!.locked).toBe(true);
+      await b.saveZone({ ...zone, locked: false });
+      expect((await b.graph()).zones[0]!.locked).toBe(false);
+    });
+
+    it("are visual only: links and trust are untouched", async () => {
+      const b = await broker();
+      await b.saveZone(zone);
+      const g = await b.graph();
+      expect(g.links).toEqual({});
+      expect(g.trust).toEqual([]);
+    });
   });
 });

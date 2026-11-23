@@ -13,7 +13,7 @@ vi.mock("node:os", async (importOriginal) => {
 });
 
 import { homedir } from "node:os";
-import { mergeConfig, readConfigFile, writeConfigFile } from "@yggdrasil/config";
+import { mergeConfig, readConfigFile, readGlobalProviders, readRawConfigFile, writeConfigFile, writeGlobalProviders } from "@yggdrasil/config";
 import { resetRegistryForTest, registerProvider } from "@yggdrasil/kernel";
 import type { ProviderPlugin } from "@yggdrasil/sdk";
 import { invokeGatewayMethod } from "./server.js";
@@ -234,5 +234,71 @@ describe("config gateway methods", () => {
     expect(onDisk.providers?.anthropic?.apiKey).toBe("sk-ant-real");
     expect((onDisk.channels?.telegram?.accounts as Record<string, { botToken?: string }>).default?.botToken).toBe("bot-real");
     expect(onDisk.auth?.gateway?.apiKey).toBe("gw-real");
+  });
+
+  describe("global providers (notes/features/global-providers.md)", () => {
+    type Result = {
+      config: { providers?: Record<string, { baseUrl?: string; apiKey?: string; defaultModel?: string }> };
+      providerSources: Record<string, Record<string, string>>;
+    };
+
+    it("config.patch saves providers globally and drops those fields from the project", async () => {
+      const root = await mkdtemp(join(tmpdir(), "ygg-cfg-global-"));
+      await writeConfigFile(root, { providers: { ollama: { baseUrl: "http://lan:11434", defaultModel: "llama3" } } });
+
+      const result = (await invokeGatewayMethod(
+        "config.patch",
+        { providers: { ollama: { baseUrl: "https://ollama.com", apiKey: "k1" } } },
+        mergeConfig({}, {}),
+        null,
+        root,
+      )) as Result;
+
+      expect(await readGlobalProviders()).toEqual({ ollama: { baseUrl: "https://ollama.com", apiKey: "k1" } });
+      expect((await readRawConfigFile(root)).providers).toEqual({ ollama: { defaultModel: "llama3" } });
+      expect(result.config.providers?.ollama).toEqual({ baseUrl: "https://ollama.com", apiKey: "***", defaultModel: "llama3" });
+      expect(result.providerSources.ollama).toMatchObject({ baseUrl: "global", apiKey: "global", defaultModel: "project" });
+    });
+
+    it("config.patch with providersScope project leaves the global file alone", async () => {
+      const root = await mkdtemp(join(tmpdir(), "ygg-cfg-global-"));
+      await writeGlobalProviders({ ollama: { baseUrl: "https://ollama.com" } });
+
+      await invokeGatewayMethod(
+        "config.patch",
+        { providersScope: "project", providers: { ollama: { baseUrl: "http://lan:11434" } } },
+        mergeConfig({}, {}),
+        null,
+        root,
+      );
+
+      expect(await readGlobalProviders()).toEqual({ ollama: { baseUrl: "https://ollama.com" } });
+      expect((await readRawConfigFile(root)).providers).toEqual({ ollama: { baseUrl: "http://lan:11434" } });
+    });
+
+    it("config.get shows another project's global save", async () => {
+      const a = await mkdtemp(join(tmpdir(), "ygg-cfg-global-a-"));
+      const b = await mkdtemp(join(tmpdir(), "ygg-cfg-global-b-"));
+      await invokeGatewayMethod("config.patch", { providers: { ollama: { defaultModel: "gemma" } } }, mergeConfig({}, {}), null, a);
+
+      const result = (await invokeGatewayMethod("config.get", {}, mergeConfig({}, {}), null, b)) as Result;
+      expect(result.config.providers?.ollama?.defaultModel).toBe("gemma");
+      expect(result.providerSources.ollama?.defaultModel).toBe("global");
+    });
+
+    it("providers.scope moves a project's own values to global, or just drops them", async () => {
+      const root = await mkdtemp(join(tmpdir(), "ygg-cfg-global-"));
+      await writeConfigFile(root, { providers: { "openai-compat": { baseUrl: "https://ollama.com/v1", defaultModel: "gemma" } } });
+
+      const moved = (await invokeGatewayMethod("providers.scope", { id: "openai-compat", action: "moveToGlobal" }, mergeConfig({}, {}), null, root)) as Result;
+      expect(await readGlobalProviders()).toEqual({ "openai-compat": { baseUrl: "https://ollama.com/v1", defaultModel: "gemma" } });
+      expect((await readRawConfigFile(root)).providers).toBeUndefined();
+      expect(moved.providerSources["openai-compat"]).toMatchObject({ baseUrl: "global", defaultModel: "global" });
+
+      await writeConfigFile(root, { providers: { "openai-compat": { defaultModel: "qwen" } } });
+      await invokeGatewayMethod("providers.scope", { id: "openai-compat", action: "useGlobal" }, mergeConfig({}, {}), null, root);
+      expect((await readRawConfigFile(root)).providers).toBeUndefined();
+      expect((await readGlobalProviders())["openai-compat"]?.defaultModel).toBe("gemma");
+    });
   });
 });

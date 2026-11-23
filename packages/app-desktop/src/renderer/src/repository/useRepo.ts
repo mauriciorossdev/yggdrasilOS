@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
 import type { BranchInfo, CommitInfo, RemoteInfo, RepoInfo, RepoStatus, StashInfo } from "./types.js";
+import { consumeOpenRepoRequest, useOpenRepoRequest } from "./openRepoRequest.js";
 
 const LOG_PAGE = 100;
 const REFRESH_DEBOUNCE_MS = 600;
@@ -28,13 +29,29 @@ export function useRepo() {
   const [version, setVersion] = useState(0);
   const repoRef = useRef<string | null>(null);
   repoRef.current = repo;
+  // Worktrees opened from the Worktrees tab: not in git.repos, kept for this session of the tab.
+  const [extraRepos, setExtraRepos] = useState<RepoInfo[]>([]);
+  const extraRef = useRef<RepoInfo[]>([]);
+  extraRef.current = extraRepos;
+  const openRequest = useOpenRepoRequest();
+  const handledRequest = useRef(0);
+  useEffect(() => {
+    if (!openRequest || openRequest.nonce === handledRequest.current) return;
+    handledRequest.current = openRequest.nonce;
+    consumeOpenRepoRequest(openRequest.nonce);
+    const { path, name, branch } = openRequest;
+    setExtraRepos((list) =>
+      list.some((r) => r.path === path) ? list : [...list, { path, name, branch, relation: "child", worktree: true }],
+    );
+    setRepo(path);
+  }, [openRequest]);
 
   const loadRepos = useCallback(async () => {
     try {
       const res = await call<ReposResult>("git.repos", {});
       setRepos(res.repos);
       setRepo((current) => {
-        if (current && res.repos.some((r) => r.path === current)) return current;
+        if (current && (res.repos.some((r) => r.path === current) || extraRef.current.some((r) => r.path === current))) return current;
         return res.repos[0]?.path ?? null;
       });
     } catch (err) {
@@ -139,7 +156,7 @@ export function useRepo() {
 
   return {
     call,
-    repos,
+    repos: repos && extraRepos.length > 0 ? [...repos, ...extraRepos.filter((x) => !repos.some((r) => r.path === x.path))] : repos,
     repo,
     setRepo,
     status,

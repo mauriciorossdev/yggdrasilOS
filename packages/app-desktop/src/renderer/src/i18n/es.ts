@@ -234,7 +234,6 @@ export const es: Record<MessageKey, string> = {
   "doc.mic.silence": "Solo se oyó silencio: no se detectó voz.",
   "doc.retry": "Reintentar",
   // Shared UI and settings shell
-  "ui.close": "Cerrar",
   "ui.cancel": "Cancelar",
   "ui.loading": "Cargando…",
   "title.borderColor": "Color del borde del proyecto",
@@ -289,16 +288,6 @@ export const es: Record<MessageKey, string> = {
   "ui.cat.accept": "Aceptar",
   "ui.cat.dialogBody": "Así se ve un diálogo con el tema actual.",
   // Theme
-  "theme.core.bg": "Fondo",
-  "theme.core.surface": "Superficie",
-  "theme.core.text": "Texto",
-  "theme.core.accent": "Acento",
-  "theme.preset.warmDark": "Oscuro cálido",
-  "theme.preset.slateDark": "Oscuro pizarra",
-  "theme.preset.highContrast": "Alto contraste",
-  "theme.warn.textBg": "El texto casi no se distingue del fondo (contraste menor a 4.5).",
-  "theme.warn.textSurface": "El texto casi no se distingue de la superficie (contraste menor a 4.5).",
-  "theme.warn.accentBg": "El acento casi no se distingue del fondo (contraste menor a 3).",
   // Worktree states and close-action reasons
   "wt.state.missing": "no encontrado",
   "wt.state.active": "Claude activo",

@@ -5,6 +5,8 @@ import type { BranchInfo, RemoteInfo, StashInfo } from "./types.js";
 import { useI18n } from "../i18n/index.js";
 
 type Props = {
+  /** Set by the Repositorio tab's resizable columns (repoColumns.ts). */
+  width?: number;
   branches: BranchInfo[];
   stashes: StashInfo[];
   remotes: RemoteInfo[];
@@ -54,7 +56,7 @@ export function BranchesPanel(p: Props) {
   );
 
   return (
-    <div className="repo-rail">
+    <div className="repo-rail" style={p.width ? { width: p.width } : undefined}>
       <label className="repo-search">
         <MagnifyingGlassIcon className="hero-icon" />
         <input

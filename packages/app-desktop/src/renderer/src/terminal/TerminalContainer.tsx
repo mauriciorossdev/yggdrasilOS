@@ -1,3 +1,4 @@
+import { QueueDroppedNotice } from "./QueueDroppedNotice.js";
 import { Fragment, useEffect, useMemo, useReducer, useRef, useState, type KeyboardEvent } from "react";
 import { createPortal } from "react-dom";
 import { PencilIcon, TrashIcon } from "@heroicons/react/20/solid";
@@ -12,7 +13,8 @@ import { PaneDivider } from "./PaneDivider.js";
 import type { TerminalRegistry } from "./terminalRegistry.js";
 import { onLoadFlow, onLoadTeam, onNewTerminal, onTerminalTabVisible } from "./terminalBridge.js";
 import { buildFlowLinks, setFlowLinks } from "./flowLinks.js";
-import { onFocusPane, publishTerminalPanes } from "./terminalPanesStore.js";
+import { onClosePanes, onFocusPane, publishTerminalPanes } from "./terminalPanesStore.js";
+import { useActiveTab } from "../ui/mainTabsStore.js";
 import { useGateway } from "@yggdrasil/client-web";
 import { createNodeWorktrees } from "../worktrees/nodeWorktrees.js";
 import { buildFlowLeaves, selectTeamRootNodes } from "./buildFlowLeaves.js";
@@ -341,6 +343,19 @@ function TerminalContainerBody() {
     // Main lists panes by raw id; the Browser comments popover wants the names shown here.
     void window.yggdrasil.browserTab.comments.setPaneTitles(Object.fromEntries(leaves.map((l) => [l.id, l.title])));
   }, [leaves, minimizedIds, state.activePaneId, browserAgent.dockedId]);
+  // Attention (main/attentionHost.ts): the pane on screen — active, Terminal
+  // tab showing, not minimized. A finished turn there isn't "done", and
+  // switching to it marks it seen.
+  const activeTab = useActiveTab();
+  const viewingPaneId =
+    activeTab === "terminal" && state.activePaneId && !hiddenIds.has(state.activePaneId) ? state.activePaneId : null;
+  useEffect(() => {
+    void window.yggdrasil.attention.setViewing(viewingPaneId);
+  }, [viewingPaneId]);
+
+  // Worktrees' bulk cleanup closes the panes of a worktree it removes.
+  useEffect(() => onClosePanes((ids) => ids.forEach((id) => dispatch({ type: "CLOSE", id }))), []);
+
   useEffect(
     () =>
       onFocusPane((id) => {
@@ -563,6 +578,7 @@ function TerminalContainerBody() {
 
   return (
     <div className="terminal-container">
+      <QueueDroppedNotice />
       <TerminalNavbar
         disabled={!state.root}
         onArrange={(layout) => dispatch({ type: "ARRANGE", layout })}

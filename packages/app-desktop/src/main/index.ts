@@ -17,7 +17,14 @@ import {
   upsertProject,
   type ProjectRecord,
 } from "./projects.js";
-import { disposeAllTerminalsAndWait, disposeTerminalsForProject, registerTerminalIpc } from "./terminals.js";
+import {
+  disposeAllTerminalsAndWait,
+  disposeTerminalsForProject,
+  registerTerminalIpc,
+  setAttentionHooks,
+  setSubmitGate,
+  submitToTerminal,
+} from "./terminals.js";
 import { openGatewaysPath, registerOpenGateway, resetOpenGateways, unregisterOpenGateway } from "./openGateways.js";
 import { gatewayAuthForNewProject, notifyPhoneLinkChanged, registerPhoneLinkIpc, startPhoneLink, stopPhoneLink } from "./phoneLink.js";
 import { readAgentFlow, writeAgentFlow, type AgentFlow } from "./agentFlow.js";
@@ -35,7 +42,9 @@ import {
   WorkspaceError,
   type AskAnswer,
   type AskRequest,
+  type WorkspaceAction,
   type WorkspaceBroker,
+  type WorkspaceZone,
 } from "./workspace.js";
 import { getDesktopAutomationAdapter, type PermissionKind } from "./automation/index.js";
 import {
@@ -79,7 +88,7 @@ import {
 } from "./whisperSettings.js";
 import { transcribeCloud } from "./sttCloud.js";
 import { readSettingsFile, updateSettingsFile } from "./settingsFile.js";
-import { buildExportMarkdown, deepMerge, parseImportMarkdown } from "./settingsTransfer.js";
+import { buildExportMarkdown, deepMerge, parseImportMarkdown, withGlobalProviders } from "./settingsTransfer.js";
 import { loadTtsSettings, saveTtsSettings, type TtsSettings } from "./ttsSettings.js";
 import { deleteCustomRole, loadCustomRoles, saveCustomRole, type CustomRole } from "./roles.js";
 import {
@@ -99,6 +108,32 @@ import {
 } from "./ideSettings.js";
 import { defaultThemeSettings, loadThemeSettings, saveThemeSettings, type ThemeSettings } from "./themeSettings.js";
 import { loadEditorSettings, saveEditorSettings, type EditorSettings } from "./editorSettings.js";
+import {
+  isCavemanInstalled,
+  readUserMcpServers,
+  loadClaudePaneSettings,
+  saveClaudePaneSettings,
+  setAttentionBridgeCommand,
+  attentionEnabled,
+  currentAttentionSettings,
+  type ClaudePaneSettings,
+} from "./claudePaneSettings.js";
+import {
+  disposeAttention,
+  installAttention,
+  paneAttentionStatus,
+  reportAttention,
+  reportPaneInput,
+  setQueueHooks,
+} from "./attentionHost.js";
+import {
+  disposeQueues,
+  dropPane as dropPaneQueue,
+  gateSubmit,
+  installPaneQueue,
+  onInterrupt as queueInterrupt,
+  onTurnEnd as queueTurnEnd,
+} from "./paneQueueHost.js";
 import { installLspIpc } from "./lsp/ipc.js";
 import { loadSyncSettings, saveSyncSettings, type SyncSettings } from "./syncSettings.js";
 import { resourceKeyFor, type ResourceRef } from "./sharedResources.js";
@@ -121,6 +156,16 @@ import { notesAbsoluteDir, watchNotesDir } from "./notesWatcher.js";
 import { createBrowserTabView, scaleBrowserTabBounds, type BrowserTabBounds, type BrowserTabHandle } from "./browserTabView.js";
 import { createBrowserCommentsHost, type CommentProvider } from "./browserCommentsHost.js";
 import { writeCaptureBundle } from "./browserCaptureStore.js";
+import { createCodeCommentsHost, type CodeCommentsHost } from "./codeCommentsHost.js";
+import {
+  addStoredCodeComment,
+  clearDoneStoredCodeComments,
+  dropStoredRepoCodeComments,
+  listStoredCodeComments,
+  removeStoredCodeComment,
+  setStoredCodeCommentsStatus,
+  updateStoredCodeComment,
+} from "./codeCommentsStore.js";
 import {
   addBrowserComment,
   listBrowserComments,
@@ -346,6 +391,13 @@ let workspaceBroker: WorkspaceBroker | undefined;
 const pendingWorkspaceAsks = new Map<string, (answer: AskAnswer) => void>();
 const WORKSPACE_ASK_TIMEOUT_MS = 120_000;
 
+/** Tells every window the cross-project workspace changed (links, trust, layout, audit, or which projects are open). */
+function broadcastWorkspaceChanged(): void {
+  for (const win of BrowserWindow.getAllWindows()) {
+    if (!win.isDestroyed()) win.webContents.send("workspace:changed");
+  }
+}
+
 function requireWorkspaceBroker(): WorkspaceBroker {
   if (!workspaceBroker) throw new WorkspaceError("workspace is not ready yet", 409);
   return workspaceBroker;
@@ -432,6 +484,11 @@ function yggdrasilShimPath(): string {
 function statuslineBridgePath(): string {
   // Built as its own bundle alongside index.js — see electron.vite.config.ts.
   return join(__dirname, "statuslineBridge.js");
+}
+
+function attentionBridgePath(): string {
+  // Same: its own bundle, run by the attention hooks of every claude pane (claudePaneSettings.ts).
+  return join(__dirname, "attentionBridge.js");
 }
 
 // Startup splash: created first thing in whenReady, dropped as soon as the
@@ -530,8 +587,11 @@ function createProjectBrowserWindow(project: ProjectRecord, gatewayUrl: string, 
       entry.pluginWatcher?.close();
       entry.notesWatcher?.close();
       disposeTerminalsForProject(project.id);
+      disposeAttention(project.id);
+      disposeQueues(project.id);
       void lspIpc?.stopProject(project.id);
       projectWindows.delete(project.id);
+      broadcastWorkspaceChanged();
       void unregisterOpenGateway(project.id).then(notifyPhoneLinkChanged);
       // getMemoryDb caches one open sqlite handle per project path (see
       // db.ts) — without this, a long-running Electron session that opens
@@ -591,7 +651,7 @@ function createCommentsHost(projectId: string) {
         return (await needPc().listPanes()).panes.map((p) => ({ id: p.id, title: titles[p.id] || p.title, command: p.command }));
       },
       create: (spec) => needPc().createPane(spec),
-      write: (id, text, pressEnter) => needPc().writePane(id, text, pressEnter),
+      write: (id, text, pressEnter) => needPc().writePane(id, text, pressEnter, undefined, { source: { kind: "browser" } }),
       read: (id, maxChars) => pc()?.readPane(id, maxChars),
     },
     captures: {
@@ -603,6 +663,51 @@ function createCommentsHost(projectId: string) {
     },
     providers: () => commentProviders.get(projectId) ?? [],
   });
+}
+
+/** Review comments on code, per project (notes/features/code-review-comments.md). */
+const codeCommentsHosts = new Map<string, CodeCommentsHost>();
+
+function codeCommentsHostFor(projectId: string): CodeCommentsHost {
+  const existing = codeCommentsHosts.get(projectId);
+  if (existing) return existing;
+  const needPc = () => {
+    const handle = projectWindows.get(projectId)?.paneControl;
+    if (!handle) throw new Error("project window is not open");
+    return handle;
+  };
+  const host = createCodeCommentsHost({
+    projectPath: async () => {
+      const root = projectWindows.get(projectId)?.root ?? (await getProject(projectId))?.path;
+      if (!root) throw new Error("project not found");
+      return root;
+    },
+    store: {
+      list: (root) => listStoredCodeComments(projectId, root),
+      add: (root, input) => addStoredCodeComment(projectId, root, input),
+      update: (root, id, text) => updateStoredCodeComment(projectId, root, id, text),
+      remove: (root, id) => removeStoredCodeComment(projectId, root, id),
+      clearDone: (root) => clearDoneStoredCodeComments(projectId, root),
+      dropRoot: (root) => dropStoredRepoCodeComments(projectId, root),
+      setStatus: (ids, status, sentTo) => setStoredCodeCommentsStatus(projectId, ids, status, sentTo),
+    },
+    panes: {
+      list: async () => {
+        const titles = commentPaneTitles.get(projectId) ?? {};
+        return (await needPc().listPanes()).panes.map((p) => ({ id: p.id, title: titles[p.id] || p.title, command: p.command, cwd: p.cwd }));
+      },
+      create: (spec) => needPc().createPane(spec),
+      write: (id, text, pressEnter) => needPc().writePane(id, text, pressEnter, undefined, { source: { kind: "review" } }),
+      read: (id, maxChars) => projectWindows.get(projectId)?.paneControl.readPane(id, maxChars),
+    },
+    providers: () => commentProviders.get(projectId) ?? [],
+    changed: (root) => {
+      const win = projectWindows.get(projectId)?.window;
+      if (win && !win.isDestroyed()) win.webContents.send("codeComments:changed", root);
+    },
+  });
+  codeCommentsHosts.set(projectId, host);
+  return host;
 }
 
 /** Like resolveBrowserTab, for operations that can't proceed without a window. */
@@ -819,6 +924,8 @@ async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
         });
       },
     },
+    (paneId, event) => reportAttention(project.id, paneId, event),
+    { commentDone: (id) => codeCommentsHostFor(project.id).setStatus([id], "done") },
   );
   setSplashStatus("Starting gateway…");
   const gateway = await ensureGateway(
@@ -834,14 +941,14 @@ async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
   );
   await registerOpenGateway(project.id, gateway.port);
   notifyPhoneLinkChanged();
-  const { removedLegacy } = await writeYggdrasilMcpConfig(
+  const { staleApprovals } = await writeYggdrasilMcpConfig(
     project.path,
     yggdrasilShimPath(),
     paneControl.url,
     paneControl.token,
     gateway.url,
   );
-  await trustYggdrasilMcpServer(project.path, removedLegacy);
+  await trustYggdrasilMcpServer(project.path, staleApprovals);
   await seedPaneControlGuidance(project.path);
   await seedDocumentsGuidance(project.path);
   await seedPluginsGuidance(project.path);
@@ -861,6 +968,7 @@ async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
   });
   const notesWatcher = watchNotesDir(notesAbsoluteDir(project.path), project.id);
   projectWindows.set(project.id, { window: win, root: project.path, gateway, paneControl, pluginWatcher, notesWatcher });
+  broadcastWorkspaceChanged();
 }
 
 function registerIpc(): void {
@@ -984,6 +1092,24 @@ function registerIpc(): void {
     );
   });
 
+  // Review comments on code: diffs and the file editor (codeCommentsHost.ts).
+  ipcMain.handle("codeComments:locate", (_e, projectId: string, target: string) => codeCommentsHostFor(projectId).locate(String(target)));
+  ipcMain.handle("codeComments:list", (_e, projectId: string, root: string) => codeCommentsHostFor(projectId).list(root));
+  ipcMain.handle("codeComments:add", (_e, projectId: string, root: string, input: unknown) => codeCommentsHostFor(projectId).add(root, input));
+  ipcMain.handle("codeComments:update", (_e, projectId: string, root: string, id: string, text: string) =>
+    codeCommentsHostFor(projectId).update(root, id, text),
+  );
+  ipcMain.handle("codeComments:remove", (_e, projectId: string, root: string, id: string) => codeCommentsHostFor(projectId).remove(root, id));
+  ipcMain.handle("codeComments:clearDone", (_e, projectId: string, root: string) => codeCommentsHostFor(projectId).clearDone(root));
+  ipcMain.handle("codeComments:setStatus", (_e, projectId: string, ids: string[], status: "idle" | "sent" | "done") =>
+    codeCommentsHostFor(projectId).setStatus(Array.isArray(ids) ? ids : [], status),
+  );
+  ipcMain.handle("codeComments:dropRoot", (_e, projectId: string, path: string) => codeCommentsHostFor(projectId).dropRoot(path));
+  ipcMain.handle("codeComments:targets", (_e, projectId: string) => codeCommentsHostFor(projectId).targets());
+  ipcMain.handle("codeComments:send", (_e, projectId: string, req: Parameters<CodeCommentsHost["send"]>[0]) =>
+    codeCommentsHostFor(projectId).send(req),
+  );
+
   ipcMain.handle("projects:list", () => listProjects());
 
   ipcMain.handle("projects:openExisting", async () => {
@@ -1080,6 +1206,7 @@ function registerIpc(): void {
   ipcMain.handle("projects:remove", async (_event, id: string) => {
     if (id === defaultProjectId) throw new Error("The default workspace can't be removed.");
     await closeProjectWindow(id);
+    await workspaceBroker?.forgetProject(id);
     return removeProject(id);
   });
 
@@ -1095,6 +1222,7 @@ function registerIpc(): void {
     }
     await closeProjectWindow(id);
     await rm(target, { recursive: true, force: true, maxRetries: 5, retryDelay: 200 });
+    await workspaceBroker?.forgetProject(id);
     return removeProject(id);
   });
 
@@ -1258,7 +1386,7 @@ function registerIpc(): void {
     async (_event, projectId: string, id: string, text: string, pressEnter?: boolean) => {
       const paneControl = projectWindows.get(projectId)?.paneControl;
       if (!paneControl) throw new Error("Project window not open");
-      await paneControl.writePane(id, text, pressEnter ?? true);
+      await paneControl.writePane(id, text, pressEnter ?? true, undefined, { source: { kind: "plugin" } });
     },
   );
 
@@ -1584,6 +1712,13 @@ function registerIpc(): void {
         } catch {
           gateway = null;
         }
+        let globalProviders: Record<string, unknown> | null = null;
+        try {
+          globalProviders = JSON.parse(await readFile(join(homedir(), ".yggdrasil", "providers.json"), "utf8")) as Record<string, unknown>;
+        } catch {
+          globalProviders = null;
+        }
+        gateway = withGlobalProviders(gateway, globalProviders);
       }
       await writeFile(
         result.filePath,
@@ -1687,6 +1822,16 @@ function registerIpc(): void {
     return saved;
   });
 
+  // Settings -> Agent CLIs -> Claude Code: applies to claude panes opened after saving.
+  ipcMain.handle("claudePaneSettings:get", async () => ({
+    settings: await loadClaudePaneSettings(app.getPath("userData")),
+    cavemanInstalled: isCavemanInstalled(),
+    userMcpServers: readUserMcpServers(),
+  }));
+  ipcMain.handle("claudePaneSettings:set", (_event, settings: ClaudePaneSettings) =>
+    saveClaudePaneSettings(app.getPath("userData"), settings),
+  );
+
   // Cross-project workspace: Settings -> Workspace reads/edits links and trust,
   // and the permission prompt answers come back through workspace:answer.
   ipcMain.handle("workspace:view", (_event, projectId: string) => requireWorkspaceBroker().view(projectId));
@@ -1700,6 +1845,28 @@ function registerIpc(): void {
     const allow = answer?.allow === true;
     finish({ allow, trust: allow && answer?.trust === true });
   });
+
+  // Workspaces canvas (home window): every project and link at once; connecting
+  // links both directions, trust is set per direction + action. See
+  // notes/features/workspaces-canvas.md. Changes broadcast workspace:changed.
+  ipcMain.handle("workspace:graph", () => requireWorkspaceBroker().graph());
+  ipcMain.handle("workspace:connect", (_event, a: string, b: string) => requireWorkspaceBroker().connect(String(a), String(b)));
+  ipcMain.handle("workspace:disconnect", (_event, a: string, b: string) =>
+    requireWorkspaceBroker().disconnect(String(a), String(b)),
+  );
+  ipcMain.handle("workspace:setTrust", (_event, from: string, to: string, action: WorkspaceAction, trusted: boolean) =>
+    requireWorkspaceBroker().setTrust(String(from), String(to), action, trusted === true),
+  );
+  ipcMain.handle("workspace:setPosition", (_event, projectId: string, position: { x: number; y: number }) =>
+    requireWorkspaceBroker().setPosition(String(projectId), { x: Number(position?.x), y: Number(position?.y) }),
+  );
+
+  ipcMain.handle(
+    "workspace:saveZone",
+    (_event, zone: WorkspaceZone, positions?: Record<string, { x: number; y: number }>) =>
+      requireWorkspaceBroker().saveZone(zone, positions ?? {}),
+  );
+  ipcMain.handle("workspace:deleteZone", (_event, id: string) => requireWorkspaceBroker().deleteZone(String(id)));
 
   ipcMain.handle("onboarding:getState", async () => {
     const userData = app.getPath("userData");
@@ -1908,6 +2075,8 @@ app.whenReady().then(async () => {
   process.env.PATH = resolveShellPath();
   const savedOnboarding = await loadOnboardingSettings(app.getPath("userData")).catch(() => null);
   setMainLanguage(resolveMainLanguage(savedOnboarding?.language, app.getLocale()));
+  // Before any project (and its claude panes) can open — see claudePaneSettings.ts.
+  await loadClaudePaneSettings(app.getPath("userData")).catch((error) => console.error("[claudePaneSettings] load failed", error));
   installAboutMenu();
   installAutoUpdater();
   installUpdateCheck();
@@ -1915,7 +2084,36 @@ app.whenReady().then(async () => {
   registerTerminalIpc(
     (projectId) => projectWindows.get(projectId)?.window,
     (projectId) => projectWindows.get(projectId)?.gateway.url,
+    (projectId) => projectWindows.get(projectId)?.root,
   );
+  // Attention states of claude panes (notes/features/attention-inbox.md): the
+  // hooks run attentionBridge.js with the same `node` the statusLine uses.
+  setAttentionBridgeCommand(`node ${JSON.stringify(attentionBridgePath())}`);
+  setAttentionHooks({
+    target: (projectId) => {
+      const pc = projectWindows.get(projectId)?.paneControl;
+      return pc ? { url: pc.url, token: pc.token } : undefined;
+    },
+    onInput: reportPaneInput,
+  });
+  installAttention({
+    getWindow: (projectId) => projectWindows.get(projectId)?.window,
+    paneTitle: (projectId, paneId) => commentPaneTitles.get(projectId)?.[paneId],
+  });
+  // Message queue per claude pane (notes/features/pane-message-queue.md): a
+  // message for a busy agent waits, and the turn's end (seen by the attention
+  // inbox) hands it over.
+  installPaneQueue({
+    getWindow: (projectId) => projectWindows.get(projectId)?.window,
+    paneTitle: (projectId, paneId) => commentPaneTitles.get(projectId)?.[paneId],
+    status: paneAttentionStatus,
+    enabled: () => attentionEnabled() && currentAttentionSettings().holdMessages,
+    deliver: async (paneId, text) => {
+      await submitToTerminal(paneId, text, undefined, { when: "now" });
+    },
+  });
+  setQueueHooks({ onTurnEnd: queueTurnEnd, onInterrupt: queueInterrupt, onEnd: dropPaneQueue });
+  setSubmitGate(gateSubmit, dropPaneQueue);
   registerPluginProtocol((id) => getProject(id));
   registerFileProtocol((id) => getProject(id));
   setSplashStatus("Loading plugins…");
@@ -1931,14 +2129,16 @@ app.whenReady().then(async () => {
   currentTheme = await loadThemeSettings(app.getPath("userData"));
   workspaceBroker = await createWorkspaceBroker({
     userDataDir: app.getPath("userData"),
-    listProjects: async () => (await listProjects()).map((p) => ({ id: p.id, name: p.name })),
+    listProjects: async () => (await listProjects()).map((p) => ({ id: p.id, name: p.name, color: p.color })),
     paneApi: (id) => {
       const entry = projectWindows.get(id);
       if (!entry || entry.window.isDestroyed()) return undefined;
       return {
         listPanes: entry.paneControl.listPanes,
         readPane: entry.paneControl.readPane,
-        writePane: (paneId, text, pressEnter) => entry.paneControl.writePane(paneId, text, pressEnter),
+        writePane: async (paneId, text, pressEnter) => {
+          await entry.paneControl.writePane(paneId, text, pressEnter, undefined, { source: { kind: "workspace" } });
+        },
       };
     },
     ask: askWorkspace,
@@ -1946,6 +2146,7 @@ app.whenReady().then(async () => {
       const win = projectWindows.get(projectId)?.window;
       if (win && !win.isDestroyed()) win.webContents.send("workspace:notice", notice);
     },
+    onChange: broadcastWorkspaceChanged,
   });
   await resetOpenGateways();
   registerPhoneLinkIpc();

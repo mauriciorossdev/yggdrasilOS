@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
-import { chatReducer, initialChatState } from "../chat/chatReducer.js";
-import { useChatEvents } from "../chat/useChatEvents.js";
-import { MessageList } from "../chat/MessageList.js";
-import { ApprovalBar } from "../chat/ApprovalBar.js";
+import { chatReducer, initialChatState } from "@yggdrasil/ui-kit";
+import { useChatEvents } from "@yggdrasil/ui-kit";
+import { MessageList } from "@yggdrasil/ui-kit";
+import { ApprovalBar } from "@yggdrasil/ui-kit";
 import { ChatInput } from "../chat/ChatInput.js";
 import { studioChatContext } from "./studioContext.js";
 import type { AgentInfo, Attachment, ChatSendResult, PluginRecord } from "../types.js";

@@ -77,7 +77,7 @@ export function ApiKeyForm({ providers, client, config, onSaved, onBack }: Props
                 });
                 const msg = result.requiresRestart
                   ? `✓ API key saved. ⚠ Restart required.`
-                  : `✓ API key saved for ${selectedProvider}`;
+                  : `✓ API key saved for ${selectedProvider} (all projects and the desktop app)`;
                 onSaved(msg);
               } catch (err) {
                 onSaved(`✗ ${err instanceof Error ? err.message : String(err)}`);
@@ -86,7 +86,7 @@ export function ApiKeyForm({ providers, client, config, onSaved, onBack }: Props
           />
         </Box>
         <Box marginTop={1}>
-          <Text color={theme.dim}>enter to save · esc to cancel</Text>
+          <Text color={theme.dim}>saved for every project and the desktop app (~/.yggdrasil/providers.json) · enter to save · esc to cancel</Text>
         </Box>
       </Box>
     );

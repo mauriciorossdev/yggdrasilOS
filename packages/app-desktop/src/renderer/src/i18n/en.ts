@@ -234,7 +234,6 @@ export const en = {
   "doc.mic.silence": "Heard silence — no speech detected.",
   "doc.retry": "Retry",
   // Shared UI and settings shell
-  "ui.close": "Close",
   "ui.cancel": "Cancel",
   "ui.loading": "Loading…",
   "title.borderColor": "Project border color",
@@ -289,16 +288,6 @@ export const en = {
   "ui.cat.accept": "OK",
   "ui.cat.dialogBody": "This is how a dialog looks with the current theme.",
   // Theme
-  "theme.core.bg": "Background",
-  "theme.core.surface": "Surface",
-  "theme.core.text": "Text",
-  "theme.core.accent": "Accent",
-  "theme.preset.warmDark": "Warm dark",
-  "theme.preset.slateDark": "Slate dark",
-  "theme.preset.highContrast": "High contrast",
-  "theme.warn.textBg": "Text is barely distinguishable from the background (contrast below 4.5).",
-  "theme.warn.textSurface": "Text is barely distinguishable from the surface (contrast below 4.5).",
-  "theme.warn.accentBg": "The accent is barely distinguishable from the background (contrast below 3).",
   // Worktree states and close-action reasons
   "wt.state.missing": "not found",
   "wt.state.active": "Claude active",

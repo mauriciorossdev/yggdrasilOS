@@ -1,14 +1,14 @@
 import { useState } from "react";
-import { Button } from "./Button.js";
-import { Card } from "./Card.js";
-import { Chip } from "./Chip.js";
-import { Field, Input, Select } from "./Field.js";
-import { IconButton } from "./IconButton.js";
-import { Modal } from "./Modal.js";
-import { NavItem } from "./NavItem.js";
-import { ProgressBar } from "./ProgressBar.js";
-import { StatusChip } from "./Chip.js";
-import { Tabs } from "./Tabs.js";
+import { Button } from "@yggdrasil/ui-kit";
+import { Card } from "@yggdrasil/ui-kit";
+import { Chip } from "@yggdrasil/ui-kit";
+import { Field, Input, Select } from "@yggdrasil/ui-kit";
+import { IconButton } from "@yggdrasil/ui-kit";
+import { Modal } from "@yggdrasil/ui-kit";
+import { NavItem } from "@yggdrasil/ui-kit";
+import { ProgressBar } from "@yggdrasil/ui-kit";
+import { StatusChip } from "@yggdrasil/ui-kit";
+import { Tabs } from "@yggdrasil/ui-kit";
 import { useI18n } from "../i18n/index.js";
 
 /**

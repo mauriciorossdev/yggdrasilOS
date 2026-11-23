@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import { CommandLineIcon } from "@heroicons/react/20/solid";
 import { useI18n } from "../i18n/index.js";
-import { useDismiss } from "../ui/useDismiss.js";
+import { useDismiss } from "@yggdrasil/ui-kit";
 
 type Props = {
   disabled: boolean;

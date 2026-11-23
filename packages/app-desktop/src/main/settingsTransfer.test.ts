@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import {
+  withGlobalProviders,
   buildExportMarkdown,
   deepMerge,
   dropEmptySecrets,
@@ -51,3 +52,22 @@ describe("settingsTransfer", () => {
     expect(dropEmptySecrets({ apiKey: "", voiceId: "" })).toEqual({ voiceId: "" });
   });
 });
+
+describe("withGlobalProviders", () => {
+  it("exports the global providers under the project's own overrides", () => {
+    const merged = withGlobalProviders(
+      { agents: [], providers: { ollama: { defaultModel: "llama" } } },
+      { providers: { ollama: { baseUrl: "https://ollama.com", apiKey: "k" }, anthropic: { apiKey: "a" } } },
+    );
+    expect(merged?.providers).toEqual({
+      ollama: { baseUrl: "https://ollama.com", apiKey: "k", defaultModel: "llama" },
+      anthropic: { apiKey: "a" },
+    });
+  });
+
+  it("leaves the export alone without a global file", () => {
+    const gateway = { providers: { ollama: { baseUrl: "x" } } };
+    expect(withGlobalProviders(gateway, null)).toBe(gateway);
+  });
+});
+

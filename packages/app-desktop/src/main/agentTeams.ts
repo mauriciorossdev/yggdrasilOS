@@ -100,6 +100,25 @@ function upsertTeamNode(team: AgentTeam, node: { id: string; name: string; initi
   else team.nodes[index] = agentFlowNode;
 }
 
+/** Role-name matching key: case- and whitespace-insensitive, so "UX/UI Designer" and "UX / UI Designer" count as the same role. */
+function roleKey(name: string): string {
+  return name.replace(/\s+/g, "").toLowerCase();
+}
+
+/**
+ * A child of `sourceId` in this team already playing the role `name` — the
+ * node a re-spawned pane for that role should land on. Pane ids are fresh on
+ * every create_pane, so without this every time an orchestrator rebuilt its
+ * team (one session after another) appended a full new copy of every role.
+ * Same key as AgentFlowView.tsx's live onAutoCapture dedup.
+ */
+function findSameRoleChild(team: AgentTeam, sourceId: string, name: string): AgentFlowNode | undefined {
+  const key = roleKey(name);
+  return team.nodes.find(
+    (n) => roleKey(n.name) === key && (team.edges ?? []).some((e) => e.from === sourceId && e.to === n.id),
+  );
+}
+
 function defaultTeamName(purpose: string): string {
   const oneLine = purpose.replace(/\s+/g, " ").trim();
   return oneLine.length > 0 ? oneLine.slice(0, 60) : "New Team";
@@ -127,12 +146,18 @@ function defaultTeamName(purpose: string): string {
  * and — if this is the first time that pane's been seen — a node for it
  * too (its own task/initialPrompt is unknown here, only its title, since it
  * wasn't necessarily itself created via create_pane).
+ *
+ * A pane for a role `source` already has a child for (same name, ignoring
+ * case and spaces) reuses that child node — its prompt/spec are refreshed,
+ * its id and position kept — instead of appending a duplicate. Returns the
+ * node id actually recorded: `node.id`, or the reused node's id, which the
+ * caller maps the live pane to (terminals.ts setFlowNodeId).
  */
 export async function recordAutoCapturedNode(
   projectRoot: string,
   node: { id: string; name: string; initialPrompt: string; specPath?: string },
   source?: { id: string; name: string },
-): Promise<void> {
+): Promise<string> {
   const file = await readTeamsFile(projectRoot);
 
   const keyId = source?.id ?? node.id;
@@ -143,16 +168,19 @@ export async function recordAutoCapturedNode(
   }
   if (!team.edges) team.edges = [];
 
-  upsertTeamNode(team, node);
+  const sameRole = source && source.id !== node.id ? findSameRoleChild(team, source.id, node.name) : undefined;
+  const nodeId = sameRole?.id ?? node.id;
+  upsertTeamNode(team, { ...node, id: nodeId });
 
-  if (source && source.id !== node.id) {
+  if (source && source.id !== nodeId) {
     if (!team.nodes.some((n) => n.id === source.id)) {
       upsertTeamNode(team, { id: source.id, name: source.name });
     }
-    if (!team.edges.some((e) => e.from === source.id && e.to === node.id)) {
-      team.edges.push({ from: source.id, to: node.id });
+    if (!team.edges.some((e) => e.from === source.id && e.to === nodeId)) {
+      team.edges.push({ from: source.id, to: nodeId });
     }
   }
 
   await writeTeamsFile(projectRoot, file);
+  return nodeId;
 }

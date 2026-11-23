@@ -1,7 +1,7 @@
 import { useState } from "react";
 import { CheckIcon, ChevronRightIcon, ExclamationTriangleIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useI18n, type MessageKey } from "../../i18n/index.js";
-import { Chip } from "../../ui/Chip.js";
+import { Chip } from "@yggdrasil/ui-kit";
 import type { ConfigMcpServer, ConfigShape, McpServerStatus, McpTestResult } from "../../types.js";
 
 type Props = {

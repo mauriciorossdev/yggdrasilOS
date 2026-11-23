@@ -24,6 +24,8 @@ export type ExtraTab = {
 
 type Props = {
   homeContent?: ReactNode;
+  /** Main window only, like Home: the Workspaces canvas (home/WorkspacesCanvas.tsx). */
+  workspacesContent?: ReactNode;
   chatContent: ReactNode;
   terminalContent: ReactNode;
   agentFlowContent: ReactNode;
@@ -55,6 +57,7 @@ type Props = {
  */
 export function MainTabs({
   homeContent,
+  workspacesContent,
   chatContent,
   terminalContent,
   agentFlowContent,
@@ -115,6 +118,11 @@ export function MainTabs({
       {isMainWindow && (
         <div className="main-tab-panel" style={{ display: active === "home" ? "flex" : "none" }}>
           {homeContent}
+        </div>
+      )}
+      {isMainWindow && (
+        <div className="main-tab-panel" style={{ display: active === "workspaces" ? "flex" : "none" }}>
+          {workspacesContent}
         </div>
       )}
       <div className="main-tab-panel" style={{ display: active === "chat" ? "flex" : "none" }}>

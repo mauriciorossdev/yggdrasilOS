@@ -108,7 +108,7 @@ jobs:
           | macOS (Apple silicon) | \`Yggdrasil-$version-arm64.dmg\` |
           | Linux | \`Yggdrasil-$version.AppImage\` or \`yggdrasil-desktop_${version}_amd64.deb\` |
 
-          The installers aren't code signed yet. On Windows, SmartScreen asks for confirmation: **More info → Run anyway**. On macOS, right-click the app and choose **Open** the first time.
+          The installers aren't code signed yet. On Windows, SmartScreen asks for confirmation: **More info → Run anyway**. On macOS, the first launch is blocked: open **System Settings → Privacy & Security** and click **Open Anyway** (or run \`xattr -cr /Applications/Yggdrasil.app\`).
 
           The link server image for this version is \`ghcr.io/mauriciorossdev/yggdrasil-gateway:$version\` (see \`deploy/README.md\`).
           EOF

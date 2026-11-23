@@ -69,6 +69,8 @@ export function App({
     { view: "model"; providerId: string } | undefined
   >(undefined);
   const [showAgentForm, setShowAgentForm] = useState(false);
+  // Set when the agent form edits an existing agent (full record from agents.get) instead of creating one.
+  const [editingAgent, setEditingAgent] = useState<(AgentInfo & { scope: "local" | "global" }) | null>(null);
   const clientRef = useRef<GatewayClient | null>(null);
 
   if (!clientRef.current) {
@@ -473,16 +475,22 @@ export function App({
         <Box justifyContent="center" paddingY={1}>
           {showAgentForm ? (
             <AgentForm
+              key={editingAgent ? `edit:${editingAgent.id}` : "new"}
               providers={state.providers}
               client={client}
+              editing={editingAgent ?? undefined}
               onCreated={(msg) => {
                 setShowAgentForm(false);
+                setEditingAgent(null);
                 dispatch({ type: "ADD_SYSTEM_MESSAGE", text: msg });
                 void client
                   .call<{ agents: AgentInfo[]; defaultAgent: string }>("agents.list")
                   .then(({ agents, defaultAgent }) => dispatch({ type: "SET_AGENTS", agents, defaultAgent }));
               }}
-              onBack={() => setShowAgentForm(false)}
+              onBack={() => {
+                setShowAgentForm(false);
+                setEditingAgent(null);
+              }}
             />
           ) : (
             <AgentsList
@@ -492,7 +500,25 @@ export function App({
                 dispatch({ type: "SET_ACTIVE_AGENT", agentId });
                 dispatch({ type: "POP_VIEW" });
               }}
-              onCreate={() => setShowAgentForm(true)}
+              onCreate={() => {
+                setEditingAgent(null);
+                setShowAgentForm(true);
+              }}
+              onEdit={(agent) => {
+                // agents.list clips systemPrompt to 200 chars: load the full agent to edit.
+                void client
+                  .call<{ agent: AgentInfo & { scope: "local" | "global" } }>("agents.get", {
+                    id: agent.id,
+                    scope: agent.scope ?? "local",
+                  })
+                  .then(({ agent: full }) => {
+                    setEditingAgent(full);
+                    setShowAgentForm(true);
+                  })
+                  .catch((err: unknown) =>
+                    dispatch({ type: "ADD_SYSTEM_MESSAGE", text: `✗ ${err instanceof Error ? err.message : String(err)}` }),
+                  );
+              }}
               onClose={() => dispatch({ type: "POP_VIEW" })}
             />
           )}

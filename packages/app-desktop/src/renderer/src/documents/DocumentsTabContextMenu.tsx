@@ -1,5 +1,5 @@
 import { useRef } from "react";
-import { useDismiss } from "../ui/useDismiss.js";
+import { useDismiss } from "@yggdrasil/ui-kit";
 import { useI18n } from "../i18n/index.js";
 
 type Props = {

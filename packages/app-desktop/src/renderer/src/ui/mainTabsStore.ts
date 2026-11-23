@@ -8,6 +8,7 @@ import { t, type MessageKey } from "../i18n/index.js";
 
 export type BuiltinMainTab =
   | "home"
+  | "workspaces"
   | "chat"
   | "terminal"
   | "agentFlow"
@@ -27,6 +28,7 @@ export type ExtraTabMeta = { id: MainTab; label: string; icon?: ReactNode; onClo
 /** Message keys; translate where drawn (see viewLabel). */
 export const MAIN_TAB_LABELS: Record<BuiltinMainTab, MessageKey> = {
   home: "chat.mainNav.tab_home",
+  workspaces: "chat.mainNav.tab_workspaces",
   chat: "chat.mainNav.tab_chat",
   terminal: "chat.mainNav.tab_terminal",
   agentFlow: "chat.mainNav.tab_agentFlow",
@@ -40,13 +42,13 @@ export const MAIN_TAB_LABELS: Record<BuiltinMainTab, MessageKey> = {
 };
 
 /**
- * The tab that should really be showing: a closed complemento tab or Home in a
- * window that has no Home (only the main window does) fall back to Chat rather
+ * The tab that should really be showing: a closed complemento tab or Home /
+ * Workspaces in a window that has neither (only the main window does) fall back to Chat rather
  * than leaving a blank panel with nothing highlighted in the navigation.
  */
 export function resolveActiveTab(active: MainTab, extraTabIds: string[], isMainWindow: boolean): MainTab {
   if (active.startsWith("plugin:") && !extraTabIds.includes(active)) return "chat";
-  if (active === "home" && !isMainWindow) return "chat";
+  if ((active === "home" || active === "workspaces") && !isMainWindow) return "chat";
   return active;
 }
 

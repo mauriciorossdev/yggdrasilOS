@@ -5,6 +5,43 @@ import os from "node:os";
 import { delimiter, join } from "node:path";
 import { app, ipcMain, type BrowserWindow } from "electron";
 import * as pty from "node-pty";
+import { submitText, type SubmitOptions } from "./terminalSubmit.js";
+import { attentionEnabled, claudePaneLaunchExtras, sanitizeUserMcpChoice, type UserMcpChoice } from "./claudePaneSettings.js";
+import { inputEvent, type AttentionEvent } from "./attention.js";
+
+/** Where a project's attention hooks report to (its paneControlServer) — set by main/index.ts. */
+let attentionTarget: ((projectId: string) => { url: string; token: string } | undefined) | undefined;
+/** Told about every real input written into a pane — see attention.ts's "input" event. */
+let inputListener: ((projectId: string, id: TerminalId, event: AttentionEvent) => void) | undefined;
+
+/** Messages for a busy claude pane wait in its queue (paneQueueHost.ts); null = type it in now. */
+export type SubmitMeta = { source?: QueueSource; when?: SubmitWhen };
+let submitGate: ((projectId: string, id: TerminalId, text: string, meta: SubmitMeta) => SubmitResult | null) | undefined;
+let exitListener: ((projectId: string, id: TerminalId) => void) | undefined;
+
+export function setSubmitGate(gate: typeof submitGate, onExit?: (projectId: string, id: TerminalId) => void): void {
+  submitGate = gate;
+  exitListener = onExit;
+}
+
+export function setAttentionHooks(hooks: {
+  target: (projectId: string) => { url: string; token: string } | undefined;
+  onInput: (projectId: string, id: TerminalId, event: AttentionEvent) => void;
+}): void {
+  attentionTarget = hooks.target;
+  inputListener = hooks.onInput;
+}
+
+function reportInput(id: TerminalId, data: string): void {
+  const handle = terminals.get(id);
+  const event = inputEvent(data);
+  if (!handle || !inputListener || !event) return;
+  try {
+    inputListener(handle.projectId, id, event);
+  } catch (error) {
+    console.error("[terminals] attention input listener threw", error);
+  }
+}
 // @xterm/headless ships as a bundled CJS module whose named exports aren't
 // statically analyzable under Node ESM interop (only `default` — the whole
 // module.exports object — comes through) — default-import + destructure is
@@ -19,6 +56,9 @@ import serializePkg from "@xterm/addon-serialize";
 const { SerializeAddon } = serializePkg;
 import { readTerminalLayout, writeTerminalLayout, type TerminalLayout } from "./terminalLayout.js";
 import { readWindowsPidTable } from "./pidTree.js";
+import { resolveSpawnCwd } from "./spawnCwd.js";
+import type { QueueSource } from "./paneQueue.js";
+import type { SubmitResult, SubmitWhen } from "./paneQueueHost.js";
 import { discoverTranscriptPath, readTranscriptTail, type TranscriptMessage } from "./claudeTranscript.js";
 
 const require = createRequire(import.meta.url);
@@ -45,6 +85,8 @@ type TerminalHandle = {
   serializer: InstanceType<typeof SerializeAddon>;
   /** Count of output chunks fed to `headlessTerm` so far; lets a second view that starts from a snapshot drop the chunks the snapshot already contains. */
   outputSeq: number;
+  /** Date.now() of the latest output chunk — submitToTerminal waits for this to go quiet before pressing Enter. */
+  lastOutputAt: number;
   /**
    * A SECOND emulator fed the same bytes, kept at whatever column width a
    * reader last asked for via readTerminalOutputAtWidth (mobile's narrower
@@ -77,6 +119,8 @@ type TerminalHandle = {
   command?: string;
   /** Working directory this pane was spawned with — needed at read time (not just spawn time) to run claudeTranscript.ts's discoverTranscriptPath. */
   cwd: string;
+  /** Set when the saved folder was gone and the pane started in `cwd` (the project root or home) instead. See spawnCwd.ts. */
+  cwdFallback?: { missing: string; cwd: string };
   /** Date.now() at spawn — discoverTranscriptPath's search window start. Set only for command === "claude"; undefined for every other pane (transcript feature doesn't apply). */
   transcriptSpawnedAt?: number;
   /**
@@ -166,6 +210,8 @@ export type CreateTerminalParams = {
   initialPrompt?: string;
   /** How to pass initialPrompt to this harness's CLI — undefined means a bare positional; e.g. "-i" for antigravity. See buildLaunchCommand.ts. */
   initialPromptFlag?: string;
+  /** A `claude` Agent Flow node's own user-MCP choice (harness.userMcp); unset = the global one. See claudePaneSettings.ts. */
+  claudeUserMcp?: UserMcpChoice;
 };
 
 /**
@@ -235,6 +281,16 @@ function resolveYggdrasilTuiCommand(
   return { command: process.execPath, args, env: { ELECTRON_RUN_AS_NODE: "1" } };
 }
 
+/** "claude", "claude.exe", "/path/to/claude" — the command before Windows resolution. */
+function isClaudeCommand(command: string | undefined): boolean {
+  if (!command) return false;
+  const base = command.split(/[\\/]/).pop()!.toLowerCase();
+  return base === "claude" || base === "claude.exe" || base === "claude.cmd";
+}
+
+/** Project id → its root folder, for panes whose saved folder is gone. Set by registerTerminalIpc. */
+let projectRootFor: (projectId: string) => string | undefined = () => undefined;
+
 export function createTerminal(
   params: CreateTerminalParams,
   gatewayUrl: string | undefined,
@@ -252,6 +308,24 @@ export function createTerminal(
         ? { command: resolveWindowsExecutable(params.command), args: params.args ?? [], env: params.env }
         : { command: defaultShell(), args: params.args ?? [], env: params.env };
 
+  // Settings -> Agent CLIs -> Claude Code (claudePaneSettings.ts), for every
+  // local `claude` pane whatever opened it: Agent Flow/teams, create_pane,
+  // plugins, Studio, the CLI picker. Not for cloud nodes (no local claude
+  // to configure). Appended here only, never to params.args, so it isn't
+  // persisted into the saved layout and a settings change applies on the
+  // next spawn. The pane's own env (params.env) still wins.
+  let claudeEnv: Record<string, string> = {};
+  if (!params.yggdrasilAgentId && isClaudeCommand(params.command) && !resolved.args.includes("--cloud")) {
+    const extras = claudePaneLaunchExtras(sanitizeUserMcpChoice(params.claudeUserMcp));
+    resolved.args = [...resolved.args, ...extras.args];
+    claudeEnv = extras.env;
+    // What attentionBridge.ts (run by the hooks above) needs to report back.
+    const target = attentionEnabled() ? attentionTarget?.(params.projectId) : undefined;
+    if (target) {
+      claudeEnv = { ...claudeEnv, YGG_ATTENTION_URL: target.url, YGG_ATTENTION_TOKEN: target.token, YGG_PANE_ID: params.id };
+    }
+  }
+
   // Deliberately NOT appended to resolved.args: instantiating a pane must
   // never auto-submit work on its own — only an explicit action (the human
   // typing into an orchestrator, or the orchestrator's own write_pane call
@@ -261,12 +335,16 @@ export function createTerminal(
   // but currently unused for spawning — kept for a future explicit
   // "send this pane its task" action, not fired implicitly here.
 
+  // A saved folder that's gone (removed worktree, moved project) would make
+  // node-pty exit 1 silently; start in the project root instead and say so.
+  const spawnCwd = resolveSpawnCwd(params.cwd, [projectRootFor(params.projectId), os.homedir()]);
+
   const proc = pty.spawn(resolved.command, resolved.args, {
     name: "xterm-color",
     cols: params.cols,
     rows: params.rows,
-    cwd: params.cwd,
-    env: { ...process.env, ...resolved.env } as Record<string, string>,
+    cwd: spawnCwd.cwd,
+    env: { ...process.env, ...claudeEnv, ...resolved.env } as Record<string, string>,
   });
 
   const handle: TerminalHandle = {
@@ -287,6 +365,7 @@ export function createTerminal(
     }),
     serializer: new SerializeAddon(),
     outputSeq: 0,
+    lastOutputAt: Date.now(),
     mobileTerm: new HeadlessTerminal({
       cols: MOBILE_DEFAULT_COLS,
       rows: MOBILE_ROWS,
@@ -299,7 +378,9 @@ export function createTerminal(
     flowNodeId: params.flowNodeId,
     sessionKey: params.sessionKey,
     command: params.command,
-    cwd: params.cwd,
+    cwd: spawnCwd.cwd,
+    // Read by the pane (terminal:cwdFallback) to explain why it isn't where it was saved.
+    cwdFallback: spawnCwd.missing ? { missing: spawnCwd.missing, cwd: spawnCwd.cwd } : undefined,
     transcriptSpawnedAt: params.command === "claude" ? Date.now() : undefined,
     transcriptOffset: 0,
     transcriptLeftover: "",
@@ -310,12 +391,18 @@ export function createTerminal(
   handle.headlessTerm.loadAddon(handle.serializer as any);
   proc.onData((chunk) => {
     handle.outputSeq += 1;
+    handle.lastOutputAt = Date.now();
     handle.headlessTerm.write(chunk);
     handle.mobileTerm.write(chunk);
     onData(chunk, handle.outputSeq);
   });
   handle.exitListener = proc.onExit(({ exitCode }) => {
     terminals.delete(params.id);
+    try {
+      exitListener?.(params.projectId, params.id);
+    } catch (error) {
+      console.error("[terminals] exit listener threw", error);
+    }
     // An exception escaping here propagates into node-pty's native exit
     // callback, which turns it into abort() — never let one through.
     try {
@@ -330,6 +417,37 @@ export function createTerminal(
 
 export function writeToTerminal(id: TerminalId, data: string): void {
   terminals.get(id)?.proc.write(data);
+  reportInput(id, data);
+}
+
+/**
+ * Types a whole message into the pane's app and submits it, robustly — see
+ * terminalSubmit.ts (waits for the app to be ready, sends one bracketed
+ * paste, presses Enter once output settles). Resolves once Enter is sent.
+ */
+export async function submitToTerminal(
+  id: TerminalId,
+  text: string,
+  options?: SubmitOptions,
+  meta: SubmitMeta = {},
+): Promise<SubmitResult> {
+  const handle = terminals.get(id);
+  if (!handle) throw new Error("unknown pane id");
+  // A busy claude pane takes the message later, when its turn ends.
+  const held = submitGate?.(handle.projectId, id, text, meta);
+  if (held) return held;
+  reportInput(id, text || "\r");
+  await submitText(
+    {
+      alive: () => terminals.get(id) === handle,
+      bracketedPaste: () => handle.headlessTerm.modes.bracketedPasteMode,
+      lastOutputAt: () => handle.lastOutputAt,
+      write: (data) => handle.proc.write(data),
+    },
+    text,
+    options,
+  );
+  return { queued: false };
 }
 
 export function terminalExists(id: TerminalId): boolean {
@@ -378,6 +496,12 @@ export function listTerminals(): Array<{
 /** See CreateTerminalParams.flowNodeId — the stable node id this live pane was reloaded from, if any. */
 export function getFlowNodeId(id: TerminalId): string | undefined {
   return terminals.get(id)?.flowNodeId;
+}
+
+/** Maps a live pane onto an existing team node — when create_pane's auto-capture reused a same-role node (agentTeams.ts recordAutoCapturedNode). */
+export function setFlowNodeId(id: TerminalId, flowNodeId: string): void {
+  const t = terminals.get(id);
+  if (t) t.flowNodeId = flowNodeId;
 }
 
 /** Plain-text (ANSI-stripped, redraw-resolved) tail of a pane's recent output — see readBufferText. undefined for an unknown/closed id. */
@@ -685,7 +809,9 @@ export async function disposeAllTerminalsAndWait(timeoutMs = 2000): Promise<void
 export function registerTerminalIpc(
   getWindow: (projectId: string) => BrowserWindow | undefined,
   getGatewayUrl: (projectId: string) => string | undefined,
+  getProjectRoot: (projectId: string) => string | undefined,
 ): void {
+  projectRootFor = getProjectRoot;
   ipcMain.handle(
     "terminal:create",
     (_event, params: CreateTerminalParams) => {
@@ -705,12 +831,16 @@ export function registerTerminalIpc(
   );
 
   ipcMain.handle("terminal:write", (_event, id: TerminalId, data: string) => writeToTerminal(id, data));
+  ipcMain.handle("terminal:submit", (_event, id: TerminalId, text: string, when?: SubmitWhen) =>
+    submitToTerminal(id, text, undefined, { source: { kind: "app" }, when: when === "now" ? "now" : "auto" }),
+  );
   ipcMain.handle("terminal:resize", (event, id: TerminalId, cols: number, rows: number) => {
     resizeTerminal(id, cols, rows);
     // Second views (the Worktrees mirror) follow the pane's size; they never resize the pty themselves.
     event.sender.send("terminal:resized", { id, cols, rows });
   });
   ipcMain.handle("terminal:dispose", (_event, id: TerminalId) => disposeTerminal(id));
+  ipcMain.handle("terminal:cwdFallback", (_event, id: TerminalId) => terminals.get(id)?.cwdFallback);
   ipcMain.handle("terminal:read", (_event, id: TerminalId, maxChars?: number) => readTerminalOutput(id, maxChars));
   ipcMain.handle("terminal:forPid", (_event, pid: number) => findTerminalForPid(pid));
   ipcMain.handle("terminal:memory", (_event, id: TerminalId) => terminalMemory(id));

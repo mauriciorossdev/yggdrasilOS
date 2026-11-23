@@ -5,15 +5,18 @@ import type {
   ConfigGetResult,
   ConfigPatchResult,
   ConfigShape,
+  ProviderSources,
   HarnessInfo,
   McpServerStatus,
   ProviderInfo,
   McpTestResult,
 } from "../types.js";
 import { GeneralSection } from "./sections/GeneralSection.js";
-import { AgentSection } from "./sections/AgentSection.js";
-import { ProvidersSection, buildProvidersPatch } from "./sections/ProvidersSection.js";
+import { AgentSection } from "@yggdrasil/ui-kit";
+import { ProvidersSection } from "@yggdrasil/ui-kit";
+import { buildProvidersPatch, splitProvidersPatch } from "@yggdrasil/ui-kit";
 import { HarnessSection } from "./sections/HarnessSection.js";
+import { CliAgentsSection } from "./sections/CliAgentsSection.js";
 import { ChannelsSection } from "./sections/ChannelsSection.js";
 import { McpSection, buildMcpServersPatch } from "./sections/McpSection.js";
 import { OnboardingSection } from "./sections/OnboardingSection.js";
@@ -43,6 +46,7 @@ export type SettingsSection =
   | "providers"
   | "mcp"
   | "harness"
+  | "cliAgents"
   | "channels"
   | "stt"
   | "devices"
@@ -64,6 +68,7 @@ const SECTIONS: Array<{ id: SettingsSection; label: MessageKey }> = [
   { id: "providers", label: "set.nav.providers" },
   { id: "mcp", label: "set.nav.mcp" },
   { id: "harness", label: "set.nav.harness" },
+  { id: "cliAgents", label: "set.nav.cliAgents" },
   { id: "channels", label: "set.nav.channels" },
   { id: "stt", label: "set.nav.stt" },
   { id: "devices", label: "set.nav.devices" },
@@ -96,6 +101,11 @@ export function SettingsView({ onClose, initialSection }: Props) {
   const [savedRequiresRestart, setSavedRequiresRestart] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiKeyEdits, setApiKeyEdits] = useState<Record<string, string>>({});
+  // Providers as last loaded/saved — the save sends only what changed against this, since
+  // providers save to the global file shared by every project and the TUI.
+  const [loadedProviders, setLoadedProviders] = useState<ConfigShape["providers"]>({});
+  const [providerSources, setProviderSources] = useState<ProviderSources>({});
+  const [providerProjectOnly, setProviderProjectOnly] = useState<Record<string, boolean>>({});
   const [mcpSecretEdits, setMcpSecretEdits] = useState<Record<string, string>>({});
   // Whisper/STT settings don't go through the gateway's config.patch — they're
   // local-only (Electron IPC, desktop-settings.json), same pattern app-avatar
@@ -123,6 +133,8 @@ export function SettingsView({ onClose, initialSection }: Props) {
           window.yggdrasil.sync.getSettings(),
         ]);
         setConfig(cfg.config);
+        setLoadedProviders(cfg.config.providers ?? {});
+        setProviderSources(cfg.providerSources ?? {});
         setHarnesses(h.harnesses ?? []);
         setProviders(p.providers ?? []);
         setMcpStatus(m.servers ?? []);
@@ -183,15 +195,23 @@ export function SettingsView({ onClose, initialSection }: Props) {
     setSaved(false);
     setError(null);
     try {
+      const providerEdits = splitProvidersPatch(buildProvidersPatch(config, loadedProviders, apiKeyEdits), providerProjectOnly);
       const result = await call<ConfigPatchResult>("config.patch", {
         agents: config.agents,
         defaultAgent: config.defaultAgent,
         language: config.language,
         harness: config.harness,
         channels: config.channels,
-        providers: buildProvidersPatch(config, apiKeyEdits),
+        ...(Object.keys(providerEdits.global).length > 0 ? { providers: providerEdits.global } : {}),
         mcpServers: buildMcpServersPatch(config, mcpSecretEdits),
       });
+      if (Object.keys(providerEdits.project).length > 0) {
+        await call("config.patch", { providersScope: "project", providers: providerEdits.project });
+      }
+      const fresh = await call<ConfigGetResult>("config.get");
+      setConfig((prev) => (prev ? { ...prev, providers: fresh.config.providers } : prev));
+      setLoadedProviders(fresh.config.providers ?? {});
+      setProviderSources(fresh.providerSources ?? {});
       if (whisperSettings) await window.yggdrasil.whisper.saveSettings(whisperSettings);
       if (sttSettings) await window.yggdrasil.stt.saveSettings(sttSettings);
       if (ideSettings) await window.yggdrasil.ide.saveSettings(ideSettings);
@@ -262,6 +282,12 @@ export function SettingsView({ onClose, initialSection }: Props) {
                 apiKeyEdits={apiKeyEdits}
                 setApiKeyEdits={setApiKeyEdits}
                 onProvidersChanged={setProviders}
+                loadedProviders={loadedProviders}
+                setLoadedProviders={setLoadedProviders}
+                providerSources={providerSources}
+                setProviderSources={setProviderSources}
+                projectOnly={providerProjectOnly}
+                setProjectOnly={setProviderProjectOnly}
               />
             )}
             {section === "onboarding" && <OnboardingSection />}
@@ -279,6 +305,7 @@ export function SettingsView({ onClose, initialSection }: Props) {
             {section === "harness" && (
               <HarnessSection config={config} setConfig={setConfig} harnesses={harnesses} />
             )}
+            {section === "cliAgents" && <CliAgentsSection />}
             {section === "channels" && <ChannelsSection config={config} setConfig={setConfig} />}
             {section === "stt" && whisperSettings && sttSettings && (
               <WhisperSection

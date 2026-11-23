@@ -6,7 +6,7 @@ import type { AgentTeam } from "../types.js";
 import { onTerminalTabVisible, requestLoadTeam, requestNewTerminal } from "./terminalBridge.js";
 import { TeamsMenu } from "./TeamsMenu.js";
 import { CommandsMenu } from "./CommandsMenu.js";
-import { useDismiss } from "../ui/useDismiss.js";
+import { useDismiss } from "@yggdrasil/ui-kit";
 import { useShowRamBar } from "../ui/sidebarStore.js";
 
 const SEGMENT_COLORS = ["#6366f1", "#22c55e", "#f59e0b", "#ec4899", "#06b6d4", "#ef4444", "#a855f7", "#84cc16"];

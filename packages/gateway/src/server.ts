@@ -1,6 +1,8 @@
+import { watchGlobalProviders } from "./globalProviders.js";
 import { createServer as createHttpServer, type Server as HttpServer, type IncomingMessage } from "node:http";
 import { isForThisConnection } from "./deviceRouting.js";
-import { isTrustedLoopback } from "./loopbackTrust.js";
+import { isLoopbackAddress, isTrustedLoopback } from "./loopbackTrust.js";
+import { isForeignOrigin } from "./originCheck.js";
 import { TunnelHub } from "./tunnel.js";
 import { validateGatewayApiKey } from "@yggdrasil/config";
 import { createAssistantServices, registerAssistantTools, type AssistantServices } from "./assistant/services.js";
@@ -12,7 +14,10 @@ import type { YggdrasilConfig } from "@yggdrasil/config";
 import type { GatewayRequest, GatewayResponse } from "@yggdrasil/sdk";
 import { ChannelManager } from "./channel-manager.js";
 import {
+  hasValidGatewayKey,
   isWsAuthenticatedByDefault,
+  remoteAuthMessage,
+  remoteNeedsKey,
   tryAuthenticateFromQuery,
   tryAuthenticateFromRequest,
 } from "./auth.js";
@@ -183,6 +188,10 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
 
   context.channelManager = channelManager;
 
+  // Providers saved by another gateway (another project window, the TUI) apply here too,
+  // without a restart (notes/features/global-providers.md).
+  const stopWatchingProviders = watchGlobalProviders(context);
+
   // Push, reminders and the offline-action queue need a persistent workspace
   // (the deployment's volume) — they only run for the real long-lived gateway.
   let assistantServices: AssistantServices | null = null;
@@ -240,12 +249,26 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
     // but is a remote phone: the desktop marks it, and it gets no local trust
     // (must send the key; no loopback exemptions).
     const viaTunnel = req.headers["x-yggdrasil-tunnel"] === "1";
-    const trustedLocal = !viaTunnel && isTrustedLoopback(req.socket.remoteAddress);
+    // A web page from another site (originCheck.ts) gets no local trust: it needs a real key.
+    const foreignOrigin = isForeignOrigin(req.headers.origin);
+    const trustedLocal = !viaTunnel && !foreignOrigin && isTrustedLoopback(req.socket.remoteAddress);
+    // Another device (LAN, Tailscale, tunnel) always needs a real key, even when none is
+    // configured; this machine keeps the old rules (no key needed unless one is set).
+    const strictRemote = (viaTunnel || !isLoopbackAddress(req.socket.remoteAddress)) && remoteNeedsKey();
+    const strict = strictRemote || foreignOrigin;
+    const queryKey = url.searchParams.get("apiKey");
     const state = {
-      authenticated:
-        isWsAuthenticatedByDefault(options.config) ||
-        tryAuthenticateFromQuery(options.config, url.searchParams.get("apiKey")) ||
-        trustedLocal,
+      authenticated: strict
+        ? hasValidGatewayKey(options.config, queryKey)
+        : isWsAuthenticatedByDefault(options.config) || tryAuthenticateFromQuery(options.config, queryKey) || trustedLocal,
+    };
+    if (foreignOrigin && !state.authenticated) {
+      console.warn(`[gateway] WebSocket from foreign origin ${String(req.headers.origin)}: key required`);
+    }
+    // Events are for authenticated sockets only: an unauthenticated one (another device or a
+    // foreign page without the key) must not read chat, approvals or workflow runs.
+    const sendEvent = (payload: Record<string, unknown>) => {
+      if (state.authenticated) sendJson(ws, payload);
     };
     // Identifies this socket to methods.ts's device-tools handlers (device
     // tool registration/lookup is per-connection, not part of the shared
@@ -258,46 +281,46 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
     registerConnectionRemoteAddress(connectionId, viaTunnel ? "tunnel" : req.socket.remoteAddress);
 
     const unsubFinal = context.events.on("chat.final", (payload) => {
-      sendJson(ws, { type: "event", event: "chat.final", payload });
+      sendEvent({ type: "event", event: "chat.final", payload });
     });
     const unsubDelta = context.events.on("chat.delta", (payload) => {
-      sendJson(ws, { type: "event", event: "chat.delta", payload });
+      sendEvent({ type: "event", event: "chat.delta", payload });
     });
     const unsubApprovalReq = context.events.on("tool.approval.requested", (payload) => {
-      sendJson(ws, { type: "event", event: "tool.approval.requested", payload });
+      sendEvent({ type: "event", event: "tool.approval.requested", payload });
     });
     const unsubApprovalRes = context.events.on("tool.approval.resolved", (payload) => {
-      sendJson(ws, { type: "event", event: "tool.approval.resolved", payload });
+      sendEvent({ type: "event", event: "tool.approval.resolved", payload });
     });
     const unsubTurnStart = context.events.on("turn.start", (payload) => {
-      sendJson(ws, { type: "event", event: "turn.start", payload });
+      sendEvent({ type: "event", event: "turn.start", payload });
     });
     const unsubTurnEnd = context.events.on("turn.end", (payload) => {
-      sendJson(ws, { type: "event", event: "turn.end", payload });
+      sendEvent({ type: "event", event: "turn.end", payload });
     });
     const unsubToolExec = context.events.on("tool.execute", (payload) => {
-      sendJson(ws, { type: "event", event: "tool.execute", payload });
+      sendEvent({ type: "event", event: "tool.execute", payload });
     });
     const unsubProviderLatency = context.events.on("provider.latency", (payload) => {
-      sendJson(ws, { type: "event", event: "provider.latency", payload });
+      sendEvent({ type: "event", event: "provider.latency", payload });
     });
     // A tool-loop guard stepped in (empty reply retried, announced action nudged, repeat refused…): clients and
     // the agentic evals use it to see how often the model needed help.
     const unsubLoopGuard = context.events.on("loop.guard", (payload) => {
-      sendJson(ws, { type: "event", event: "loop.guard", payload });
+      sendEvent({ type: "event", event: "loop.guard", payload });
     });
     // The provider is retrying a failed request (rate limit, 5xx, dropped connection): shown by the TUI, counted by the evals.
     const unsubProviderRetry = context.events.on("provider.retry", (payload) => {
-      sendJson(ws, { type: "event", event: "provider.retry", payload });
+      sendEvent({ type: "event", event: "provider.retry", payload });
     });
     const unsubApprovalModeChanged = context.events.on("tools.approvalMode.changed", (payload) => {
-      sendJson(ws, { type: "event", event: "tools.approvalMode.changed", payload });
+      sendEvent({ type: "event", event: "tools.approvalMode.changed", payload });
     });
     // Agent Flow "Run Flow" needs this to learn a delegated node's real
     // sub-session key and join its terminal pane to it — see
     // invoke-agent-tool.ts (emitter) and useAgentFlowRunEvents.ts (consumer).
     const unsubDelegateStart = context.events.on("agentflow.delegate.start", (payload) => {
-      sendJson(ws, { type: "event", event: "agentflow.delegate.start", payload });
+      sendEvent({ type: "event", event: "agentflow.delegate.start", payload });
     });
     // Device-tools protocol (notes/yggdrasil-mobile/phone-gateway-connectivity-design.md
     // section 3) — broadcast to every connected client same as the approval
@@ -310,45 +333,45 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
     // broadcast would run the tool once per connection.
     const unsubDeviceInvokeReq = context.events.on("device.tool.invoke.requested", (payload) => {
       if (!isForThisConnection(payload, connectionId)) return;
-      sendJson(ws, { type: "event", event: "device.tool.invoke.requested", payload });
+      sendEvent({ type: "event", event: "device.tool.invoke.requested", payload });
     });
     const unsubDeviceInvokeProgress = context.events.on("device.tool.invoke.progress", (payload) => {
-      sendJson(ws, { type: "event", event: "device.tool.invoke.progress", payload });
+      sendEvent({ type: "event", event: "device.tool.invoke.progress", payload });
     });
     const unsubDeviceInvokeCancel = context.events.on("device.tool.invoke.cancel", (payload) => {
       if (!isForThisConnection(payload, connectionId)) return;
-      sendJson(ws, { type: "event", event: "device.tool.invoke.cancel", payload });
+      sendEvent({ type: "event", event: "device.tool.invoke.cancel", payload });
     });
     // See fs-watch.ts — lets FileTree.tsx auto-refresh instead of needing a
     // manual collapse/expand to notice files added outside the app.
     const unsubFsChanged = context.events.on("fs.changed", (payload) => {
-      sendJson(ws, { type: "event", event: "fs.changed", payload });
+      sendEvent({ type: "event", event: "fs.changed", payload });
     });
     // Content edits too (fs.changed is add/remove only) — DocumentsView.tsx
     // uses it to reflect a note an agent edited while it's open in a tab.
     const unsubFsContentChanged = context.events.on("fs.contentChanged", (payload) => {
-      sendJson(ws, { type: "event", event: "fs.contentChanged", payload });
+      sendEvent({ type: "event", event: "fs.contentChanged", payload });
     });
     // context-memory-db's project_index_all — SessionSidebar.tsx's "Indx"
     // button progress bar.
     const unsubProjectIndexProgress = context.events.on("project_index.progress", (payload) => {
-      sendJson(ws, { type: "event", event: "project_index.progress", payload });
+      sendEvent({ type: "event", event: "project_index.progress", payload });
     });
     // extensions/service-workflows — see notes/automation/workflows-design.md
     // §7.2. Broadcast to every connected client same as the tool/approval
     // events above; a run started from one client (desktop, mobile, or the
     // MCP shim) is visible to all of them.
     const unsubWorkflowRunStarted = context.events.on("workflow.run.started", (payload) => {
-      sendJson(ws, { type: "event", event: "workflow.run.started", payload });
+      sendEvent({ type: "event", event: "workflow.run.started", payload });
     });
     const unsubWorkflowNodeStarted = context.events.on("workflow.node.started", (payload) => {
-      sendJson(ws, { type: "event", event: "workflow.node.started", payload });
+      sendEvent({ type: "event", event: "workflow.node.started", payload });
     });
     const unsubWorkflowNodeFinished = context.events.on("workflow.node.finished", (payload) => {
-      sendJson(ws, { type: "event", event: "workflow.node.finished", payload });
+      sendEvent({ type: "event", event: "workflow.node.finished", payload });
     });
     const unsubWorkflowRunFinished = context.events.on("workflow.run.finished", (payload) => {
-      sendJson(ws, { type: "event", event: "workflow.run.finished", payload });
+      sendEvent({ type: "event", event: "workflow.run.finished", payload });
     });
 
     ws.on("message", async (data) => {
@@ -359,16 +382,33 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
       }
 
       if (!state.authenticated) {
-        if (tryAuthenticateFromRequest(options.config, request)) {
+        const accepted = strict
+          ? request.method === "auth" && hasValidGatewayKey(options.config, String(request.params?.apiKey ?? ""))
+          : tryAuthenticateFromRequest(options.config, request);
+        if (accepted) {
           state.authenticated = true;
           sendJson(ws, { id: request.id, result: { ok: true } });
+          return;
+        }
+        // health answers before auth so a client can learn it must ask for a key
+        // (client-web's handshake reads authRequired from it).
+        if (request.method === "health") {
+          const response = await handleGatewayRequest(request, context, connectionId);
+          if (response.result && typeof response.result === "object") {
+            response.result = { ...(response.result as Record<string, unknown>), authRequired: true };
+          }
+          sendJson(ws, response);
           return;
         }
         sendJson(ws, {
           id: request.id,
           error: {
             code: "UNAUTHORIZED",
-            message: "Authentication required. Send { method: 'auth', params: { apiKey } } first.",
+            message: strictRemote
+              ? remoteAuthMessage(options.config)
+              : foreignOrigin
+                ? "This gateway only accepts web pages from other sites with an API key. Connect with ?apiKey= or send { method: 'auth', params: { apiKey } }."
+                : "Authentication required. Send { method: 'auth', params: { apiKey } } first.",
           },
         });
         return;
@@ -444,6 +484,7 @@ export async function startGatewayServer(options: GatewayServerOptions): Promise
     context,
     port,
     close: async () => {
+      stopWatchingProviders();
       setTunnelLookup(null);
       tunnelHub.close();
       assistantServices?.stop();

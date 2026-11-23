@@ -2,7 +2,7 @@ import { useRef, useState } from "react";
 import { ChevronDownIcon, TrashIcon } from "@heroicons/react/20/solid";
 import { useI18n } from "../i18n/index.js";
 import type { AgentTeam } from "../types.js";
-import { useDismiss } from "../ui/useDismiss.js";
+import { useDismiss } from "@yggdrasil/ui-kit";
 
 type Props = {
   teams: AgentTeam[];

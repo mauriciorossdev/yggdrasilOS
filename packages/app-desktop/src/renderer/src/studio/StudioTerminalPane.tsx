@@ -3,8 +3,8 @@ import { Terminal } from "@xterm/xterm";
 import { FitAddon } from "@xterm/addon-fit";
 import "@xterm/xterm/css/xterm.css";
 import type { PluginRecord } from "../types.js";
-import { getThemeColors, onThemeApplied } from "../ui/theme/themeRuntime.js";
-import { terminalColors } from "../ui/theme/surfaces.js";
+import { getThemeColors, onThemeApplied } from "@yggdrasil/ui-kit";
+import { terminalColors } from "@yggdrasil/ui-kit";
 import { buildStudioTerminalLaunch, type StudioTerminalHarness } from "./studioContext.js";
 import { t } from "../i18n/index.js";
 

@@ -77,6 +77,18 @@ export function deepMerge(existing: Json, incoming: Json): Json {
   return out;
 }
 
+/**
+ * Providers live mostly in ~/.yggdrasil/providers.json, shared by every project and the
+ * TUI; a project file only keeps what it overrides (notes/features/global-providers.md).
+ * An export carries both, project values winning, so moving to a new machine keeps them.
+ */
+export function withGlobalProviders(gateway: Json | null, globalFile: Json | null): Json | null {
+  const global = isPlainObject(globalFile?.providers) ? (globalFile!.providers as Json) : {};
+  if (Object.keys(global).length === 0) return gateway;
+  const project = gateway && isPlainObject(gateway.providers) ? (gateway.providers as Json) : {};
+  return { ...(gateway ?? {}), providers: deepMerge(global, project) };
+}
+
 export type ExportInput = {
   desktop: Json;
   /** Raw gateway config (unmasked) or null when no project is open. */

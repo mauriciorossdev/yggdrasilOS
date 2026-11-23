@@ -1,6 +1,6 @@
 import { useRef, useState, type KeyboardEvent } from "react";
 import type { ProjectRecord } from "../types.js";
-import { useDismiss } from "../ui/useDismiss.js";
+import { useDismiss } from "@yggdrasil/ui-kit";
 import { useI18n } from "../i18n/index.js";
 
 type Mode = "menu" | "rename" | "confirm-remove" | "confirm-purge";

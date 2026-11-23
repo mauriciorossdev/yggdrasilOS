@@ -1,7 +1,7 @@
 import * as monaco from "monaco-editor";
 import { loader } from "@monaco-editor/react";
-import { getThemeColors, onThemeApplied } from "../ui/theme/themeRuntime.js";
-import { monacoThemeData } from "../ui/theme/surfaces.js";
+import { getThemeColors, onThemeApplied } from "@yggdrasil/ui-kit";
+import { monacoThemeData } from "@yggdrasil/ui-kit";
 import { setLanguageCatalog } from "./languageFromPath.js";
 import { monacoWorkerKind, type MonacoWorkerKind } from "./monacoWorkerKind.js";
 import { registerGdscript } from "./gdscriptLanguage.js";

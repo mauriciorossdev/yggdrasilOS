@@ -2,8 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
 import { Button, Card, Chip } from "../../ui/index.js";
 import { useI18n } from "../../i18n/index.js";
-import { ProvidersSection } from "../../settings/sections/ProvidersSection.js";
-import type { ConfigGetResult, ConfigShape, OllamaStatus, ProviderInfo } from "../../types.js";
+import { ProvidersSection } from "@yggdrasil/ui-kit";
+import type { ConfigGetResult, ConfigShape, OllamaStatus, ProviderInfo, ProviderSources } from "../../types.js";
 import { toggle, type WizardDraft, type WizardUpdate } from "../draft.js";
 
 type Props = { draft: WizardDraft; update: WizardUpdate };
@@ -17,6 +17,9 @@ export function ModelsStep({ draft, update }: Props) {
   const [config, setConfig] = useState<ConfigShape | null>(null);
   const [providers, setProviders] = useState<ProviderInfo[]>([]);
   const [apiKeyEdits, setApiKeyEdits] = useState<Record<string, string>>({});
+  const [loadedProviders, setLoadedProviders] = useState<ConfigShape["providers"]>({});
+  const [providerSources, setProviderSources] = useState<ProviderSources>({});
+  const [projectOnly, setProjectOnly] = useState<Record<string, boolean>>({});
 
   const [ollama, setOllama] = useState<OllamaStatus | null>(null);
   const [scanning, setScanning] = useState(false);
@@ -44,6 +47,8 @@ export function ModelsStep({ draft, update }: Props) {
           call<{ providers: ProviderInfo[] }>("providers.list"),
         ]);
         setConfig(cfg.config);
+        setLoadedProviders(cfg.config.providers ?? {});
+        setProviderSources(cfg.providerSources ?? {});
         setProviders(list.providers ?? []);
       } catch {
         // Gateway hiccup: the cards below simply stay in their loading state.
@@ -62,7 +67,8 @@ export function ModelsStep({ draft, update }: Props) {
     if (index >= 0) agents[index] = { ...agents[index], provider: "ollama", model };
     else agents.push({ id: defaultId, provider: "ollama", model });
     const nextProviders = { ...config.providers, ollama: { ...config.providers?.ollama, defaultModel: model } };
-    await call("config.patch", { agents, providers: nextProviders });
+    // Only the field that changed: providers save globally (notes/features/global-providers.md).
+    await call("config.patch", { agents, providers: { ollama: { defaultModel: model } } });
     setConfig({ ...config, agents, providers: nextProviders });
     setOllamaApplied(model);
     update({ usage: toggle(draft.usage, "local", true) });
@@ -142,6 +148,12 @@ export function ModelsStep({ draft, update }: Props) {
             apiKeyEdits={apiKeyEdits}
             setApiKeyEdits={setApiKeyEdits}
             onProvidersChanged={onProvidersChanged}
+            loadedProviders={loadedProviders}
+            setLoadedProviders={setLoadedProviders}
+            providerSources={providerSources}
+            setProviderSources={setProviderSources}
+            projectOnly={projectOnly}
+            setProjectOnly={setProjectOnly}
           />
         )}
       </Card>

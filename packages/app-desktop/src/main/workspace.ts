@@ -31,12 +31,44 @@ export type WorkspaceState = {
   /** `${from}>${to}:${action}` entries the user chose to stop being asked about. */
   trust: string[];
   audit: AuditEntry[];
+  /** projectId -> node position on the Workspaces canvas (home window). */
+  layout: Record<string, { x: number; y: number }>;
+  /** Named, colored rectangles on the Workspaces canvas. Visual only: grant and link nothing. */
+  zones: WorkspaceZone[];
 };
+
+/** `locked` (the default): moving the zone moves the projects inside it; unlocked, only the zone moves. */
+export type WorkspaceZone = { id: string; name: string; color: string; x: number; y: number; width: number; height: number; locked: boolean };
+
+const MAX_ZONES = 100;
+const MIN_ZONE_SIZE = 80;
+
+function finite(n: unknown): n is number {
+  return typeof n === "number" && Number.isFinite(n);
+}
+
+/** A zone as sent by the renderer or read from disk, or null if it can't be one. */
+export function sanitizeZone(raw: unknown): WorkspaceZone | null {
+  const z = (raw ?? {}) as Partial<Record<keyof WorkspaceZone, unknown>>;
+  if (typeof z.id !== "string" || z.id.length === 0 || z.id.length > 64) return null;
+  if (!finite(z.x) || !finite(z.y) || !finite(z.width) || !finite(z.height)) return null;
+  const color = typeof z.color === "string" && /^#[0-9a-fA-F]{6}$/.test(z.color) ? z.color : "#6b7280";
+  return {
+    id: z.id,
+    name: typeof z.name === "string" ? z.name.slice(0, 80) : "",
+    color,
+    x: z.x,
+    y: z.y,
+    width: Math.max(MIN_ZONE_SIZE, z.width),
+    height: Math.max(MIN_ZONE_SIZE, z.height),
+    locked: z.locked !== false,
+  };
+}
 
 const MAX_AUDIT = 200;
 
 export function emptyWorkspaceState(): WorkspaceState {
-  return { links: {}, trust: [], audit: [] };
+  return { links: {}, trust: [], audit: [], layout: {}, zones: [] };
 }
 
 export function trustKey(from: string, to: string, action: WorkspaceAction): string {
@@ -45,7 +77,7 @@ export function trustKey(from: string, to: string, action: WorkspaceAction): str
 
 /** Whatever an old or hand-edited settings file holds, reduced to a safe WorkspaceState. */
 export function sanitizeWorkspaceState(raw: unknown): WorkspaceState {
-  const input = (raw ?? {}) as { links?: unknown; trust?: unknown; audit?: unknown };
+  const input = (raw ?? {}) as { links?: unknown; trust?: unknown; audit?: unknown; layout?: unknown; zones?: unknown };
   const links: WorkspaceState["links"] = {};
   if (input.links && typeof input.links === "object") {
     for (const [from, targets] of Object.entries(input.links as Record<string, unknown>)) {
@@ -70,7 +102,25 @@ export function sanitizeWorkspaceState(raw: unknown): WorkspaceState {
         )
         .slice(-MAX_AUDIT)
     : [];
-  return { links, trust, audit };
+  const layout: WorkspaceState["layout"] = {};
+  if (input.layout && typeof input.layout === "object") {
+    for (const [id, pos] of Object.entries(input.layout as Record<string, unknown>)) {
+      const { x, y } = (pos ?? {}) as { x?: unknown; y?: unknown };
+      if (typeof x === "number" && Number.isFinite(x) && typeof y === "number" && Number.isFinite(y)) layout[id] = { x, y };
+    }
+  }
+  const zones: WorkspaceZone[] = [];
+  if (Array.isArray(input.zones)) {
+    const seen = new Set<string>();
+    for (const raw of input.zones) {
+      const zone = sanitizeZone(raw);
+      if (zone && !seen.has(zone.id) && zones.length < MAX_ZONES) {
+        seen.add(zone.id);
+        zones.push(zone);
+      }
+    }
+  }
+  return { links, trust, audit, layout, zones };
 }
 
 export async function loadWorkspaceState(userDataDir: string): Promise<WorkspaceState> {
@@ -143,7 +193,7 @@ export type TargetPaneApi = {
 
 export type BrokerDeps = {
   userDataDir: string;
-  listProjects: () => Promise<Array<{ id: string; name: string }>>;
+  listProjects: () => Promise<Array<{ id: string; name: string; color?: string | null }>>;
   /** The pane API of a project whose window is open, else undefined. */
   paneApi: (projectId: string) => TargetPaneApi | undefined;
   /** Shows the permission prompt in the caller's window and resolves with the human's answer. */
@@ -151,6 +201,18 @@ export type BrokerDeps = {
   /** Tells the target project's window that something reached it without a prompt. */
   notify: (projectId: string, notice: { fromName: string; action: WorkspaceAction; paneTitle: string }) => void;
   now?: () => number;
+  /** Called after every saved change (links, trust, audit, layout) — main broadcasts workspace:changed. */
+  onChange?: () => void;
+};
+
+/** Everything the Workspaces canvas draws. */
+export type WorkspaceGraph = {
+  projects: Array<{ id: string; name: string; color: string | null; open: boolean }>;
+  links: WorkspaceState["links"];
+  trust: string[];
+  layout: WorkspaceState["layout"];
+  zones: WorkspaceZone[];
+  audit: AuditEntry[];
 };
 
 const WRITES_PER_MINUTE = 10;
@@ -168,6 +230,17 @@ export async function createWorkspaceBroker(deps: BrokerDeps) {
   async function persist(): Promise<void> {
     state = { ...state, audit: state.audit.slice(-MAX_AUDIT) };
     await saveWorkspaceState(deps.userDataDir, state);
+    deps.onChange?.();
+  }
+
+  function withLink(links: WorkspaceState["links"], fromId: string, toId: string, linked: boolean): WorkspaceState["links"] {
+    const current = new Set(links[fromId] ?? []);
+    if (linked) current.add(toId);
+    else current.delete(toId);
+    const next = { ...links };
+    if (current.size > 0) next[fromId] = [...current];
+    else delete next[fromId];
+    return next;
   }
 
   /** Validates the link and that the target window is open; returns the pieces every action needs. */
@@ -272,16 +345,118 @@ export async function createWorkspaceBroker(deps: BrokerDeps) {
 
     async setLink(fromId: string, toId: string, linked: boolean): Promise<void> {
       if (fromId === toId) return;
-      const current = new Set(state.links[fromId] ?? []);
-      if (linked) current.add(toId);
-      else current.delete(toId);
-      const links = { ...state.links };
-      if (current.size > 0) links[fromId] = [...current];
-      else delete links[fromId];
+      const links = withLink(state.links, fromId, toId, linked);
       // Unlinking also drops the trust that depended on that link.
       const trust = linked ? state.trust : state.trust.filter((k) => !k.startsWith(`${fromId}>${toId}:`));
       state = { ...state, links, trust };
       await persist();
+    },
+
+    /** Links A→B and B→A at once (Workspaces canvas). Grants no trust: agents keep being asked. */
+    async connect(a: string, b: string): Promise<void> {
+      if (a === b) return;
+      state = { ...state, links: withLink(withLink(state.links, a, b, true), b, a, true) };
+      await persist();
+    },
+
+    /** Removes both directions and every trust either direction had. */
+    async disconnect(a: string, b: string): Promise<void> {
+      if (a === b) return;
+      state = {
+        ...state,
+        links: withLink(withLink(state.links, a, b, false), b, a, false),
+        trust: state.trust.filter((k) => !k.startsWith(`${a}>${b}:`) && !k.startsWith(`${b}>${a}:`)),
+      };
+      await persist();
+    },
+
+    /** Grants or revokes one direction + action. Granting needs the from→to link (trust without a link would be dead). */
+    async setTrust(fromId: string, toId: string, action: WorkspaceAction, trusted: boolean): Promise<void> {
+      if (action !== "read" && action !== "write") throw new WorkspaceError(`unknown action "${String(action)}"`, 400);
+      const key = trustKey(fromId, toId, action);
+      if (trusted) {
+        if (!(state.links[fromId] ?? []).includes(toId)) throw new WorkspaceError("these projects aren't linked in that direction", 409);
+        if (state.trust.includes(key)) return;
+        state = { ...state, trust: [...state.trust, key] };
+      } else {
+        if (!state.trust.includes(key)) return;
+        state = { ...state, trust: state.trust.filter((k) => k !== key) };
+      }
+      await persist();
+    },
+
+    async setPosition(projectId: string, position: { x: number; y: number }): Promise<void> {
+      if (!Number.isFinite(position?.x) || !Number.isFinite(position?.y)) return;
+      state = { ...state, layout: { ...state.layout, [projectId]: { x: position.x, y: position.y } } };
+      await persist();
+    },
+
+    /**
+     * Creates or updates a zone, and in the same save moves the projects that
+     * were dragged along with it (a zone carries the projects inside it).
+     */
+    async saveZone(zone: WorkspaceZone, positions: Record<string, { x: number; y: number }> = {}): Promise<void> {
+      const clean = sanitizeZone(zone);
+      if (!clean) throw new WorkspaceError("invalid zone", 400);
+      const exists = state.zones.some((z) => z.id === clean.id);
+      if (!exists && state.zones.length >= MAX_ZONES) throw new WorkspaceError(`at most ${MAX_ZONES} zones`, 400);
+      const zones = exists ? state.zones.map((z) => (z.id === clean.id ? clean : z)) : [...state.zones, clean];
+      const layout = { ...state.layout };
+      for (const [id, pos] of Object.entries(positions ?? {})) {
+        if (finite(pos?.x) && finite(pos?.y)) layout[id] = { x: pos.x, y: pos.y };
+      }
+      state = { ...state, zones, layout };
+      await persist();
+    },
+
+    async deleteZone(id: string): Promise<void> {
+      if (!state.zones.some((z) => z.id === id)) return;
+      state = { ...state, zones: state.zones.filter((z) => z.id !== id) };
+      await persist();
+    },
+
+    /** A removed project: drops its links (both ways), trust and position. Audit history is kept. */
+    async forgetProject(projectId: string): Promise<void> {
+      const links: WorkspaceState["links"] = {};
+      for (const [from, targets] of Object.entries(state.links)) {
+        if (from === projectId) continue;
+        const kept = targets.filter((t) => t !== projectId);
+        if (kept.length > 0) links[from] = kept;
+      }
+      const layout = { ...state.layout };
+      delete layout[projectId];
+      const trust = state.trust.filter((k) => {
+        const [pair] = k.split(":");
+        const [from, to] = pair!.split(">");
+        return from !== projectId && to !== projectId;
+      });
+      state = { ...state, links, trust, layout };
+      await persist();
+    },
+
+    /** The whole picture for the Workspaces canvas. Links/trust/positions of projects no longer listed are left out. */
+    async graph(): Promise<WorkspaceGraph> {
+      const projects = await deps.listProjects();
+      const known = new Set(projects.map((p) => p.id));
+      const links: WorkspaceState["links"] = {};
+      for (const [from, targets] of Object.entries(state.links)) {
+        if (!known.has(from)) continue;
+        const kept = targets.filter((t) => known.has(t));
+        if (kept.length > 0) links[from] = kept;
+      }
+      const layout: WorkspaceState["layout"] = {};
+      for (const [id, pos] of Object.entries(state.layout)) if (known.has(id)) layout[id] = pos;
+      return {
+        projects: projects.map((p) => ({ id: p.id, name: p.name, color: p.color ?? null, open: !!deps.paneApi(p.id) })),
+        links,
+        trust: state.trust.filter((k) => {
+          const [from, to] = k.split(":")[0]!.split(">");
+          return known.has(from!) && known.has(to!);
+        }),
+        layout,
+        zones: state.zones,
+        audit: state.audit.slice(-MAX_AUDIT),
+      };
     },
 
     async revokeTrust(key: string): Promise<void> {

@@ -106,6 +106,7 @@ export type AgentInfo = {
   label?: string;
   model?: string;
   provider?: string;
+  harness?: string;
   systemPrompt?: string;
   scope?: "local" | "global";
 };

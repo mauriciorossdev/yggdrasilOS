@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type KeyboardEvent } from "react";
-import { useDismiss } from "../ui/useDismiss.js";
+import { useDismiss } from "@yggdrasil/ui-kit";
 import { useActiveTab } from "../ui/mainTabsStore.js";
 import { useTerminalPanes } from "../terminal/terminalPanesStore.js";
 import { buildSendTargets, type SendTarget } from "./sendTargets.js";

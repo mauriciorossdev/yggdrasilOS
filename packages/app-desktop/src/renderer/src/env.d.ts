@@ -6,6 +6,9 @@ import type {
   AgentFlowCommunicationPayload,
   AgentTeam,
   AutomationSettings,
+  ClaudePaneSettings,
+  UserMcpChoice,
+  UserMcpServer,
   BrowserTabBounds,
   BrowserDownload,
   BrowserTabState,
@@ -36,6 +39,9 @@ import type {
   WorkspaceAsk,
   WorkspaceNotice,
   WorkspaceView,
+  WorkspaceGraph,
+  WorkspaceZone,
+  WorkspaceAction,
   ResourceRef,
   ResourceStatus,
   ShareMember,
@@ -44,6 +50,15 @@ import type {
   PluginTabsLayout,
   ProjectRecord,
   RateLimitsPayload,
+  PaneAttention,
+  PaneQueueView,
+  SubmitResult,
+  CodeComment,
+  CodeCommentStatus,
+  CodeCommentTarget,
+  CodeCommentTargets,
+  NewCodeComment,
+  RepoLocation,
   SttCloudSettings,
   SttSettings,
   SyncSettings,
@@ -56,7 +71,7 @@ import type {
   HubTestResult,
   HubUrlCheck,
 } from "./types.js";
-import type { ThemeSettings } from "./ui/theme/types.js";
+import type { ThemeSettings } from "@yggdrasil/ui-kit";
 
 declare global {
   /** packages/app-desktop/package.json's version, set by electron.vite.config.ts. */
@@ -111,6 +126,11 @@ declare global {
         dismiss: () => Promise<void>;
         onChange: (handler: (update: { version: string; url: string } | null) => void) => () => void;
       };
+      claudePaneSettings: {
+        get: () => Promise<{ settings: ClaudePaneSettings; cavemanInstalled: boolean; userMcpServers: UserMcpServer[] }>;
+        /** Rejects when extraSettings isn't a JSON object; nothing is saved then. */
+        set: (settings: ClaudePaneSettings) => Promise<ClaudePaneSettings>;
+      };
       editorSettings: {
         get: () => Promise<import("./files/editorPrefs.js").EditorPrefs>;
         set: (settings: import("./files/editorPrefs.js").EditorPrefs) => Promise<import("./files/editorPrefs.js").EditorPrefs>;
@@ -124,6 +144,16 @@ declare global {
         onAsk: (handler: (ask: WorkspaceAsk) => void) => () => void;
         onAskClosed: (handler: (payload: { id: string }) => void) => () => void;
         onNotice: (handler: (notice: WorkspaceNotice) => void) => () => void;
+        /** Workspaces canvas (home window). */
+        graph: () => Promise<WorkspaceGraph>;
+        connect: (a: string, b: string) => Promise<void>;
+        disconnect: (a: string, b: string) => Promise<void>;
+        setTrust: (from: string, to: string, action: WorkspaceAction, trusted: boolean) => Promise<void>;
+        setPosition: (projectId: string, position: { x: number; y: number }) => Promise<void>;
+        /** Creates/updates a zone; `positions` moves the projects it carried along in the same save. */
+        saveZone: (zone: WorkspaceZone, positions?: Record<string, { x: number; y: number }>) => Promise<void>;
+        deleteZone: (id: string) => Promise<void>;
+        onChanged: (handler: () => void) => () => void;
       };
       projects: {
         list: () => Promise<ProjectRecord[]>;
@@ -157,11 +187,14 @@ declare global {
           flowNodeId?: string;
           initialPrompt?: string;
           initialPromptFlag?: string;
+          claudeUserMcp?: UserMcpChoice;
         }) => Promise<void>;
         write: (id: string, data: string) => Promise<void>;
+        submit: (id: string, text: string, when?: "auto" | "now") => Promise<SubmitResult>;
         resize: (id: string, cols: number, rows: number) => Promise<void>;
         dispose: (id: string) => Promise<void>;
         read: (id: string, maxChars?: number) => Promise<string | undefined>;
+        cwdFallback: (id: string) => Promise<{ missing: string; cwd: string } | undefined>;
         forPid: (pid: number) => Promise<string | undefined>;
         memory: (
           id: string,
@@ -199,6 +232,42 @@ declare global {
       };
       connectors: {
         onOAuthCallback: (handler: (payload: { code: string; state: string }) => void) => () => void;
+      };
+      codeComments: {
+        locate: (target: string) => Promise<RepoLocation | undefined>;
+        list: (root: string) => Promise<CodeComment[]>;
+        add: (root: string, input: NewCodeComment) => Promise<CodeComment>;
+        update: (root: string, id: string, text: string) => Promise<void>;
+        remove: (root: string, id: string) => Promise<void>;
+        clearDone: (root: string) => Promise<void>;
+        setStatus: (ids: string[], status: CodeCommentStatus) => Promise<boolean>;
+        dropRoot: (path: string) => Promise<void>;
+        targets: () => Promise<CodeCommentTargets>;
+        send: (req: {
+          root: string;
+          ids?: string[];
+          target: CodeCommentTarget;
+        }) => Promise<{ ok: boolean; error?: string; queued?: boolean; position?: number }>;
+        onChanged: (handler: (root: string) => void) => () => void;
+      };
+      queue: {
+        get: () => Promise<Record<string, PaneQueueView>>;
+        onUpdate: (handler: (queues: Record<string, PaneQueueView>) => void) => () => void;
+        onDropped: (handler: (info: { paneId: string; title: string; count: number }) => void) => () => void;
+        edit: (paneId: string, id: string, text: string) => Promise<void>;
+        move: (paneId: string, id: string, delta: -1 | 1) => Promise<void>;
+        remove: (paneId: string, id: string) => Promise<void>;
+        clear: (paneId: string) => Promise<void>;
+        pause: (paneId: string, paused: boolean) => Promise<void>;
+        sendNow: (paneId: string, id: string) => Promise<void>;
+      };
+      attention: {
+        get: () => Promise<Record<string, PaneAttention>>;
+        onUpdate: (handler: (panes: Record<string, PaneAttention>) => void) => () => void;
+        setViewing: (paneId: string | null) => Promise<void>;
+        seen: (paneId: string) => Promise<void>;
+        clearDone: () => Promise<void>;
+        onReveal: (handler: (paneId: string) => void) => () => void;
       };
       statusline: {
         get: () => Promise<RateLimitsPayload | undefined>;

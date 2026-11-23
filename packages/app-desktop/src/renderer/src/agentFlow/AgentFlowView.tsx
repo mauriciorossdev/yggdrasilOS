@@ -208,13 +208,19 @@ export function AgentFlowView() {
         // matching key instead — a real pane an orchestrator creates for a
         // role already sketched on the canvas is treated as that node
         // actually showing up live, not a second one.
-        const nameKey = (n: string) => n.trim().toLowerCase();
-        const existingChild = sourceNode
-          ? nodes.find(
-              (n) =>
-                edges.some((e) => e.from === sourceNode!.id && e.to === n.id) && nameKey(n.name) === nameKey(node.name),
-            )
-          : nodes.find((n) => n.id === node.id);
+        // Whitespace-insensitive like agentTeams.ts's roleKey — main may also
+        // have already resolved node.id to an existing same-role node, so an
+        // exact id hit counts too (never push a second node with that id).
+        const nameKey = (n: string) => n.replace(/\s+/g, "").toLowerCase();
+        const existingChild =
+          nodes.find((n) => n.id === node.id) ??
+          (sourceNode
+            ? nodes.find(
+                (n) =>
+                  edges.some((e) => e.from === sourceNode!.id && e.to === n.id) &&
+                  nameKey(n.name) === nameKey(node.name),
+              )
+            : undefined);
         if (existingChild) {
           if (existingChild.id !== node.id) paneIdAliasRef.current.set(node.id, existingChild.id);
           return { ...current, nodes, edges };

@@ -3,6 +3,7 @@ import type { RepoInfo } from "./types.js";
 import { useI18n } from "../i18n/index.js";
 
 function describe(repo: RepoInfo, t: ReturnType<typeof useI18n>["t"]): string {
+  if (repo.worktree) return t("repo.selector.worktree", { path: repo.path });
   if (repo.relation === "root") return t("repo.selector.root");
   if (repo.relation === "parent") return t("repo.selector.parent", { path: repo.path });
   return t("repo.selector.child", { path: repo.path });
@@ -37,7 +38,7 @@ export function RepoSelector({ repos, selected, onSelect }: Props) {
           </option>
         ))}
       </select>
-      {current && current.relation !== "root" && (
+      {current && current.relation !== "root" && !current.worktree && (
         <span className="repo-location-note">
           {current.relation === "child"
             ? t("repo.selector.childNote", { path: current.path })

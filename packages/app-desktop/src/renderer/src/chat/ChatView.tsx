@@ -1,14 +1,14 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
-import { chatReducer, initialChatState } from "./chatReducer.js";
+import { chatReducer, initialChatState } from "@yggdrasil/ui-kit";
 import { t as tStatic, useI18n } from "../i18n/index.js";
-import { useChatEvents } from "./useChatEvents.js";
-import { MessageList } from "./MessageList.js";
-import { ApprovalBar } from "./ApprovalBar.js";
+import { useChatEvents } from "@yggdrasil/ui-kit";
+import { MessageList } from "@yggdrasil/ui-kit";
+import { ApprovalBar } from "@yggdrasil/ui-kit";
 import { ChatInput } from "./ChatInput.js";
 import { SessionSidebar } from "./SessionSidebar.js";
 import { ComposerToolbar } from "./ComposerToolbar.js";
-import { onAgentsChanged } from "../agents/agentsEvents.js";
+import { onAgentsChanged } from "@yggdrasil/ui-kit";
 import { SettingsView, type SettingsSection } from "../settings/SettingsView.js";
 import { FileContentPanel } from "../files/FileContentPanel.js";
 import { DiffContentPanel } from "../files/DiffContentPanel.js";
@@ -30,6 +30,7 @@ import { WorktreesView } from "../worktrees/WorktreesView.js";
 import { BrowserTabView } from "../browser/BrowserTabView.js";
 import { RepositoryView } from "../repository/RepositoryView.js";
 import { HomeView } from "../home/HomeView.js";
+import { WorkspacesCanvas } from "../home/WorkspacesCanvas.js";
 import { StudioView } from "../studio/StudioView.js";
 import { usePlugins } from "../plugins/usePlugins.js";
 import { PluginFrame } from "../plugins/PluginFrame.js";
@@ -621,6 +622,7 @@ export function ChatView() {
         <div className="chat-main" style={sidePanel && panelPinned ? { paddingRight: panelWidth + PANEL_RESIZER_WIDTH } : undefined}>
           <MainTabs
             homeContent={window.yggdrasil.isDefaultProject ? <HomeView /> : undefined}
+            workspacesContent={window.yggdrasil.isDefaultProject ? <WorkspacesCanvas visible={activeMainTab === "workspaces"} /> : undefined}
             chatContent={
               <ChatSplit
                 chat={

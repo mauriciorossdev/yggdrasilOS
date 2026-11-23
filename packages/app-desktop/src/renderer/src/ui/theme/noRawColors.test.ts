@@ -14,10 +14,4 @@ describe("design tokens", () => {
     expect(hex.length).toBeLessThanOrEqual(STYLES_HEX_BUDGET);
   });
 
-  it("defines the four editable core colors", () => {
-    const tokens = readFileSync(fileURLToPath(new URL("./tokens.css", import.meta.url)), "utf8");
-    for (const name of ["--ygg-bg", "--ygg-surface", "--ygg-text", "--ygg-accent"]) {
-      expect(tokens).toMatch(new RegExp(name + ":[ ]*#[0-9a-fA-F]{6}"));
-    }
-  });
 });

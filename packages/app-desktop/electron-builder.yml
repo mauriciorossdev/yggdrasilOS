@@ -75,6 +75,14 @@ mac:
     - zip
   icon: resources/icon.icns
   category: public.app-category.developer-tools
+  # Ad-hoc signature ("-") until a Developer ID certificate is wired in.
+  # Without any signature, macOS on Apple silicon reports a downloaded app
+  # as "damaged" and refuses to open it; ad-hoc signing turns that into the
+  # regular "unidentified developer" prompt. Hardened runtime is off because
+  # it is only needed for notarization, and with an ad-hoc identity its
+  # library validation would block the native modules from loading.
+  identity: "-"
+  hardenedRuntime: false
 
 linux:
   target:
