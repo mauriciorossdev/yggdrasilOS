@@ -58,8 +58,15 @@ jobs:
       # falls back to an ad-hoc signing path that needs symlink permissions
       # it doesn't have here — this variable stops it from even trying.
       # Remove once real CSC_LINK/CSC_KEY_PASSWORD secrets are wired in.
+      #
+      # On macOS the app is signed ad-hoc (electron-builder.yml), file by
+      # file since asar is off, and that opens more files at once than the
+      # runner's default limit allows (EMFILE). Raise it for this step.
       - name: Build installer
-        run: pnpm --filter @yggdrasil/app-desktop exec electron-builder --publish never
+        shell: bash
+        run: |
+          if [ "$RUNNER_OS" = "macOS" ]; then ulimit -n 65536; fi
+          pnpm --filter @yggdrasil/app-desktop exec electron-builder --publish never
         env:
           CSC_IDENTITY_AUTO_DISCOVERY: false
 
