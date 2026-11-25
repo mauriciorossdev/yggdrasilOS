@@ -280,6 +280,16 @@ export type DetectedCli = {
 
 export type OllamaStatus = { installed: boolean; running: boolean; models: string[] };
 
+/** Mirrors main/bootState.ts: a project window's startup progress (window-first boot). */
+export type BootStageId = "settings" | "plugins" | "folder" | "gateway" | "agents" | "connect";
+export type BootStage = { id: BootStageId; state: "pending" | "active" | "done" | "failed"; ms?: number };
+export type BootSnapshot = {
+  kind: "launch" | "project";
+  stages: BootStage[];
+  gateway: { url: string; lanUrl: string } | null;
+  error: { message: string; detail?: string } | null;
+};
+
 export type OnboardingUsage = "cli" | "api" | "local";
 
 export type OnboardingSettings = {
@@ -290,6 +300,8 @@ export type OnboardingSettings = {
   enabledHarnesses: CliId[] | null;
   usage: OnboardingUsage[];
   showAllClis: boolean;
+  /** What the wizard calls the user; null = never given. */
+  userName: string | null;
 };
 
 export type OnboardingState = { settings: OnboardingSettings; autoOpen: boolean };
@@ -453,8 +465,20 @@ export type PluginManifest = {
   minHeight?: number;
   status?: PluginStatus;
   tools?: PluginToolDef[];
+  description?: string;
 };
 export type PluginScope = "global" | "project";
+/** Mirrors main/plugins.ts — fields the Estudio's Ajustes tab can change. */
+export type PluginManifestPatch = {
+  name?: string;
+  icon?: string | null;
+  views?: PluginView[];
+  permissions?: PluginPermission[];
+  description?: string | null;
+};
+export type PluginFileEntry = { path: string; size: number; mtimeMs: number };
+export type PermissionUse = { permission: string; file: string; line: number };
+export type PermissionLint = { uses: PermissionUse[]; missing: string[] };
 export type PluginRecord = {
   key: string;
   scope: PluginScope;

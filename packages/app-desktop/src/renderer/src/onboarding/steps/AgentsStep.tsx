@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Button, Card, Chip } from "../../ui/index.js";
-import { LANGUAGES, setLanguage, useI18n, type Language } from "../../i18n/index.js";
+import { useI18n } from "../../i18n/index.js";
 import type { DetectedCli } from "../../types.js";
 import { toggle, type WizardDraft, type WizardUpdate } from "../draft.js";
+import { Option } from "./Option.js";
 
 type Props = {
   draft: WizardDraft;
@@ -40,71 +40,55 @@ export function AgentsStep({ draft, update, clis, onClis, preselectInstalled }: 
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  const changeLanguage = (language: Language) => {
-    setLanguage(language);
-    update({ language });
-  };
-
   return (
-    <div className="onboarding-step">
-      <h2>{t("ob.s1.title")}</h2>
-
-      <label className="onboarding-field">
-        <span>{t("ob.language")}</span>
-        <select value={draft.language} onChange={(e) => changeLanguage(e.target.value as Language)}>
-          {LANGUAGES.map((l) => (
-            <option key={l.id} value={l.id}>
-              {l.label}
-            </option>
-          ))}
-        </select>
-      </label>
-
-      <div className="onboarding-section-head">
-        <div>
-          <h3>{t("ob.cli.title")}</h3>
-          <p className="muted">{t("ob.cli.hint")}</p>
-        </div>
-        <Button size="sm" onClick={() => void scan(false)} disabled={scanning}>
-          {scanning ? t("ob.scanning") : t("ob.scan")}
-        </Button>
-      </div>
-
-      <div className="onboarding-grid">
-        {(clis ?? []).map((cli) => {
-          const checked = draft.enabled.includes(cli.id);
-          return (
-            <Card key={cli.id} accent={checked} className="onboarding-card">
-              <label className="onboarding-check">
-                <input
-                  type="checkbox"
-                  checked={checked}
-                  onChange={(e) => update({ enabled: toggle(draft.enabled, cli.id, e.target.checked) })}
-                />
-                <strong>{cli.label}</strong>
-              </label>
-              {cli.installed ? (
-                <Chip tone="ready">
-                  {cli.version ? t("ob.cli.installedV", { version: cli.version }) : t("ob.cli.installed")}
-                </Chip>
+    <>
+      <div className="ob-options">
+        {clis === null && <p className="ob-muted">{t("ob.scanning")}</p>}
+        {clis !== null && clis.length === 0 && <p className="ob-muted">{t("ob.cli.none")}</p>}
+        {(clis ?? []).map((cli) => (
+          <Option
+            key={cli.id}
+            kind="check"
+            selected={draft.enabled.includes(cli.id)}
+            onSelect={() => update({ enabled: toggle(draft.enabled, cli.id, !draft.enabled.includes(cli.id)) })}
+            label={cli.label}
+            meta={
+              cli.installed ? (
+                cli.version ? t("ob.cli.installedV", { version: cli.version }) : t("ob.cli.installed")
               ) : (
-                <div className="onboarding-card-row">
-                  <Chip tone="neutral">{t("ob.cli.missing")}</Chip>
+                <>
+                  {t("ob.cli.missing")}
                   {cli.installUrl && (
-                    <button
-                      type="button"
-                      className="onboarding-link"
-                      onClick={() => void window.yggdrasil.onboarding.openExternal(cli.installUrl as string)}
-                    >
-                      {t("ob.cli.install")}
-                    </button>
+                    <>
+                      {" · "}
+                      <span
+                        role="link"
+                        tabIndex={0}
+                        className="ob-link"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          void window.yggdrasil.onboarding.openExternal(cli.installUrl as string);
+                        }}
+                        onKeyDown={(e) => {
+                          if (e.key !== "Enter") return;
+                          e.stopPropagation();
+                          void window.yggdrasil.onboarding.openExternal(cli.installUrl as string);
+                        }}
+                      >
+                        {t("ob.cli.install")} ↗
+                      </span>
+                    </>
                   )}
-                </div>
-              )}
-            </Card>
-          );
-        })}
+                </>
+              )
+            }
+            metaTone={cli.installed ? "ok" : "warn"}
+          />
+        ))}
       </div>
-    </div>
+      <button type="button" className="ob-quiet" onClick={() => void scan(false)} disabled={scanning}>
+        {scanning ? t("ob.scanning") : t("ob.scan")}
+      </button>
+    </>
   );
 }

@@ -105,6 +105,7 @@ export function TerminalNavbar({ disabled, onArrange, viewMode, onToggleViewMode
         <PlusIcon className="hero-icon" /> {t("term.navbar.new")}
       </button>
       <TeamsMenu teams={teams} label={t("term.navbar.teams")} title={t("term.navbar.teamsTitle")} onLoad={requestLoadTeam} onDeleted={setTeams} />
+      <span className="terminal-navbar-sep" aria-hidden="true" />
       {viewMode === "grid" && (
         <>
           <button
@@ -153,6 +154,7 @@ export function TerminalNavbar({ disabled, onArrange, viewMode, onToggleViewMode
       >
         <ArrowsPointingInIcon className="hero-icon" /> {t("term.navbar.compact")}
       </button>
+      <span className="terminal-navbar-sep" aria-hidden="true" />
       <CommandsMenu disabled={disabled} onSelect={onSendCommand} />
       {showRamBar && <RamBar panes={panes} />}
     </div>

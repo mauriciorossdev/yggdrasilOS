@@ -3,6 +3,7 @@ import type { enGroupG } from "./en.groupG.js";
 export const esGroupG: Record<keyof typeof enGroupG, string> = {
   "term.spec.openTitle": "{path} — clic para abrir",
   "term.spec.progressLabel": "Avance de la feature",
+  "term.spec.tasks": "{done}/{total} tareas",
   "term.speakMode.summary": "Resumen",
   "term.speakMode.full": "Todo",
   "term.splitMenu.horizontal": "Dividir horizontalmente",

@@ -1,8 +1,8 @@
 import { useEffect, useState } from "react";
-import { Card } from "../../ui/index.js";
 import { useI18n } from "../../i18n/index.js";
 import type { DetectedIde } from "../../types.js";
 import type { WizardDraft, WizardUpdate } from "../draft.js";
+import { Option } from "./Option.js";
 
 type Props = { draft: WizardDraft; update: WizardUpdate; recommendFirst: boolean };
 
@@ -26,38 +26,21 @@ export function EditorStep({ draft, update, recommendFirst }: Props) {
   const installed = (ides ?? []).filter((i) => i.installed);
 
   return (
-    <div className="onboarding-step">
-      <h2>{t("ob.s3.title")}</h2>
-      <p className="muted">{t("ob.ide.hint")}</p>
-
-      {ides !== null && installed.length === 0 && <p className="muted">{t("ob.ide.noneDetected")}</p>}
-
-      <div className="onboarding-grid">
-        {installed.map((ide) => (
-          <Card key={ide.id} accent={draft.ideId === ide.id} className="onboarding-card">
-            <label className="onboarding-check">
-              <input
-                type="radio"
-                name="onboarding-ide"
-                checked={draft.ideId === ide.id}
-                onChange={() => update({ ideId: ide.id, ideLabel: ide.label })}
-              />
-              <strong>{ide.label}</strong>
-            </label>
-          </Card>
-        ))}
-        <Card accent={draft.ideId === null} className="onboarding-card">
-          <label className="onboarding-check">
-            <input
-              type="radio"
-              name="onboarding-ide"
-              checked={draft.ideId === null}
-              onChange={() => update({ ideId: null, ideLabel: null })}
-            />
-            <strong>{t("ob.ide.none")}</strong>
-          </label>
-        </Card>
-      </div>
+    <div className="ob-options" role="radiogroup">
+      {ides === null && <p className="ob-muted">{t("ob.scanning")}</p>}
+      {ides !== null && installed.length === 0 && <p className="ob-muted">{t("ob.ide.noneDetected")}</p>}
+      {installed.map((ide) => (
+        <Option
+          key={ide.id}
+          kind="radio"
+          selected={draft.ideId === ide.id}
+          onSelect={() => update({ ideId: ide.id, ideLabel: ide.label })}
+          label={ide.label}
+          meta={t("ob.ide.found")}
+          metaTone="ok"
+        />
+      ))}
+      <Option kind="radio" selected={draft.ideId === null} onSelect={() => update({ ideId: null, ideLabel: null })} label={t("ob.ide.none")} />
     </div>
   );
 }

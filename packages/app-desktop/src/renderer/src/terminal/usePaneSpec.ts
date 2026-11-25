@@ -65,11 +65,14 @@ export function useSpecSummary(specPath: string | null): { badge: PaneSpecBadge 
   return summary;
 }
 
-/** The feature doc a pane was handed (write_pane/create_pane specPath) and its live status chip. */
-export function usePaneSpec(paneId: string, seed?: string): { specPath: string | null; badge: PaneSpecBadge | null } {
+/** The feature doc a pane was handed (write_pane/create_pane specPath), its live status and its title. */
+export function usePaneSpec(
+  paneId: string,
+  seed?: string,
+): { specPath: string | null; badge: PaneSpecBadge | null; title: string | null } {
   const specPath = useSyncExternalStore(subscribe, () => specs.get(paneId) ?? seed ?? null);
-  const { badge } = useSpecSummary(specPath);
-  return { specPath, badge };
+  const { badge, title } = useSpecSummary(specPath);
+  return { specPath, badge, title };
 }
 
 /** The most recently handed-out feature doc in this window, for the Terminal header. */

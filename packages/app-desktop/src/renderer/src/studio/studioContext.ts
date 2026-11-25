@@ -43,10 +43,40 @@ export function studioTerminalContext(plugin: PluginRecord): string {
 export function buildStudioTerminalLaunch(
   harness: StudioTerminalHarness,
   plugin: PluginRecord,
+  /** The user's first message (a new complemento's description) — submitted as the session's first turn. */
+  initialPrompt?: string,
 ): { command: string; args: string[] } {
   const context = studioTerminalContext(plugin);
-  if (harness === "agy") return { command: "agy", args: ["-i", context] };
-  return { command: "claude", args: ["--append-system-prompt", context] };
+  if (harness === "agy") return { command: "agy", args: ["-i", initialPrompt ? `${context}\n\n${initialPrompt}` : context] };
+  // claude: context stays a silent system-prompt append; a positional
+  // prompt starts the interactive session with that message already sent.
+  const args = ["--append-system-prompt", context];
+  if (initialPrompt) args.push(initialPrompt);
+  return { command: "claude", args };
+}
+
+/**
+ * First message for a complemento just created from a description in
+ * StudioNew: what the user asked for, the chosen template's hint, and a
+ * nudge to start editing right away (the scaffold is only a placeholder).
+ */
+export function studioInitialPrompt(description: string, templateHint?: string): string {
+  const parts = [description.trim()];
+  if (templateHint) parts.push(templateHint);
+  parts.push(
+    "Los archivos de arranque son solo un placeholder: reemplazalos para que el complemento haga esto. " +
+      "Si necesitás otro permiso o vista, decímelo para cambiarlo en Ajustes.",
+  );
+  return parts.filter(Boolean).join("\n\n");
+}
+
+/**
+ * "Pedir arreglo al agente" from a console error. One line on purpose: in a
+ * terminal, a newline would submit the message early.
+ */
+export function studioFixRequest(message: string, stack?: string): string {
+  const where = stack?.split("\n").find((l) => l.trim())?.trim();
+  return `La vista previa del complemento tira este error: ${message}${where && where !== message ? ` (${where})` : ""}. Encontrá la causa y arreglalo.`;
 }
 
 /**
@@ -68,4 +98,11 @@ export function studioChatContext(plugin: PluginRecord): string {
     `No hay una herramienta de scaffold ni de reload acá: los archivos ya están creados, y los cambios en ` +
     `disco se recargan solos en la vista previa. Cada escritura te va a pedir aprobación.\n\n---\n\n`
   );
+}
+
+/** The glyph shown for a complemento in the Estudio: its manifest emoji icon, else the first letter of its name (an icon that names a file isn't rendered here). */
+export function pluginGlyph(plugin: PluginRecord): string {
+  const icon = plugin.manifest.icon;
+  if (icon && !icon.includes(".")) return icon;
+  return (plugin.manifest.name.trim()[0] ?? "?").toUpperCase();
 }

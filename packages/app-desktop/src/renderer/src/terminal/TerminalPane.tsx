@@ -2,6 +2,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { usePaneBranch } from "./paneBranchContext.js";
 import { PaneBranchChip } from "./PaneBranchChip.js";
 import { AttentionBadge } from "./AttentionBadge.js";
+import { PaneDocChip } from "./PaneDocChip.js";
 import { QueueChip } from "./QueueChip.js";
 import { usePaneAttention } from "./attentionStore.js";
 import { createPortal } from "react-dom";
@@ -42,7 +43,7 @@ import { FILE_DRAG_MIME, type FileDragPayload } from "../files/dragMimeType.js";
 import { requestOpenDocument } from "../chat/documentsBridge.js";
 import { requestTab } from "../chat/mainTabsBridge.js";
 import { usePaneSpec } from "./usePaneSpec.js";
-import { Chip, IconButton, Menu, MenuItem, MenuSeparator, statusTone } from "../ui/index.js";
+import { IconButton, Menu, MenuItem, MenuSeparator } from "../ui/index.js";
 import { useElementWidth } from "@yggdrasil/ui-kit";
 import { getThemeColors, onThemeApplied } from "@yggdrasil/ui-kit";
 import { terminalColors } from "@yggdrasil/ui-kit";
@@ -148,7 +149,7 @@ export function TerminalPane({
 }: Props) {
   const { t } = useI18n();
   const { call } = useGateway();
-  const { specPath, badge: specBadge } = usePaneSpec(leaf.id, leaf.specPath);
+  const { specPath, badge: specBadge, title: specTitle } = usePaneSpec(leaf.id, leaf.specPath);
   const containerRef = useRef<HTMLDivElement>(null);
   const [exited, setExited] = useState(false);
   // The saved folder was gone, so the pane started in the project root (spawnCwd.ts).
@@ -543,16 +544,15 @@ export function TerminalPane({
           <QueueChip paneId={leaf.id} />
           {branch && <PaneBranchChip branch={branch} />}
           {specPath && specBadge && (
-            <Chip
-              tone={statusTone(specBadge.status)}
-              title={t("term.spec.openTitle", { path: specPath })}
-              onClick={() => {
+            <PaneDocChip
+              specPath={specPath}
+              badge={specBadge}
+              title={specTitle}
+              onOpen={() => {
                 requestOpenDocument(specPath);
                 requestTab("documents");
               }}
-            >
-              {t(specBadge.labelKey)}
-            </Chip>
+            />
           )}
           {compactHeader ? (
             <div className="terminal-pane-actions">

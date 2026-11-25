@@ -1,4 +1,4 @@
-import { execFileSync } from "node:child_process";
+import { execFile, execFileSync } from "node:child_process";
 
 const DELIM = "___YGGDRASIL_PATH___";
 
@@ -33,4 +33,21 @@ export function resolveShellPath(): string {
   } catch {
     return process.env.PATH ?? "";
   }
+}
+
+/**
+ * Same as resolveShellPath, without blocking the main process: a login shell
+ * can take seconds to source its profile, and startup now shows the first
+ * window before that finishes (window-first boot, see bootState.ts).
+ */
+export function resolveShellPathAsync(): Promise<string> {
+  if (process.platform === "win32") return Promise.resolve(process.env.PATH ?? "");
+  const shell = process.env.SHELL || "/bin/zsh";
+  return new Promise((resolve) => {
+    execFile(shell, ["-ilc", `echo ${DELIM}\${PATH}${DELIM}`], { encoding: "utf8", timeout: 5000 }, (err, stdout) => {
+      if (err) return resolve(process.env.PATH ?? "");
+      const match = stdout.match(new RegExp(`${DELIM}(.*?)${DELIM}`));
+      resolve(match?.[1] || process.env.PATH || "");
+    });
+  });
 }

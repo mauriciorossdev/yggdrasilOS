@@ -4,7 +4,7 @@ import { execFile } from "node:child_process";
 import { promisify } from "node:util";
 import { homedir, tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
-import { app, BrowserWindow, dialog, ipcMain, protocol, shell } from "electron";
+import { app, BrowserWindow, dialog, ipcMain, protocol, shell, type WebContents } from "electron";
 import { ensureGateway, type GatewayHandle } from "./gateway.js";
 import {
   getProject,
@@ -178,16 +178,20 @@ import {
   deletePlugin,
   ensurePluginDirs,
   globalPluginsDir,
+  lintPluginPermissions,
+  listPluginFiles,
   projectPluginsDir,
   scaffoldPlugin,
   scanPlugins,
   setPluginStatus,
+  updatePluginManifest,
   watchPluginsDir,
+  type PluginManifestPatch,
   type PluginScope,
   type PluginStatus,
   type ScaffoldPluginSpec,
 } from "./plugins.js";
-import { registerPluginProtocol } from "./pluginProtocol.js";
+import { forwardPluginFrameErrors, registerPluginProtocol } from "./pluginProtocol.js";
 import { registerFileProtocol } from "./fileProtocol.js";
 import { locateBlender, openInBlender } from "./blender.js";
 import { createProjectSkill, listSkills, SkillCreateError } from "./skills.js";
@@ -205,8 +209,8 @@ import {
   shouldAutoOpenOnboarding,
   type OnboardingSettings,
 } from "./onboardingSettings.js";
-import { createSplash, type Splash } from "./splash.js";
-import { resolveShellPath } from "./resolveShellPath.js";
+import { advance, bootReady, failBoot, finishStage, initialBoot, openedSnapshot, resetForRetry, toWire, type BootSnapshot, type BootStageId } from "./bootState.js";
+import { resolveShellPathAsync } from "./resolveShellPath.js";
 import { installAboutMenu } from "./aboutPanel.js";
 import { mt, resolveMainLanguage, setMainLanguage, type MainMessageKey } from "./i18n.js";
 import { GitCloneError, cloneGitRepo, parseGitUrl, validateCloneFolderName, type GitCloneErrorCode } from "./gitClone.js";
@@ -356,7 +360,43 @@ type OpenProjectWindow = {
   pluginWatcher?: { close(): void };
   /** Watches this project's notes/ dir for shared-file changes — see notesWatcher.ts. Closed alongside the window. */
   notesWatcher?: { close(): void };
+  /** The finished boot progress, so a reload (boot:get) still shows it and reconnects. */
+  boot?: BootSnapshot;
 };
+
+/**
+ * A project window that exists but whose gateway isn't up yet (window-first
+ * boot, see bootState.ts). Records each resource as it's created so a window
+ * closed mid-boot, a failure, or a quit can release exactly what exists.
+ */
+type BootingProject = {
+  project: ProjectRecord;
+  window: BrowserWindow;
+  snapshot: BootSnapshot;
+  paneControl?: PaneControlHandle;
+  gateway?: GatewayHandle;
+  registered: boolean;
+  /** Settles when this boot attempt finishes (resolves on success or a closed window, rejects on failure). */
+  done: Promise<void>;
+  /** App startup work to run first, as live stages (the launch window only); cleared once it has run. */
+  prelude?: LaunchPrelude;
+};
+/** Startup work the first window shows as its own stages: call `stage(id)` as each part begins. */
+type LaunchPrelude = (stage: (id: BootStageId) => void) => Promise<void>;
+const bootingProjects = new Map<string, BootingProject>();
+
+/**
+ * Resolves when the launch prelude (shell PATH, plugins, workspace broker, open-gateways reset) has run.
+ * Any other project opening (a yggdrasil:// deep link on a cold start, a second instance) waits on it, so its
+ * gateway never starts with the bare LaunchServices PATH or gets its open-gateways entry wiped by the reset.
+ */
+let markStartupDone: () => void = () => {};
+const startupDone = new Promise<void>((resolve) => {
+  markStartupDone = resolve;
+});
+
+/** A boot failure the window is already showing (with Retry): callers log it instead of opening a dialog. */
+class BootShownInWindow extends Error {}
 
 /** One dedicated gateway process + window per open project, keyed by project id. */
 const projectWindows = new Map<string, OpenProjectWindow>();
@@ -388,6 +428,9 @@ const pendingEditorCalls = new Map<string, { resolve: (v: unknown) => void; reje
  * counts as a denial.
  */
 let workspaceBroker: WorkspaceBroker | undefined;
+/** Launch-prelude work that must run once even if a Retry reruns the prelude. */
+let globalPluginsWatcher: { close(): void } | undefined;
+let phoneLinkStarted = false;
 const pendingWorkspaceAsks = new Map<string, (answer: AskAnswer) => void>();
 const WORKSPACE_ASK_TIMEOUT_MS = 120_000;
 
@@ -491,27 +534,43 @@ function attentionBridgePath(): string {
   return join(__dirname, "attentionBridge.js");
 }
 
-// Startup splash: created first thing in whenReady, dropped as soon as the
-// first project window shows (or startup fails, so it can't cover the error).
-let splash: Splash | null = null;
-
-function setSplashStatus(text: string): void {
-  splash?.setStatus(text);
+function pushBoot(b: BootingProject): void {
+  if (!b.window.isDestroyed()) b.window.webContents.send("boot:update", toWire(b.snapshot));
 }
 
-function closeSplash(): void {
-  splash?.close();
-  splash = null;
+function setBoot(b: BootingProject, f: (s: BootSnapshot) => BootSnapshot): void {
+  b.snapshot = f(b.snapshot);
+  pushBoot(b);
 }
 
-function createProjectBrowserWindow(project: ProjectRecord, gatewayUrl: string, gatewayLanUrl: string): BrowserWindow {
+/** Releases whatever this boot attempt had started (gateway subprocess, pane-control server, open-gateways entry). */
+function abortBoot(b: BootingProject): void {
+  b.gateway?.shutdown();
+  b.paneControl?.shutdown();
+  if (b.registered) void unregisterOpenGateway(b.project.id).then(notifyPhoneLinkChanged);
+  b.gateway = undefined;
+  b.paneControl = undefined;
+  b.registered = false;
+}
+
+/** The boot snapshot for whichever project window sent a request (booting, or already open after a reload). */
+function bootSnapshotForSender(sender: WebContents): BootSnapshot | null {
+  for (const b of bootingProjects.values()) if (!b.window.isDestroyed() && b.window.webContents === sender) return toWire(b.snapshot);
+  for (const e of projectWindows.values()) {
+    if (e.window.isDestroyed() || e.window.webContents !== sender) continue;
+    const gateway = { url: e.gateway.url, lanUrl: e.gateway.lanUrl };
+    return e.boot ? toWire({ ...e.boot, gateway }) : openedSnapshot(gateway);
+  }
+  return null;
+}
+
+function createProjectBrowserWindow(project: ProjectRecord): BrowserWindow {
+  // No gateway URL here: the window opens before its gateway exists and gets it through boot:get/boot:update.
   const additionalArguments = [
     `--ygg-project-id=${project.id}`,
     `--ygg-project-name=${project.name}`,
     `--ygg-project-path=${project.path}`,
     `--ygg-project-color=${project.color ?? ""}`,
-    `--ygg-gateway-url=${gatewayUrl}`,
-    `--ygg-gateway-lan-url=${gatewayLanUrl}`,
     `--ygg-theme=${JSON.stringify(currentTheme)}`,
     `--ygg-default-project-id=${defaultProjectId ?? ""}`,
   ];
@@ -526,7 +585,7 @@ function createProjectBrowserWindow(project: ProjectRecord, gatewayUrl: string, 
     // black bar with its own close/minimize/maximize buttons on every
     // platform, so the OS frame would otherwise just double up on that.
     frame: false,
-    title: `Yggdrasil - ${project.name} - ${gatewayLanUrl}`,
+    title: `Yggdrasil - ${project.name}`,
     webPreferences: {
       preload: join(__dirname, "../preload/index.cjs"),
       sandbox: false,
@@ -537,10 +596,8 @@ function createProjectBrowserWindow(project: ProjectRecord, gatewayUrl: string, 
       plugins: true,
     },
   });
-  win.once("ready-to-show", () => {
-    win.show();
-    closeSplash();
-  });
+  win.once("ready-to-show", () => win.show());
+  forwardPluginFrameErrors(win.webContents);
   // The renderer's static <title> would otherwise clobber our project-scoped
   // title as soon as the page loads. (Frameless, so nothing shows this
   // title visually — it still matters for the OS taskbar/Alt-Tab/Dock.)
@@ -579,6 +636,12 @@ function createProjectBrowserWindow(project: ProjectRecord, gatewayUrl: string, 
     }
   });
   win.on("closed", () => {
+    // Closed while still booting: release what the boot had started (runBoot sees the window gone and stops).
+    const booting = bootingProjects.get(project.id);
+    if (booting?.window === win) {
+      abortBoot(booting);
+      bootingProjects.delete(project.id);
+    }
     const entry = projectWindows.get(project.id);
     if (entry?.window === win) {
       entry.gateway.shutdown();
@@ -798,27 +861,83 @@ async function cloneRepoAsProject(params: { url: string; parentDir?: string; fol
   }
 }
 
-async function openProject(project: ProjectRecord): Promise<void> {
+async function openProject(project: ProjectRecord, prelude?: LaunchPrelude): Promise<void> {
   try {
-    await openProjectUnsafe(project);
+    await openProjectUnsafe(project, prelude);
   } catch (err) {
-    closeSplash();
     console.error(`[openProject] failed for ${project.path}:`, err);
+    if (err instanceof BootShownInWindow) throw err; // the window shows it, with Retry
     dialog.showErrorBox(mt("project.openFailed"), err instanceof Error ? (err.stack ?? err.message) : String(err));
     throw err;
   }
 }
 
-async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
+async function openProjectUnsafe(project: ProjectRecord, prelude?: LaunchPrelude): Promise<void> {
+  await app.whenReady(); // open-url can arrive before the app is ready; windows can't exist before that
   const existing = projectWindows.get(project.id);
   if (existing && !existing.window.isDestroyed()) {
     if (existing.window.isMinimized()) existing.window.restore();
     existing.window.focus();
     return;
   }
+  // Already booting (a second click, a deep link): bring that window up instead of starting a second gateway.
+  const booting = bootingProjects.get(project.id);
+  if (booting && !booting.window.isDestroyed()) {
+    if (booting.window.isMinimized()) booting.window.restore();
+    booting.window.focus();
+    return booting.done;
+  }
 
+  // Window first: it shows right away and boots inside (renderer/src/boot/), instead of the user
+  // waiting on nothing while the gateway starts.
+  const win = createProjectBrowserWindow(project);
+  const b: BootingProject = {
+    project,
+    window: win,
+    snapshot: initialBoot(prelude ? "launch" : "project"),
+    registered: false,
+    done: Promise.resolve(),
+    prelude,
+  };
+  bootingProjects.set(project.id, b);
+  b.done = runBoot(b);
+  return b.done;
+}
+
+/** Runs one boot attempt for a booting window; a failure is shown in the window (with Retry) and rethrown as BootShownInWindow. */
+async function runBoot(b: BootingProject): Promise<void> {
+  try {
+    await bootSteps(b);
+  } catch (err) {
+    abortBoot(b);
+    if (b.window.isDestroyed() || bootingProjects.get(b.project.id) !== b) return;
+    const message = err instanceof Error ? err.message : String(err);
+    setBoot(b, (s) => failBoot(s, { message }));
+    throw new BootShownInWindow(message);
+  }
+}
+
+async function bootSteps(b: BootingProject): Promise<void> {
+  const { project, window: win } = b;
+  // The window can close at any await below: then release what exists and stop.
+  const gone = () => win.isDestroyed() || bootingProjects.get(project.id) !== b;
+  const next = (to: BootStageId) => setBoot(b, (s) => advance(s, to, Date.now()));
+
+  if (b.prelude) {
+    try {
+      await b.prelude(next);
+    } finally {
+      markStartupDone(); // never leave other windows waiting, even if startup failed
+    }
+    b.prelude = undefined; // ran once; a Retry starts from the project's own stages
+    if (gone()) return;
+  }
+  next("folder");
+  await startupDone; // a window opened during launch (deep link) waits here, shown as preparing its folder
+  if (gone()) return;
   await mkdir(project.path, { recursive: true });
   await ensurePluginDirs(project.path);
+  if (gone()) return;
   // Pane control starts first (it only depends on getWindow, resolved
   // lazily) so its URL+token can be handed to the gateway subprocess at
   // spawn time — terminals.list (gateway.ts) needs it to bridge into this
@@ -927,7 +1046,9 @@ async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
     (paneId, event) => reportAttention(project.id, paneId, event),
     { commentDone: (id) => codeCommentsHostFor(project.id).setStatus([id], "done") },
   );
-  setSplashStatus("Starting gateway…");
+  b.paneControl = paneControl;
+  if (gone()) return abortBoot(b);
+  next("gateway");
   const gateway = await ensureGateway(
     project.path,
     pluginSearchDir(),
@@ -939,8 +1060,13 @@ async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
     desktopSettingsFilePath(),
     await gatewayAuthForNewProject(),
   );
+  b.gateway = gateway;
+  if (gone()) return abortBoot(b); // the window closed while the gateway was starting: don't leave it running
   await registerOpenGateway(project.id, gateway.port);
+  b.registered = true;
   notifyPhoneLinkChanged();
+  if (gone()) return abortBoot(b);
+  next("agents");
   const { staleApprovals } = await writeYggdrasilMcpConfig(
     project.path,
     yggdrasilShimPath(),
@@ -955,6 +1081,7 @@ async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
   await seedMemoryGuidance(project.path);
   await seedWorkflowsGuidance(project.path);
   await writeStatuslineConfig(project.path, statuslineBridgePath(), paneControl.url, paneControl.token);
+  if (gone()) return abortBoot(b);
   // Fire-and-forget — pre-existing plugin data (installed before this
   // integration shipped, or from a plugin the user hasn't touched since
   // opening this project) becomes searchable without waiting on its next
@@ -962,12 +1089,16 @@ async function openProjectUnsafe(project: ProjectRecord): Promise<void> {
   void reindexAllPluginStorage(project.path, project.id).catch((err) => {
     console.error(`[pluginStorageIndex] initial reindex failed for ${project.id}:`, err);
   });
-  const win = createProjectBrowserWindow(project, gateway.url, gateway.lanUrl);
   const pluginWatcher = watchPluginsDir(projectPluginsDir(project.path), (pluginId) => {
     if (!win.isDestroyed()) win.webContents.send("plugins:changed", { scope: "project", pluginId });
   });
   const notesWatcher = watchNotesDir(notesAbsoluteDir(project.path), project.id);
-  projectWindows.set(project.id, { window: win, root: project.path, gateway, paneControl, pluginWatcher, notesWatcher });
+  // Main's part is done: hand the gateway to the renderer, which finishes the "connect" stage itself.
+  const boot = bootReady(finishStage(b.snapshot, "agents", Date.now()), { url: gateway.url, lanUrl: gateway.lanUrl }, Date.now());
+  bootingProjects.delete(project.id);
+  projectWindows.set(project.id, { window: win, root: project.path, gateway, paneControl, pluginWatcher, notesWatcher, boot });
+  win.setTitle(`Yggdrasil - ${project.name} - ${gateway.lanUrl}`);
+  win.webContents.send("boot:update", toWire(boot));
   broadcastWorkspaceChanged();
 }
 
@@ -985,6 +1116,30 @@ function registerIpc(): void {
     else win.maximize();
   });
   ipcMain.handle("window:close", (event) => BrowserWindow.fromWebContents(event.sender)?.close());
+  // Window-first boot (bootState.ts): the current progress for the asking window, and Retry after a failure.
+  ipcMain.handle("boot:get", (event) => bootSnapshotForSender(event.sender));
+  ipcMain.handle("boot:retry", (event) => {
+    for (const b of bootingProjects.values()) {
+      if (b.window.isDestroyed() || b.window.webContents !== event.sender || !b.snapshot.error) continue;
+      setBoot(b, resetForRetry);
+      b.done = runBoot(b).catch((err) => console.error(`[boot] retry failed for ${b.project.path}:`, err));
+      return true;
+    }
+    return false;
+  });
+  // The setup wizard takes the whole screen while it's open, then hands back whatever state the window had.
+  const fullScreenBefore = new WeakMap<BrowserWindow, boolean>();
+  ipcMain.handle("window:setFullScreen", (event, on: boolean) => {
+    const win = BrowserWindow.fromWebContents(event.sender);
+    if (!win) return;
+    if (on) {
+      if (!fullScreenBefore.has(win)) fullScreenBefore.set(win, win.isFullScreen());
+      win.setFullScreen(true);
+    } else if (fullScreenBefore.has(win)) {
+      win.setFullScreen(fullScreenBefore.get(win) === true);
+      fullScreenBefore.delete(win);
+    }
+  });
   ipcMain.handle("window:isMaximized", (event) => {
     const win = BrowserWindow.fromWebContents(event.sender);
     if (!win) return false;
@@ -1452,6 +1607,31 @@ function registerIpc(): void {
       return record;
     },
   );
+
+  ipcMain.handle(
+    "plugins:updateManifest",
+    async (_event, projectId: string, scope: PluginScope, id: string, patch: PluginManifestPatch) => {
+      const project = await getProject(projectId);
+      if (!project) throw new Error("Unknown project");
+      const record = await updatePluginManifest(scope, id, projectId, project.path, patch);
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send("plugins:changed", { scope: "all" });
+      }
+      return record;
+    },
+  );
+
+  ipcMain.handle("plugins:listFiles", async (_event, projectId: string, scope: PluginScope, id: string) => {
+    const project = await getProject(projectId);
+    if (!project) throw new Error("Unknown project");
+    return listPluginFiles(scope, id, project.path);
+  });
+
+  ipcMain.handle("plugins:lintPermissions", async (_event, projectId: string, scope: PluginScope, id: string) => {
+    const project = await getProject(projectId);
+    if (!project) throw new Error("Unknown project");
+    return lintPluginPermissions(scope, id, project.path);
+  });
 
   ipcMain.handle("plugins:delete", async (_event, projectId: string, scope: PluginScope, id: string) => {
     const project = await getProject(projectId);
@@ -2068,15 +2248,15 @@ function registerIpc(): void {
 
 app.whenReady().then(async () => {
   void startSystemMonitor();
-  splash = createSplash();
-  // Must land before any project opens — Agent Flow/terminal spawns
-  // (terminals.ts) exec CLIs directly with no shell in between, so they only
-  // see whatever PATH this process has at spawn time.
-  process.env.PATH = resolveShellPath();
+  // Must land before any project's gateway or panes start — Agent Flow/terminal spawns (terminals.ts) exec
+  // CLIs directly with no shell in between, so they only see this process's PATH. Resolving it runs a login
+  // shell, which can take seconds, so it runs in the background while the first window already shows; the
+  // default project's boot waits for it (its "settings" stage).
+  const pathReady = resolveShellPathAsync().then((path) => {
+    process.env.PATH = path;
+  });
   const savedOnboarding = await loadOnboardingSettings(app.getPath("userData")).catch(() => null);
   setMainLanguage(resolveMainLanguage(savedOnboarding?.language, app.getLocale()));
-  // Before any project (and its claude panes) can open — see claudePaneSettings.ts.
-  await loadClaudePaneSettings(app.getPath("userData")).catch((error) => console.error("[claudePaneSettings] load failed", error));
   installAboutMenu();
   installAutoUpdater();
   installUpdateCheck();
@@ -2116,61 +2296,72 @@ app.whenReady().then(async () => {
   setSubmitGate(gateSubmit, dropPaneQueue);
   registerPluginProtocol((id) => getProject(id));
   registerFileProtocol((id) => getProject(id));
-  setSplashStatus("Loading plugins…");
-  await ensurePluginDirs();
-  // Never closed — lives for the app's whole lifetime, same as the process
-  // itself; nothing meaningful to clean up on quit.
-  watchPluginsDir(globalPluginsDir(), (pluginId) => {
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send("plugins:changed", { scope: "global", pluginId });
-    }
-  });
-
+  // Window first (bootState.ts): the theme and the default project are all the window needs. The rest of
+  // startup runs as its first live stages ("settings", "plugins"), then the default project's own boot.
   currentTheme = await loadThemeSettings(app.getPath("userData"));
-  workspaceBroker = await createWorkspaceBroker({
-    userDataDir: app.getPath("userData"),
-    listProjects: async () => (await listProjects()).map((p) => ({ id: p.id, name: p.name, color: p.color })),
-    paneApi: (id) => {
-      const entry = projectWindows.get(id);
-      if (!entry || entry.window.isDestroyed()) return undefined;
-      return {
-        listPanes: entry.paneControl.listPanes,
-        readPane: entry.paneControl.readPane,
-        writePane: async (paneId, text, pressEnter) => {
-          await entry.paneControl.writePane(paneId, text, pressEnter, undefined, { source: { kind: "workspace" } });
-        },
-      };
-    },
-    ask: askWorkspace,
-    notify: (projectId, notice) => {
-      const win = projectWindows.get(projectId)?.window;
-      if (win && !win.isDestroyed()) win.webContents.send("workspace:notice", notice);
-    },
-    onChange: broadcastWorkspaceChanged,
-  });
-  await resetOpenGateways();
-  registerPhoneLinkIpc();
-  startPhoneLink();
   const defaultProject = await upsertProject({ path: defaultWorkspaceRoot(), name: "Default Workspace" });
   defaultProjectId = defaultProject.id;
-  setSplashStatus("Opening project…");
+  const opening = openProject(defaultProject, async (stage) => {
+    stage("settings");
+    await pathReady;
+    // Before any project (and its claude panes) can open — see claudePaneSettings.ts.
+    await loadClaudePaneSettings(app.getPath("userData")).catch((error) => console.error("[claudePaneSettings] load failed", error));
+    stage("plugins");
+    await ensurePluginDirs();
+    // Never closed — lives for the app's whole lifetime, same as the process
+    // itself; nothing meaningful to clean up on quit. Once, even if a Retry reruns this.
+    globalPluginsWatcher ??= watchPluginsDir(globalPluginsDir(), (pluginId) => {
+      for (const win of BrowserWindow.getAllWindows()) {
+        if (!win.isDestroyed()) win.webContents.send("plugins:changed", { scope: "global", pluginId });
+      }
+    });
+
+    workspaceBroker ??= await createWorkspaceBroker({
+      userDataDir: app.getPath("userData"),
+      listProjects: async () => (await listProjects()).map((p) => ({ id: p.id, name: p.name, color: p.color })),
+      paneApi: (id) => {
+        const entry = projectWindows.get(id);
+        if (!entry || entry.window.isDestroyed()) return undefined;
+        return {
+          listPanes: entry.paneControl.listPanes,
+          readPane: entry.paneControl.readPane,
+          writePane: async (paneId, text, pressEnter) => {
+            await entry.paneControl.writePane(paneId, text, pressEnter, undefined, { source: { kind: "workspace" } });
+          },
+        };
+      },
+      ask: askWorkspace,
+      notify: (projectId, notice) => {
+        const win = projectWindows.get(projectId)?.window;
+        if (win && !win.isDestroyed()) win.webContents.send("workspace:notice", notice);
+      },
+      onChange: broadcastWorkspaceChanged,
+    });
+    await resetOpenGateways();
+    if (!phoneLinkStarted) {
+      phoneLinkStarted = true;
+      registerPhoneLinkIpc(); // ipcMain.handle throws if registered twice
+      startPhoneLink();
+    }
+  });
   try {
-    await openProject(defaultProject);
+    await opening;
   } catch (error) {
-    // Without this, a rejection here (e.g. the gateway subprocess never
-    // becoming ready) leaves the app running with zero windows and no
-    // taskbar/dock presence — indistinguishable from a silent crash, with
-    // the actual reason visible only in main-crashes.log (see
-    // crashLogging.ts) or a terminal the user may not have open.
-    closeSplash();
-    console.error("[main] failed to open default project", error);
-    logCaughtError("openProject(default)", error);
-    dialog.showErrorBox(
-      mt("app.startFailed"),
-      `${error instanceof Error ? error.message : String(error)}\n\n${mt("app.seeLog", { path: logPath() })}`,
-    );
-    app.quit();
-    return;
+    if (error instanceof BootShownInWindow) {
+      // The window is up and shows the failure with Retry: keep the app running.
+      logCaughtError("openProject(default)", error);
+    } else {
+      // Failed before the window existed: without this the app would run with zero windows and no
+      // taskbar/dock presence, indistinguishable from a silent crash (reason only in main-crashes.log).
+      console.error("[main] failed to open default project", error);
+      logCaughtError("openProject(default)", error);
+      dialog.showErrorBox(
+        mt("app.startFailed"),
+        `${error instanceof Error ? error.message : String(error)}\n\n${mt("app.seeLog", { path: logPath() })}`,
+      );
+      app.quit();
+      return;
+    }
   }
 
   reopenDefaultWindow = () => void openProject(defaultProject);
@@ -2195,6 +2386,7 @@ app.on("before-quit", (event) => {
     gateway.shutdown();
     paneControl.shutdown();
   }
+  for (const b of bootingProjects.values()) abortBoot(b);
   stopWhisperServer();
   void Promise.allSettled([disposeAllTerminalsAndWait(), lspIpc?.stopAll(), stopSystemMonitor()]).finally(() => app.quit());
 });

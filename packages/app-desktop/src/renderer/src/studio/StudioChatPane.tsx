@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useReducer, useRef, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useReducer, useRef, useState } from "react";
 import { useGateway } from "@yggdrasil/client-web";
 import { chatReducer, initialChatState } from "@yggdrasil/ui-kit";
 import { useChatEvents } from "@yggdrasil/ui-kit";
@@ -6,6 +6,7 @@ import { MessageList } from "@yggdrasil/ui-kit";
 import { ApprovalBar } from "@yggdrasil/ui-kit";
 import { ChatInput } from "../chat/ChatInput.js";
 import { studioChatContext } from "./studioContext.js";
+import type { StudioAgentHandle } from "./StudioTerminalPane.js";
 import type { AgentInfo, Attachment, ChatSendResult, PluginRecord } from "../types.js";
 import { useI18n } from "../i18n/index.js";
 
@@ -26,7 +27,7 @@ type Props = { plugin: PluginRecord };
  * anything about chat internals, matching the rest of Estudio's
  * self-contained-component convention.
  */
-export function StudioChatPane({ plugin }: Props) {
+export const StudioChatPane = forwardRef<StudioAgentHandle, Props>(function StudioChatPane({ plugin }, ref) {
   const { t: tr } = useI18n();
   const { call, onEvent } = useGateway();
   const [state, dispatch] = useReducer(chatReducer, undefined, initialChatState);
@@ -85,6 +86,8 @@ export function StudioChatPane({ plugin }: Props) {
     [call, state.sessionKey, state.activeAgentId, plugin, tr],
   );
 
+  useImperativeHandle(ref, () => ({ send: (text: string) => void send(text) }), [send]);
+
   const respondApproval = useCallback(
     (requestId: string, approved: boolean) => {
       void call("tools.approve", { requestId, approved });
@@ -117,4 +120,4 @@ export function StudioChatPane({ plugin }: Props) {
       />
     </div>
   );
-}
+});
