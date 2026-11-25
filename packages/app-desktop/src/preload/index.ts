@@ -6,6 +6,7 @@ import type {
   AgentFlowCommunicationPayload,
   AgentTeam,
   AutomationSettings,
+  BootSnapshot,
   BrowserTabBounds,
   BrowserDownload,
   BrowserTabState,
@@ -34,6 +35,9 @@ import type {
   OpenIdeResult,
   PaneSummary,
   PermissionKind,
+  PermissionLint,
+  PluginFileEntry,
+  PluginManifestPatch,
   PluginRecord,
   PluginScope,
   PluginStatus,
@@ -102,10 +106,20 @@ const api = {
   projectId: readArg("--ygg-project-id"),
   platform: process.platform,
   windowsBuildNumber: windowsBuildNumber(),
-  /** This window's dedicated gateway WebSocket URL. Null in the launcher window (which has no gateway). */
-  gatewayUrl: readArg("--ygg-gateway-url"),
-  /** Same gateway, but with this machine's LAN address instead of loopback — for showing the human what to type into a phone (SettingsView). Never use this for the renderer's own connection. */
-  gatewayLanUrl: readArg("--ygg-gateway-lan-url"),
+  /**
+   * Window-first boot: the window opens before its gateway exists, so the gateway URL (and the LAN one
+   * shown to the human) arrive here instead of as launch arguments. Subscribe first, then get: the
+   * snapshot can change before the renderer has loaded.
+   */
+  boot: {
+    get: (): Promise<BootSnapshot | null> => ipcRenderer.invoke("boot:get"),
+    retry: (): Promise<boolean> => ipcRenderer.invoke("boot:retry"),
+    onUpdate: (handler: (snapshot: BootSnapshot) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, snapshot: BootSnapshot) => handler(snapshot);
+      ipcRenderer.on("boot:update", listener);
+      return () => ipcRenderer.removeListener("boot:update", listener);
+    },
+  },
   /** Set only for project windows — TitleBar.tsx's display label. */
   projectName: readArg("--ygg-project-name"),
   /** Set only for project windows — absolute folder, for the file URIs language servers need. */
@@ -372,6 +386,8 @@ const api = {
     toggleMaximize: (): Promise<void> => ipcRenderer.invoke("window:toggleMaximize"),
     close: (): Promise<void> => ipcRenderer.invoke("window:close"),
     isMaximized: (): Promise<boolean> => ipcRenderer.invoke("window:isMaximized"),
+    /** true: take the whole screen (remembering the prior state); false: restore it. Used by the setup wizard. */
+    setFullScreen: (on: boolean): Promise<void> => ipcRenderer.invoke("window:setFullScreen", on),
     onMaximizedChange: (handler: (maximized: boolean) => void): (() => void) => {
       const listener = (_event: IpcRendererEvent, maximized: boolean) => handler(maximized);
       ipcRenderer.on("window:maximizedChange", listener);
@@ -603,6 +619,17 @@ const api = {
       ipcRenderer.on("plugins:openRequest", listener);
       return () => ipcRenderer.removeListener("plugins:openRequest", listener);
     },
+    /** An uncaught error/rejection inside a plugin frame, with the real text Chromium hides from the frame itself — see main/pluginProtocol.ts's forwardPluginFrameErrors. */
+    onFrameError: (
+      handler: (payload: { frameUrl: string; message: string; sourceId: string; lineNumber: number }) => void,
+    ): (() => void) => {
+      const listener = (
+        _event: IpcRendererEvent,
+        payload: { frameUrl: string; message: string; sourceId: string; lineNumber: number },
+      ) => handler(payload);
+      ipcRenderer.on("plugins:frameError", listener);
+      return () => ipcRenderer.removeListener("plugins:frameError", listener);
+    },
     /** Which complemento pestañas were open last session — see main/pluginTabs.ts. */
     getLayout: (): Promise<PluginTabsLayout> => ipcRenderer.invoke("plugins:getLayout", readArg("--ygg-project-id")),
     saveLayout: (layout: PluginTabsLayout): Promise<void> =>
@@ -616,6 +643,13 @@ const api = {
       ipcRenderer.invoke("plugins:setStatus", readArg("--ygg-project-id"), scope, id, status),
     delete: (scope: PluginScope, id: string): Promise<void> =>
       ipcRenderer.invoke("plugins:delete", readArg("--ygg-project-id"), scope, id),
+    /** Estudio's Ajustes tab — see main/plugins.ts's updatePluginManifest. */
+    updateManifest: (scope: PluginScope, id: string, patch: PluginManifestPatch): Promise<PluginRecord> =>
+      ipcRenderer.invoke("plugins:updateManifest", readArg("--ygg-project-id"), scope, id, patch),
+    listFiles: (scope: PluginScope, id: string): Promise<PluginFileEntry[]> =>
+      ipcRenderer.invoke("plugins:listFiles", readArg("--ygg-project-id"), scope, id),
+    lintPermissions: (scope: PluginScope, id: string): Promise<PermissionLint> =>
+      ipcRenderer.invoke("plugins:lintPermissions", readArg("--ygg-project-id"), scope, id),
     /** A claude/agy terminal session called one of this plugin's declared tools (via the plugins MCP tool → paneControlServer.ts) — PluginToolRuntime.tsx answers by calling the matching headless PluginFrame's callTool() and replying with toolCallResult. */
     onToolCallRequest: (
       handler: (payload: { callId: string; scope: PluginScope; id: string; tool: string; params: unknown }) => void,

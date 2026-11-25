@@ -6,6 +6,7 @@ import { UpdateBanner } from "./components/UpdateBanner.js";
 import { WorkspaceOverlay } from "./workspace/WorkspaceOverlay.js";
 import { OnboardingGate } from "./onboarding/OnboardingGate.js";
 import { useI18n } from "./i18n/index.js";
+import { failConnect, markConnected } from "./boot/bootStore.js";
 
 export function App() {
   const { t } = useI18n();
@@ -20,11 +21,17 @@ export function App() {
   const ready = connected && authenticated;
 
   useEffect(() => {
-    connect().catch((err) => setError(err instanceof Error ? err.message : String(err)));
+    connect().catch((err) => {
+      const message = err instanceof Error ? err.message : String(err);
+      setError(message);
+      failConnect(message); // the boot screen shows it, with Retry
+    });
   }, [connect]);
 
   useEffect(() => {
-    if (ready) setEverReady(true);
+    if (!ready) return;
+    setEverReady(true);
+    markConnected(); // the boot screen hands over
   }, [ready]);
 
   if (error) {
@@ -38,16 +45,8 @@ export function App() {
     );
   }
 
-  if (!ready && !everReady) {
-    return (
-      <div className="app-shell">
-        <TitleBar />
-        <div className="app-status">
-          <p>{t("app.connecting")}</p>
-        </div>
-      </div>
-    );
-  }
+  // First connection: the boot screen (boot/BootScreen.tsx) covers the window and shows the progress.
+  if (!ready && !everReady) return <div className="app-shell" />;
 
   return (
     <div className="app-shell">

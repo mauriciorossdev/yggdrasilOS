@@ -35,6 +35,7 @@ import { EditorSection } from "./sections/EditorSection.js";
 import { WorkspaceSection } from "./sections/WorkspaceSection.js";
 import type { IdeSettings, SttSettings, SyncSettings, WhisperSettings } from "../types.js";
 import { useI18n, type MessageKey } from "../i18n/index.js";
+import { useGatewayLanUrl } from "../boot/bootStore.js";
 
 export type SettingsSection =
   | "onboarding"
@@ -90,6 +91,7 @@ type Props = {
 };
 
 export function SettingsView({ onClose, initialSection }: Props) {
+  const gatewayLanUrl = useGatewayLanUrl();
   const { t } = useI18n();
   const { call } = useGateway();
   const [config, setConfig] = useState<ConfigShape | null>(null);
@@ -242,7 +244,7 @@ export function SettingsView({ onClose, initialSection }: Props) {
             <XMarkIcon className="hero-icon" />
           </button>
         </div>
-        <p className="muted settings-gateway-url">Gateway: {window.yggdrasil.gatewayLanUrl}</p>
+        <p className="muted settings-gateway-url">Gateway: {gatewayLanUrl}</p>
 
         {saved && (
           <p className="banner">

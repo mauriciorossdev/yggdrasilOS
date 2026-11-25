@@ -100,9 +100,17 @@ describe("sanitizeOnboarding", () => {
       enabledHarnesses: ["claude", "copilot"],
       usage: ["cli", "local"],
       showAllClis: true,
+      userName: null,
     });
     expect(sanitizeOnboarding({ enabledHarnesses: [] }).enabledHarnesses).toEqual([]);
     expect(sanitizeOnboarding({}).enabledHarnesses).toBeNull();
+  });
+
+  it("keeps a trimmed user name, capped at 40 chars, and drops blanks or non-strings", () => {
+    expect(sanitizeOnboarding({ userName: "  Ana  " }).userName).toBe("Ana");
+    expect(sanitizeOnboarding({ userName: "x".repeat(60) }).userName).toBe("x".repeat(40));
+    expect(sanitizeOnboarding({ userName: "   " }).userName).toBeNull();
+    expect(sanitizeOnboarding({ userName: 42 }).userName).toBeNull();
   });
 });
 

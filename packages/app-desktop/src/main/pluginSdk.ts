@@ -233,6 +233,11 @@ export const PLUGIN_SDK_SOURCE = `(function () {
     };
   });
   window.addEventListener("error", function (e) {
+    // A muted error from one of the plugin's own files (cross-origin to this
+    // opaque-origin document) carries no message or error object. The host
+    // gets the real text from the main process instead (pluginProtocol.ts's
+    // forwardPluginFrameErrors), so don't report an empty "Script error.".
+    if (!e.error && (!e.message || e.message === "Script error.")) return;
     window.parent.postMessage(
       {
         type: "ygg:error",
@@ -248,7 +253,9 @@ export const PLUGIN_SDK_SOURCE = `(function () {
     window.parent.postMessage(
       {
         type: "ygg:error",
-        message: "Unhandled promise rejection: " + safeStringifyArg(reason),
+        message:
+          "Unhandled promise rejection: " +
+          (reason instanceof Error ? reason.name + ": " + reason.message : safeStringifyArg(reason)),
         stack: reason && reason.stack ? String(reason.stack) : undefined,
         timestamp: Date.now(),
       },

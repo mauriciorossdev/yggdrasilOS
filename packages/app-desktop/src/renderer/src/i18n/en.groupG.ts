@@ -2,6 +2,7 @@
 export const enGroupG = {
   "term.spec.openTitle": "{path} — click to open",
   "term.spec.progressLabel": "Feature progress",
+  "term.spec.tasks": "{done}/{total} tasks",
   "term.speakMode.summary": "Summary",
   "term.speakMode.full": "Everything",
   "term.splitMenu.horizontal": "Split horizontally",

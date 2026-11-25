@@ -4,6 +4,7 @@ import type { PluginRecord } from "../types.js";
 import { createPluginHost } from "./pluginHost.js";
 import { useI18n } from "../i18n/index.js";
 import type { PluginConsoleEntry, PluginErrorEntry } from "./pluginTypes.js";
+import { ERROR_DEDUPE_MS, ERROR_DEDUPE_WAIT_MS, errorCore, isFrameOf, relativeSource, tidyStack } from "./frameErrors.js";
 
 type Props = {
   plugin: PluginRecord;
@@ -15,6 +16,8 @@ type Props = {
   onConsole?: (entry: Omit<PluginConsoleEntry, "kind">) => void;
   /** Same, for window.onerror/unhandledrejection. */
   onError?: (entry: Omit<PluginErrorEntry, "kind">) => void;
+  /** The plugin's SDK announced ygg:ready — its document loaded and ran (the Estudio's "probado" check). */
+  onReady?: () => void;
 };
 
 /** Imperative API for a parent holding a ref — currently just tool-call dispatch, used by PluginToolRuntime.tsx to invoke a plugin's own ygg.tools.register handlers, visible or not. */
@@ -54,7 +57,7 @@ type PendingToolCall = { resolve: (v: unknown) => void; reject: (e: Error) => vo
  * renders `<PluginFrame .../>` with no ref at all, unaffected.
  */
 export const PluginFrame = forwardRef<PluginFrameHandle, Props>(function PluginFrame(
-  { plugin, version, visible, onOpenFile, onOpenTab, onConsole, onError },
+  { plugin, version, visible, onOpenFile, onOpenTab, onConsole, onError, onReady },
   ref,
 ) {
   const { t } = useI18n();
@@ -82,6 +85,46 @@ export const PluginFrame = forwardRef<PluginFrameHandle, Props>(function PluginF
   }, [plugin.url, version]);
 
   const pendingToolCalls = useRef(new Map<string, PendingToolCall>());
+  const onReadyRef = useRef(onReady);
+  onReadyRef.current = onReady;
+
+  // Identifies this exact iframe in main-process console events (two frames
+  // can show the same plugin, e.g. its tab and the Estudio preview).
+  const frameId = useMemo(() => crypto.randomUUID(), []);
+  // Errors the SDK already reported, so the main-process copy of the same
+  // error (forwardPluginFrameErrors) isn't shown twice.
+  const recentSdkErrors = useRef<{ message: string; at: number }[]>([]);
+
+  // Uncaught errors from the plugin's own files are muted inside the frame
+  // ("Script error.", no stack); the main process forwards their real text.
+  // Read through a ref: callers pass a fresh onError on every render, and
+  // re-subscribing would cancel the pending dedupe timers (dropping errors).
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
+  const wantsErrors = !!onError;
+  useEffect(() => {
+    if (!wantsErrors) return;
+    const timers = new Set<ReturnType<typeof setTimeout>>();
+    const unsubscribe = window.yggdrasil.plugins.onFrameError((p) => {
+      if (!isFrameOf(p.frameUrl, plugin.url, frameId)) return;
+      // Same error, already reported (with its stack) by the SDK — the two
+      // channels race, so wait a beat before deciding.
+      const core = errorCore(p.message);
+      const timer = setTimeout(() => {
+        timers.delete(timer);
+        const now = Date.now();
+        recentSdkErrors.current = recentSdkErrors.current.filter((e) => now - e.at < ERROR_DEDUPE_MS);
+        if (recentSdkErrors.current.some((e) => e.message.includes(core))) return;
+        const source = relativeSource(p.sourceId, plugin.url);
+        onErrorRef.current?.({ message: p.message, stack: source ? `at ${source}:${p.lineNumber}` : undefined, timestamp: now });
+      }, ERROR_DEDUPE_WAIT_MS);
+      timers.add(timer);
+    });
+    return () => {
+      unsubscribe();
+      timers.forEach(clearTimeout);
+    };
+  }, [wantsErrors, plugin.url, frameId]);
 
   // Only a plugin that declared "fs" gets the workspace's own fs.changed
   // stream — the same permission that gates ygg.fs.list/read in pluginHost.ts.
@@ -102,7 +145,11 @@ export const PluginFrame = forwardRef<PluginFrameHandle, Props>(function PluginF
         return;
       }
       if (msg?.type === "ygg:error") {
-        onError?.(msg as Omit<PluginErrorEntry, "kind">);
+        const entry = msg as Omit<PluginErrorEntry, "kind">;
+        recentSdkErrors.current.push({ message: String(entry.message ?? ""), at: Date.now() });
+        onError?.(
+          entry.stack ? { ...entry, stack: tidyStack(entry.stack, plugin.url, plugin.manifest.entry) } : entry,
+        );
         return;
       }
       if (msg?.type === "ygg:toolresult") {
@@ -125,7 +172,10 @@ export const PluginFrame = forwardRef<PluginFrameHandle, Props>(function PluginF
       // this just also unblocks callTool's own readiness wait, the instant
       // the SDK's message listener (and thus its toolHandlers registration)
       // is guaranteed live.
-      if (msg?.type === "ygg:ready") readyResolveRef.current?.();
+      if (msg?.type === "ygg:ready") {
+        readyResolveRef.current?.();
+        onReadyRef.current?.();
+      }
       void host.handleMessage(msg, (m) => win.postMessage(m, "*"));
     };
     window.addEventListener("message", onMessage);
@@ -188,7 +238,7 @@ export const PluginFrame = forwardRef<PluginFrameHandle, Props>(function PluginF
       className="plugin-frame"
       sandbox={PLUGIN_IFRAME_SANDBOX}
       allow="microphone"
-      src={`${plugin.url}?v=${version}`}
+      src={`${plugin.url}?v=${version}&ygg-frame=${frameId}`}
       title={plugin.manifest.name}
     />
   );

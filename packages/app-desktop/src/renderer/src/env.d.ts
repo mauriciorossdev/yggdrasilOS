@@ -6,6 +6,7 @@ import type {
   AgentFlowCommunicationPayload,
   AgentTeam,
   AutomationSettings,
+  BootSnapshot,
   ClaudePaneSettings,
   UserMcpChoice,
   UserMcpServer,
@@ -31,6 +32,9 @@ import type {
   OpenIdeResult,
   PaneSummary,
   PermissionKind,
+  PermissionLint,
+  PluginFileEntry,
+  PluginManifestPatch,
   PluginRecord,
   PluginScope,
   PluginStatus,
@@ -85,8 +89,11 @@ declare global {
   interface Window {
     yggdrasil: {
       projectId: string | null;
-      gatewayUrl: string | null;
-      gatewayLanUrl: string | null;
+      boot: {
+        get: () => Promise<BootSnapshot | null>;
+        retry: () => Promise<boolean>;
+        onUpdate: (handler: (snapshot: BootSnapshot) => void) => () => void;
+      };
       projectName: string | null;
       projectPath: string | null;
       projectColor: string | null;
@@ -228,6 +235,7 @@ declare global {
         toggleMaximize: () => Promise<void>;
         close: () => Promise<void>;
         isMaximized: () => Promise<boolean>;
+        setFullScreen: (on: boolean) => Promise<void>;
         onMaximizedChange: (handler: (maximized: boolean) => void) => () => void;
       };
       connectors: {
@@ -335,12 +343,18 @@ declare global {
         fsMkdir: (relativePath: string) => Promise<void>;
         onChanged: (handler: (payload: { scope: PluginScope | "all"; pluginId?: string }) => void) => () => void;
         onOpenRequest: (handler: (payload: { key: string; view?: "tab" | "panel" }) => void) => () => void;
+        onFrameError: (
+          handler: (payload: { frameUrl: string; message: string; sourceId: string; lineNumber: number }) => void,
+        ) => () => void;
         getLayout: () => Promise<PluginTabsLayout>;
         saveLayout: (layout: PluginTabsLayout) => Promise<void>;
         reveal: (dir: string) => Promise<void>;
         scaffold: (spec: ScaffoldPluginSpec) => Promise<PluginRecord>;
         setStatus: (scope: PluginScope, id: string, status: PluginStatus) => Promise<PluginRecord>;
         delete: (scope: PluginScope, id: string) => Promise<void>;
+        updateManifest: (scope: PluginScope, id: string, patch: PluginManifestPatch) => Promise<PluginRecord>;
+        listFiles: (scope: PluginScope, id: string) => Promise<PluginFileEntry[]>;
+        lintPermissions: (scope: PluginScope, id: string) => Promise<PermissionLint>;
         onToolCallRequest: (
           handler: (payload: { callId: string; scope: PluginScope; id: string; tool: string; params: unknown }) => void,
         ) => () => void;

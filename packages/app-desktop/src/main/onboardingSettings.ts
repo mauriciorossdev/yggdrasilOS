@@ -18,10 +18,12 @@ export type OnboardingSettings = {
   usage: UsageMode[];
   /** Escape hatch from the filter (Settings → "Show all CLIs"). */
   showAllClis: boolean;
+  /** What the wizard calls the user ("All set, Ana."); null = never given. */
+  userName: string | null;
 };
 
 export function defaultOnboardingSettings(): OnboardingSettings {
-  return { completedAt: null, version: 0, language: null, enabledHarnesses: null, usage: [], showAllClis: false };
+  return { completedAt: null, version: 0, language: null, enabledHarnesses: null, usage: [], showAllClis: false, userName: null };
 }
 
 const CLI_IDS = new Set<string>(CLI_CATALOG.map((c) => c.id));
@@ -43,6 +45,7 @@ export function sanitizeOnboarding(raw: unknown): OnboardingSettings {
       ? (r.usage.filter((u): u is UsageMode => typeof u === "string" && USAGE_MODES.has(u)) as UsageMode[])
       : [],
     showAllClis: r.showAllClis === true,
+    userName: typeof r.userName === "string" && r.userName.trim() ? r.userName.trim().slice(0, 40) : null,
   };
 }
 

@@ -1,4 +1,4 @@
-import { StrictMode } from "react";
+import { StrictMode, useState } from "react";
 import { createRoot } from "react-dom/client";
 import { GatewayProvider } from "@yggdrasil/client-web";
 import { App } from "./App.js";
@@ -9,7 +9,8 @@ import "@yggdrasil/ui-kit/tokens.css";
 import "@yggdrasil/ui-kit/ui.css";
 import "./styles.css";
 import { applyTheme, KitHostProvider, type KitHost } from "@yggdrasil/ui-kit";
-import { t } from "./i18n/index.js";
+import { BootScreen } from "./boot/BootScreen.js";
+import { startBoot, useBoot } from "./boot/bootStore.js";
 
 // Theme first (before any render) so the first frame already has the user's colors.
 applyTheme(window.yggdrasil.theme.initial);
@@ -22,23 +23,31 @@ const kitHost: KitHost = {
   customRoles: { list: () => window.yggdrasil.roles.listCustom(), save: (input) => window.yggdrasil.roles.saveCustom(input) },
 };
 
-const root = createRoot(document.getElementById("root")!);
-const gatewayUrl = window.yggdrasil.gatewayUrl;
+// Window-first boot: this window opened before its gateway existed. The boot screen covers it with the
+// real startup stages; the app mounts underneath once main hands over the gateway, and the boot screen
+// fades out when that connection is authenticated (App calls markConnected).
+startBoot();
 
-if (!gatewayUrl) {
-  root.render(
-    <StrictMode>
-      <p className="error">{t("app.noGatewayUrl")}</p>
-    </StrictMode>,
-  );
-} else {
-  root.render(
-    <StrictMode>
-      <GatewayProvider wsUrl={gatewayUrl}>
-        <KitHostProvider host={kitHost}>
-          <App />
-        </KitHostProvider>
-      </GatewayProvider>
-    </StrictMode>,
+function Root() {
+  const { snapshot } = useBoot();
+  const [booting, setBooting] = useState(true);
+  const gatewayUrl = snapshot?.gateway?.url;
+  return (
+    <>
+      {gatewayUrl && (
+        <GatewayProvider wsUrl={gatewayUrl}>
+          <KitHostProvider host={kitHost}>
+            <App />
+          </KitHostProvider>
+        </GatewayProvider>
+      )}
+      {booting && <BootScreen onDone={() => setBooting(false)} />}
+    </>
   );
 }
+
+createRoot(document.getElementById("root")!).render(
+  <StrictMode>
+    <Root />
+  </StrictMode>,
+);

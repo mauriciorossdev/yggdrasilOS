@@ -1,6 +1,6 @@
 import { readFile, stat } from "node:fs/promises";
 import { isAbsolute, join, relative, resolve } from "node:path";
-import { protocol } from "electron";
+import { protocol, type WebContents } from "electron";
 import type { ProjectRecord } from "./projects.js";
 import { globalPluginsDir, projectPluginsDir } from "./plugins.js";
 import { PLUGIN_SDK_SOURCE } from "./pluginSdk.js";
@@ -122,5 +122,46 @@ export function registerPluginProtocol(getProject: (id: string) => Promise<Proje
       return serveFile(join(projectPluginsDir(project.path), id), parts.slice(3).join("/"));
     }
     return notFound();
+  });
+}
+
+/** Payload of the `plugins:frameError` IPC event — see forwardPluginFrameErrors. */
+export type PluginFrameErrorPayload = {
+  /** URL of the plugin frame that threw (its `?ygg-frame=` param identifies the exact iframe). */
+  frameUrl: string;
+  /** Chromium's own console text, e.g. "Uncaught Error: boom" or "Uncaught (in promise) Error: boom". */
+  message: string;
+  sourceId: string;
+  lineNumber: number;
+};
+
+/**
+ * A complemento's own scripts (`ygg-plugin://plugin/.../app.js`) are
+ * cross-origin to its document, whose origin is opaque (sandboxed iframe
+ * without allow-same-origin). So Chromium mutes their errors for the page:
+ * the SDK's window.onerror only ever sees "Script error.", with no message
+ * or stack, and unhandledrejection doesn't fire at all.
+ *
+ * The embedder still gets the real text, file and line through
+ * `console-message`, so this forwards every uncaught error/rejection from a
+ * plugin frame back to the window that hosts it. PluginFrame.tsx matches
+ * the payload to its iframe and merges it with what the SDK reported.
+ */
+export function forwardPluginFrameErrors(wc: WebContents): void {
+  wc.on("console-message", (event) => {
+    if (event.level !== "error") return;
+    const frameUrl = event.frame?.url ?? "";
+    if (!frameUrl.startsWith("ygg-plugin://plugin/")) return;
+    // Only uncaught errors/rejections; a plugin's own console.error already
+    // reaches the host through the SDK's console capture.
+    if (!event.message.startsWith("Uncaught")) return;
+    if (wc.isDestroyed()) return;
+    const payload: PluginFrameErrorPayload = {
+      frameUrl,
+      message: event.message,
+      sourceId: event.sourceId,
+      lineNumber: event.lineNumber,
+    };
+    wc.send("plugins:frameError", payload);
   });
 }

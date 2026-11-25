@@ -671,7 +671,7 @@ export function ChatView() {
             workflowsContent={<WorkflowsView />}
             documentsContent={<DocumentsView />}
             browserContent={<BrowserTabView />}
-            studioContent={<StudioView />}
+            studioContent={<StudioView onOpenFile={openFile} />}
             repositoryContent={<RepositoryView />}
             filesContent={<FilesView />}
             extraTabs={extraTabs}
