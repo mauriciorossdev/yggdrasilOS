@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowDownTrayIcon, FolderOpenIcon, MagnifyingGlassIcon, PlusIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import type { ProjectRecord } from "../types.js";
 import { ProjectContextMenu } from "../chat/ProjectContextMenu.js";
@@ -8,6 +8,7 @@ import { formatOpenedAt } from "./formatOpenedAt.js";
 import { useI18n } from "../i18n/index.js";
 import { SettingsView } from "../settings/SettingsView.js";
 import { CloneRepoDialog } from "./CloneRepoDialog.js";
+import { useFlipReorder } from "./useFlipReorder.js";
 
 // Launch pad: every known project as a button, most recently opened first.
 // The sidebar's project list is only shown in the default workspace window, so
@@ -31,6 +32,9 @@ export function HomeView() {
   const [query, setQuery] = useState("");
   const sorted = useMemo(() => [...projects].sort((a, b) => b.lastOpenedAt - a.lastOpenedAt), [projects]);
   const visible = useMemo(() => filterProjects(sorted, query), [sorted, query]);
+  // Opening a project bumps it to the front: slide the cards there instead of jumping.
+  const gridRef = useRef<HTMLDivElement>(null);
+  useFlipReorder(gridRef, visible.map((p) => p.id).join("|"));
 
   return (
     <div className="home-view">
@@ -69,10 +73,11 @@ export function HomeView() {
         </div>
       </div>
       {error && <p className="error">{error}</p>}
-      <div className="home-grid">
+      <div className="home-grid" ref={gridRef}>
         {visible.map((p) => (
           <button
             key={p.id}
+            data-flip-id={p.id}
             type="button"
             className={`home-card${p.id === window.yggdrasil.projectId ? " current" : ""}`}
             style={p.color ? { borderColor: p.color } : undefined}

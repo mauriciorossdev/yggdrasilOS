@@ -3,15 +3,16 @@ import {
   ArrowsPointingInIcon,
   ArrowsPointingOutIcon,
   CodeBracketIcon,
-  HomeIcon,
   MinusIcon,
   XMarkIcon,
 } from "@heroicons/react/20/solid";
 import { SettingsView } from "../settings/SettingsView.js";
 import { ClaudeUsage } from "./ClaudeUsage.js";
 import { AttentionCounter } from "./AttentionCounter.js";
+import { HomeButton } from "./HomeButton.js";
 import { useActiveTab, useExtraTabs, viewLabel } from "../ui/mainTabsStore.js";
 import { useI18n } from "../i18n/index.js";
+import { useGatewayLanUrl } from "../boot/bootStore.js";
 import logoUrl from "../assets/logo.png";
 
 /**
@@ -97,6 +98,7 @@ export function TitleBar() {
   }, [borderColor]);
 
   const projectId = window.yggdrasil.projectId;
+  const gatewayLanUrl = useGatewayLanUrl();
   const activeTab = useActiveTab();
   const extraTabs = useExtraTabs();
 
@@ -106,9 +108,7 @@ export function TitleBar() {
         <img className="title-bar-logo" src={logoUrl} alt="" title={`Yggdrasil v${__APP_VERSION__}`} draggable={false} />
         <span className="title-bar-project">{window.yggdrasil.projectName ?? "Yggdrasil"}</span>
         <span className="title-bar-view">/ {viewLabel(activeTab, extraTabs)}</span>
-        {window.yggdrasil.gatewayLanUrl && (
-          <span className="title-bar-gateway">{window.yggdrasil.gatewayLanUrl}</span>
-        )}
+        {gatewayLanUrl && <span className="title-bar-gateway">{gatewayLanUrl}</span>}
         {projectId && (
           <span className="title-bar-color-swatch-wrap">
             <span className="title-bar-color-swatch" style={{ background: borderColor || undefined }} />
@@ -141,16 +141,7 @@ export function TitleBar() {
       <div className="title-bar-controls">
         {projectId && <AttentionCounter />}
         <ClaudeUsage />
-        {!window.yggdrasil.isDefaultProject && (
-          <button
-            type="button"
-            className="title-bar-btn"
-            title={t("title.home")}
-            onClick={() => void window.yggdrasil.projects.openHome()}
-          >
-            <HomeIcon className="hero-icon" />
-          </button>
-        )}
+        {!window.yggdrasil.isDefaultProject && <HomeButton />}
         {projectId && (
           <button
             type="button"

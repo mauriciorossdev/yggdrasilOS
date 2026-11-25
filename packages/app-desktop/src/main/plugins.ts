@@ -1,8 +1,9 @@
 import { mkdir, readFile, readdir, rm, stat, writeFile } from "node:fs/promises";
 import { watch as watchFsSync, type FSWatcher } from "node:fs";
-import { join } from "node:path";
+import { extname, join, relative, sep } from "node:path";
 import { app } from "electron";
 import { PLUGIN_API_DOCS } from "./pluginApiDocs.js";
+import { permissionsUsedIn } from "./pluginPermissions.js";
 
 /**
  * A "complemento": a folder with manifest.json + HTML/JS/CSS, loaded in a
@@ -59,6 +60,8 @@ export type PluginManifest = {
   status?: PluginStatus;
   /** Functions this plugin exposes to the rest of the project — see PluginToolDef. Absent/empty means it exposes none (fine — most complementos are pure UI). */
   tools?: PluginToolDef[];
+  /** One-line summary, edited from the Estudio's Ajustes tab. */
+  description?: string;
 };
 
 export type PluginScope = "global" | "project";
@@ -127,6 +130,7 @@ async function readManifest(dir: string): Promise<PluginManifest> {
     permissions: Array.isArray(parsed.permissions) ? parsed.permissions.filter((p) => typeof p === "string") : [],
     minHeight: typeof parsed.minHeight === "number" ? parsed.minHeight : undefined,
     status: parsed.status === "draft" ? "draft" : parsed.status === "published" ? "published" : undefined,
+    description: typeof parsed.description === "string" && parsed.description ? parsed.description : undefined,
     tools: Array.isArray(parsed.tools)
       ? parsed.tools.flatMap((t): PluginToolDef[] => {
           if (!t || typeof t !== "object") return [];
@@ -345,6 +349,7 @@ export async function scaffoldPlugin(
     defaultView: spec.defaultView,
     permissions: spec.permissions ?? [],
     status: spec.status,
+    description: spec.description?.trim() || undefined,
     tools: [
       {
         name: "ping",
@@ -375,12 +380,15 @@ export async function setPluginStatus(
   projectPath: string,
   status: PluginStatus,
 ): Promise<PluginRecord> {
-  const dir = scope === "global" ? join(globalPluginsDir(), id) : join(projectPluginsDir(projectPath), id);
+  const dir = pluginDir(scope, id, projectPath);
+  // Validate first (a broken manifest can't be published), then flip the
+  // status on the raw JSON so keys this app doesn't model survive.
   const manifest = await readManifest(dir);
   if (manifest.id !== id) throw new Error('manifest.json: "id" debe coincidir con el nombre de la carpeta');
-  const next: PluginManifest = { ...manifest, status };
-  await writeFile(join(dir, "manifest.json"), JSON.stringify(next, null, 2), "utf8");
-  return { key: `${scope}:${id}`, scope, manifest: next, dir, url: pluginUrl(scope, projectId, id) };
+  const raw = JSON.parse(await readFile(join(dir, "manifest.json"), "utf8")) as Record<string, unknown>;
+  raw.status = status;
+  await writeFile(join(dir, "manifest.json"), JSON.stringify(raw, null, 2), "utf8");
+  return { key: `${scope}:${id}`, scope, manifest: { ...manifest, status }, dir, url: pluginUrl(scope, projectId, id) };
 }
 
 /** Deletes a plugin's whole folder — the Studio "Eliminar" action. `dir` is always built from the two known plugin roots + a regex-validated id (never from an unconfined caller-supplied path), same confinement posture as scaffoldPlugin/scanDir. */
@@ -388,4 +396,136 @@ export async function deletePlugin(scope: PluginScope, id: string, projectPath: 
   if (!PLUGIN_ID_RE.test(id)) throw new Error('"id" inválido');
   const dir = scope === "global" ? join(globalPluginsDir(), id) : join(projectPluginsDir(projectPath), id);
   await rm(dir, { recursive: true, force: true });
+}
+
+function pluginDir(scope: PluginScope, id: string, projectPath: string): string {
+  if (!PLUGIN_ID_RE.test(id)) throw new Error('"id" inválido');
+  return scope === "global" ? join(globalPluginsDir(), id) : join(projectPluginsDir(projectPath), id);
+}
+
+/** Fields the Estudio's Ajustes tab can change. Scope can't: that would mean moving the folder. */
+export type PluginManifestPatch = {
+  name?: string;
+  icon?: string | null;
+  views?: PluginView[];
+  permissions?: PluginPermission[];
+  description?: string | null;
+};
+
+const PERMISSION_RE = /^(fs|fs:write|panes|gateway:[A-Za-z0-9_.-]{1,80})$/;
+
+/**
+ * Applies an Ajustes edit to manifest.json. Works on the raw JSON so keys
+ * this app doesn't model (an agent's own additions) survive the rewrite;
+ * validates the patch with the same rules the scanner enforces.
+ */
+export async function updatePluginManifest(
+  scope: PluginScope,
+  id: string,
+  projectId: string,
+  projectPath: string,
+  patch: PluginManifestPatch,
+): Promise<PluginRecord> {
+  const dir = pluginDir(scope, id, projectPath);
+  const raw = JSON.parse(await readFile(join(dir, "manifest.json"), "utf8")) as Record<string, unknown>;
+  if (raw.id !== id) throw new Error('manifest.json: "id" debe coincidir con el nombre de la carpeta');
+
+  if (patch.name !== undefined) {
+    const name = patch.name.trim();
+    if (!name) throw new Error('"name" es requerido');
+    if (name.length > 80) throw new Error('"name" demasiado largo (máx 80)');
+    raw.name = name;
+  }
+  if (patch.icon !== undefined) {
+    const icon = patch.icon?.trim();
+    if (icon && icon.length > 16) throw new Error('"icon" demasiado largo (máx 16)');
+    if (icon) raw.icon = icon;
+    else delete raw.icon;
+  }
+  if (patch.views !== undefined) {
+    const views = [...new Set(patch.views)];
+    if (views.length === 0) throw new Error("Elegí al menos una vista");
+    for (const v of views) if (v !== "tab" && v !== "panel" && v !== "mobile") throw new Error(`vista inválida "${String(v)}"`);
+    // Mobile only ever lists the open project's own plugins.
+    if (scope === "global" && views.includes("mobile")) throw new Error("Un complemento global no puede abrirse en mobile");
+    raw.views = views;
+    if (raw.defaultView && !views.includes(raw.defaultView as PluginView)) delete raw.defaultView;
+  }
+  if (patch.permissions !== undefined) {
+    const perms = [...new Set(patch.permissions)];
+    for (const p of perms) if (!PERMISSION_RE.test(p)) throw new Error(`permiso inválido "${p}"`);
+    raw.permissions = perms;
+  }
+  if (patch.description !== undefined) {
+    const d = patch.description?.trim();
+    if (d) raw.description = d.slice(0, 500);
+    else delete raw.description;
+  }
+
+  await writeFile(join(dir, "manifest.json"), JSON.stringify(raw, null, 2), "utf8");
+  const manifest = await readManifest(dir);
+  return { key: `${scope}:${id}`, scope, manifest, dir, url: pluginUrl(scope, projectId, id) };
+}
+
+export type PluginFileEntry = { path: string; size: number; mtimeMs: number };
+
+const SKIP_DIRS = new Set(["node_modules", ".git"]);
+const MAX_FILES = 500;
+const MAX_DEPTH = 6;
+
+/** The plugin's files (paths relative to its folder, "/"-separated) with size and mtime — the Estudio's Archivos tab and "Últimos cambios". */
+export async function listPluginFiles(scope: PluginScope, id: string, projectPath: string): Promise<PluginFileEntry[]> {
+  const root = pluginDir(scope, id, projectPath);
+  const out: PluginFileEntry[] = [];
+  const walk = async (dir: string, depth: number): Promise<void> => {
+    if (depth > MAX_DEPTH || out.length >= MAX_FILES) return;
+    const entries = await readdir(dir, { withFileTypes: true }).catch(() => []);
+    for (const e of entries) {
+      if (out.length >= MAX_FILES) return;
+      const full = join(dir, e.name);
+      if (e.isDirectory()) {
+        if (!SKIP_DIRS.has(e.name)) await walk(full, depth + 1);
+      } else if (e.isFile()) {
+        const st = await stat(full).catch(() => null);
+        if (st) out.push({ path: relative(root, full).split(sep).join("/"), size: st.size, mtimeMs: st.mtimeMs });
+      }
+    }
+  };
+  await walk(root, 0);
+  return out.sort((a, b) => a.path.localeCompare(b.path));
+}
+
+export type PermissionUse = { permission: string; file: string; line: number };
+export type PermissionLint = {
+  /** First place each permission is used, declared or not. */
+  uses: PermissionUse[];
+  /** Used in code but not declared: these calls will fail at runtime. */
+  missing: string[];
+};
+
+const LINT_EXTS = new Set([".js", ".mjs", ".html", ".htm"]);
+const MAX_LINT_BYTES = 512 * 1024;
+
+/**
+ * Heuristic (text, not AST) check of the plugin's code against its declared
+ * permissions — the Ajustes tab's warnings. False negatives (a dynamic
+ * method name, an aliased `ygg`) are accepted.
+ */
+export async function lintPluginPermissions(scope: PluginScope, id: string, projectPath: string): Promise<PermissionLint> {
+  const root = pluginDir(scope, id, projectPath);
+  const manifest = await readManifest(root);
+  const declared = new Set(manifest.permissions ?? []);
+  const files = await listPluginFiles(scope, id, projectPath);
+  const first = new Map<string, PermissionUse>();
+  for (const f of files) {
+    if (!LINT_EXTS.has(extname(f.path).toLowerCase()) || f.size > MAX_LINT_BYTES) continue;
+    const text = await readFile(join(root, f.path), "utf8").catch(() => "");
+    text.split("\n").forEach((line, i) => {
+      for (const permission of permissionsUsedIn(line)) {
+        if (!first.has(permission)) first.set(permission, { permission, file: f.path, line: i + 1 });
+      }
+    });
+  }
+  const uses = [...first.values()];
+  return { uses, missing: uses.map((u) => u.permission).filter((p) => !declared.has(p)) };
 }

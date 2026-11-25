@@ -1,31 +1,30 @@
-import { Card } from "../../ui/index.js";
-import { useI18n } from "../../i18n/index.js";
+import { LANGUAGES, useI18n } from "../../i18n/index.js";
 import type { DetectedCli } from "../../types.js";
 import type { WizardDraft } from "../draft.js";
 
-export function SummaryStep({ draft, clis }: { draft: WizardDraft; clis: DetectedCli[] | null }) {
-  const { t } = useI18n();
-  const agentLabels = draft.enabled.map((id) => clis?.find((c) => c.id === id)?.label ?? id);
-  const models = [
-    ...(draft.usage.includes("local") && draft.ollamaModel ? [`Ollama · ${draft.ollamaModel}`] : []),
-    ...(draft.usage.includes("api") ? ["API key"] : []),
-  ];
-  const nothing = agentLabels.length === 0 && models.length === 0;
+type Props = { draft: WizardDraft; clis: DetectedCli[] | null; skipped: ReadonlySet<string> };
 
+export function SummaryStep({ draft, clis, skipped }: Props) {
+  const { t } = useI18n();
+  const agents = draft.enabled.map((id) => clis?.find((c) => c.id === id)?.label ?? id);
+  const models = [
+    ...(draft.usage.includes("cli") ? [t("ob.models.cli")] : []),
+    ...(draft.usage.includes("local") && draft.ollamaModel ? [`Ollama · ${draft.ollamaModel}`] : []),
+    ...(draft.usage.includes("api") ? [`API · ${draft.apiProviders.length ? draft.apiProviders.join(" + ") : "—"}`] : []),
+  ];
+  const row = (step: string, label: string, value: string) => (
+    <>
+      <dt>{label}</dt>
+      {skipped.has(step) ? <dd className="ob-skip">{t("ob.sum.skipped")}</dd> : <dd>{value || t("ob.sum.none")}</dd>}
+    </>
+  );
   return (
-    <div className="onboarding-step">
-      <h2>{t("ob.s4.title")}</h2>
-      <Card className="onboarding-card onboarding-card--wide">
-        <dl className="onboarding-summary">
-          <dt>{t("ob.sum.agents")}</dt>
-          <dd>{agentLabels.length > 0 ? agentLabels.join(", ") : t("ob.sum.none")}</dd>
-          <dt>{t("ob.sum.models")}</dt>
-          <dd>{models.length > 0 ? models.join(", ") : t("ob.sum.none")}</dd>
-          <dt>{t("ob.sum.editor")}</dt>
-          <dd>{draft.ideLabel ?? t("ob.sum.none")}</dd>
-        </dl>
-      </Card>
-      {nothing && <p className="muted">{t("ob.sum.warn")}</p>}
-    </div>
+    <dl className="ob-summary">
+      {row("lang", t("ob.sum.lang"), LANGUAGES.find((l) => l.id === draft.language)?.label ?? draft.language)}
+      {row("name", t("ob.sum.name"), draft.userName.trim())}
+      {row("agents", t("ob.sum.agents"), agents.join(", "))}
+      {row("models", t("ob.sum.models"), models.join(", "))}
+      {row("editor", t("ob.sum.editor"), draft.ideLabel ?? "")}
+    </dl>
   );
 }

@@ -27,3 +27,15 @@ export function derivePaneSpecBadge(md: string): PaneSpecBadge {
   const status: FeatureStatus = explicit ?? (total > 0 && done === total ? "ready" : "working");
   return { status, labelKey: LABEL[status], done, total };
 }
+
+/**
+ * What the pane's doc chip says. The agent's own badge already shows that it
+ * is working, so a doc still "working" shows only its task progress; any
+ * other status (checking, ready, needs a decision) is named. A decision
+ * leaves the count out to stay short.
+ */
+export function docChipText(badge: PaneSpecBadge): { showStatus: boolean; progress: string | null } {
+  const showStatus = badge.status !== "working";
+  const progress = badge.total > 0 && badge.status !== "needs-decision" ? `${badge.done}/${badge.total}` : null;
+  return { showStatus, progress };
+}
