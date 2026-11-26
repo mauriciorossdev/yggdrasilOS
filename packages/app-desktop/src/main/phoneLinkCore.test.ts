@@ -6,16 +6,22 @@ import {
   buildRegistration,
   checkHubUrl,
   friendlyHostName,
+  gatewaysNeedKey,
+  handleLocalLinkMessage,
   hubQrPayload,
   hubWsUrl,
   isPublishable,
   isTailscaleIPv4,
   localGatewayRequiresKey,
+  localLinkActive,
+  localLinkUrl,
+  localQrPayload,
   newDesktopId,
   newGatewayKey,
   newHubKey,
   pickAddresses,
   savedKeyWouldMove,
+  startLocalLinkServer,
   testHubConnection,
   type PhoneLinkSettings,
 } from "./phoneLinkCore.js";
@@ -329,5 +335,117 @@ describe("localGatewayRequiresKey", () => {
     const port = await fakeGateway({ result: {} });
     servers.splice(0).forEach((s) => s.close());
     expect(await localGatewayRequiresKey(port, { timeoutMs: 500 })).toBeNull();
+  });
+});
+
+describe("local link (same network, no link server)", () => {
+  const desktop = { desktopId: "d1", name: "Mac", online: true, projects: [{ id: "p", name: "P", port: 5 }], gatewayKey: "gk" };
+  const deps = { getKey: () => "gk", getDesktop: async () => desktop };
+
+  it("only stands in when no link server is configured, and keys the gateways while on", () => {
+    expect(localLinkActive({ localLink: true })).toBe(true);
+    expect(localLinkActive({ localLink: true, hubUrl: "https://gw.example.com" })).toBe(false);
+    expect(localLinkActive({})).toBe(false);
+    expect(gatewaysNeedKey({ localLink: true })).toBe(true);
+    expect(gatewaysNeedKey({ publish: true })).toBe(true);
+    expect(gatewaysNeedKey({ localLink: true, hubUrl: "https://gw.example.com" })).toBe(false);
+  });
+
+  it("uses the LAN address (same network), Tailscale only without one, and a QR the phone reads as local", () => {
+    expect(localLinkUrl({ lan: "192.168.1.5", tailscale: "100.64.0.2" }, 4321)).toBe("http://192.168.1.5:4321");
+    expect(localLinkUrl({ tailscale: "100.64.0.2" }, 4321)).toBe("http://100.64.0.2:4321");
+    expect(localLinkUrl({}, 4321)).toBeUndefined();
+    expect(localQrPayload("http://192.168.1.5:4321", "k&y")).toBe(
+      "yggdrasil://hub?url=http%3A%2F%2F192.168.1.5%3A4321&key=k%26y&local=1",
+    );
+  });
+
+  it("lists the desktop (and its key) only after a correct auth", async () => {
+    const state = { authed: false };
+    const before = await handleLocalLinkMessage(state, JSON.stringify({ id: "1", method: "desktops.list" }), deps);
+    expect(before).toMatchObject({ error: { code: "UNAUTHORIZED" } });
+    expect(JSON.stringify(before)).not.toContain("gk");
+
+    const wrong = await handleLocalLinkMessage(state, JSON.stringify({ id: "a", method: "auth", params: { apiKey: "nope" } }), deps);
+    expect(wrong).toMatchObject({ error: { code: "UNAUTHORIZED" } });
+
+    await handleLocalLinkMessage(state, JSON.stringify({ id: "a", method: "auth", params: { apiKey: "gk" } }), deps);
+    const after = await handleLocalLinkMessage(state, JSON.stringify({ id: "2", method: "desktops.list" }), deps);
+    expect(after).toEqual({ id: "2", result: { desktops: [desktop] } });
+  });
+
+  it("refuses everything that isn't the directory, and everyone when there is no key", async () => {
+    const state = { authed: true };
+    const other = await handleLocalLinkMessage(state, JSON.stringify({ id: "x", method: "fs.list" }), deps);
+    expect(other).toMatchObject({ error: { code: "METHOD_NOT_FOUND" } });
+    expect(await handleLocalLinkMessage(state, "not json", deps)).toBeUndefined();
+
+    const keyless = { getKey: () => undefined, getDesktop: deps.getDesktop };
+    const res = await handleLocalLinkMessage({ authed: false }, JSON.stringify({ id: "a", method: "auth", params: { apiKey: "" } }), keyless);
+    expect(res).toMatchObject({ error: { code: "UNAUTHORIZED" } });
+  });
+
+  it("answers the phone's auth + desktops.list over a real socket, and falls back when its port is taken", async () => {
+    const first = await startLocalLinkServer(deps, { host: "127.0.0.1" });
+    const second = await startLocalLinkServer(deps, { host: "127.0.0.1", preferredPort: first.port });
+    try {
+      expect(second.port).not.toBe(first.port);
+      const replies = await new Promise<unknown[]>((resolve, reject) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${first.port}`);
+        const got: unknown[] = [];
+        ws.on("open", () => ws.send(JSON.stringify({ id: "auth", method: "auth", params: { apiKey: "gk" } })));
+        ws.on("message", (raw) => {
+          const msg = JSON.parse(String(raw)) as { id: string };
+          got.push(msg);
+          if (msg.id === "auth") ws.send(JSON.stringify({ id: "call", method: "desktops.list", params: {} }));
+          else {
+            ws.close();
+            resolve(got);
+          }
+        });
+        ws.on("error", reject);
+      });
+      expect(replies[1]).toEqual({ id: "call", result: { desktops: [desktop] } });
+    } finally {
+      await first.close();
+      await second.close();
+    }
+  });
+
+  it("survives an oversized frame from anyone on the network and drops sockets that never authenticate", async () => {
+    const server = await startLocalLinkServer(deps, { host: "127.0.0.1", authTimeoutMs: 100 });
+    const roundTrip = () =>
+      new Promise<unknown>((resolve, reject) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${server.port}`);
+        ws.on("open", () => ws.send(JSON.stringify({ id: "auth", method: "auth", params: { apiKey: "gk" } })));
+        ws.on("message", (raw) => {
+          const msg = JSON.parse(String(raw)) as { id: string };
+          if (msg.id === "auth") ws.send(JSON.stringify({ id: "call", method: "desktops.list", params: {} }));
+          else {
+            ws.close();
+            resolve(msg);
+          }
+        });
+        ws.on("error", reject);
+      });
+    try {
+      await new Promise<void>((resolve) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${server.port}`);
+        ws.on("open", () => ws.send("x".repeat(70 * 1024)));
+        ws.on("close", () => resolve());
+        ws.on("error", () => {});
+      });
+      expect(await roundTrip()).toEqual({ id: "call", result: { desktops: [desktop] } });
+
+      const idleClosed = await new Promise<boolean>((resolve) => {
+        const ws = new WebSocket(`ws://127.0.0.1:${server.port}`);
+        ws.on("close", () => resolve(true));
+        ws.on("error", () => {});
+        setTimeout(() => resolve(false), 2_000);
+      });
+      expect(idleClosed).toBe(true);
+    } finally {
+      await server.close();
+    }
   });
 });

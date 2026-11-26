@@ -1,3 +1,4 @@
+import '../gateway/gateway_settings.dart';
 import '../profiles/connection_profile.dart';
 import '../profiles/profile_store.dart';
 import 'hub_link.dart';
@@ -90,8 +91,10 @@ Future<String?> firstReachable(HubDesktop desktop, HubProject project, {String? 
 }
 
 /// Creates (or updates) the profile for [project] on [desktop] pointing at
-/// [baseUrl], and makes it the active one.
-Future<ConnectionProfile> saveDesktopProfile(HubDesktop desktop, HubProject project, String baseUrl) async {
+/// [baseUrl] and points Proyectos (Ajustes → Gateway) at the same computer.
+/// With [switchChat] it also becomes the chat's active profile; without it
+/// (picked from Proyectos) the chat stays where it was, unless nothing was active.
+Future<ConnectionProfile> saveDesktopProfile(HubDesktop desktop, HubProject project, String baseUrl, {bool switchChat = true}) async {
   ConnectionProfile? profile;
   for (final p in await ProfileStore.list()) {
     if (p.hubDesktopId == desktop.desktopId && p.hubProjectId == project.id) profile = p;
@@ -107,7 +110,8 @@ Future<ConnectionProfile> saveDesktopProfile(HubDesktop desktop, HubProject proj
     ..baseUrl = baseUrl
     ..apiKey = desktop.gatewayKey;
   await ProfileStore.upsert(profile);
-  await ProfileStore.setActiveId(profile.id);
+  if (switchChat || await ProfileStore.getActiveId() == null) await ProfileStore.setActiveId(profile.id);
+  await GatewaySettingsStore.useComputer(baseUrl, desktop.gatewayKey);
   return profile;
 }
 
@@ -125,6 +129,7 @@ Future<bool> refreshHubProfile(ConnectionProfile profile, {Prober probe = probeG
       if (p.id != profile.hubProjectId) continue;
       final url = await firstReachable(d, p, hubUrl: hub.url, probe: probe);
       if (url == null || (url == profile.baseUrl && d.gatewayKey == profile.apiKey)) return false;
+      await GatewaySettingsStore.followMove(profile.baseUrl, url, d.gatewayKey);
       profile
         ..baseUrl = url
         ..apiKey = d.gatewayKey;

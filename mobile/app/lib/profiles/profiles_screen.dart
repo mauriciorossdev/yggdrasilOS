@@ -5,7 +5,7 @@ import 'connection_profile.dart';
 import 'profile_editor_screen.dart';
 import 'profile_store.dart';
 import '../hub/desktops_screen.dart';
-import '../hub/hub_scan_screen.dart';
+import '../hub/hub_link.dart';
 
 /// Manual profile selector (remote-access-analysis.md §1.1) — the user picks
 /// which saved connection to use by hand, no auto-failover. This screen only
@@ -22,6 +22,7 @@ class ProfilesScreen extends StatefulWidget {
 class _ProfilesScreenState extends State<ProfilesScreen> {
   List<ConnectionProfile> _profiles = [];
   String? _activeId;
+  HubLink? _hub;
   bool _loading = true;
 
   @override
@@ -34,8 +35,10 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     setState(() => _loading = true);
     final profiles = await ProfileStore.list();
     final activeId = await ProfileStore.getActiveId();
+    final hub = await HubStore.saved();
     if (!mounted) return;
     setState(() {
+      _hub = hub;
       _profiles = profiles;
       _activeId = activeId;
       _loading = false;
@@ -84,89 +87,92 @@ class _ProfilesScreenState extends State<ProfilesScreen> {
     _load();
   }
 
+  Future<void> _connectComputer() async {
+    await Navigator.push(context, MaterialPageRoute(builder: (_) => const DesktopsScreen()));
+    _load();
+  }
+
+  Widget _buildList() {
+    return _profiles.isEmpty
+        ? Center(
+            child: Padding(
+              padding: const EdgeInsets.all(32),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Text(
+                    AppStrings.t('profiles.empty'),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  ElevatedButton.icon(
+                    onPressed: _newProfile,
+                    icon: const Icon(Icons.add),
+                    label: Text(AppStrings.t('profiles.newProfile')),
+                  ),
+                ],
+              ),
+            ),
+          )
+        : ListView.separated(
+            itemCount: _profiles.length,
+            separatorBuilder: (_, _) => const Divider(height: 1),
+            itemBuilder: (context, i) {
+              final profile = _profiles[i];
+              final isActive = profile.id == _activeId;
+              return ListTile(
+                leading: Icon(profileIcon(profile, _hub)),
+                title: Text(profile.name.isNotEmpty ? profile.name : AppStrings.t('profiles.unnamed')),
+                subtitle: Text(profileSubtitle(profile, _hub)),
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    if (isActive)
+                      Padding(
+                        padding: const EdgeInsets.only(right: 4),
+                        child: Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary),
+                      ),
+                    PopupMenuButton<String>(
+                      onSelected: (value) {
+                        if (value == 'edit') _editProfile(profile);
+                        if (value == 'delete') _deleteProfile(profile);
+                      },
+                      itemBuilder: (context) => [
+                        PopupMenuItem(value: 'edit', child: Text(AppStrings.t('common.edit'))),
+                        PopupMenuItem(value: 'delete', child: Text(AppStrings.t('common.delete'))),
+                      ],
+                    ),
+                  ],
+                ),
+                onTap: () => _setActive(profile),
+              );
+            },
+          );
+  }
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
       appBar: AppBar(
         title: Text(AppStrings.t('profiles.title')),
-        actions: [
-          IconButton(
-            tooltip: AppStrings.t('hub.scanTitle'),
-            icon: const Icon(Icons.qr_code_scanner),
-            onPressed: () async {
-              await Navigator.push(context, MaterialPageRoute(builder: (_) => const HubScanScreen()));
-              _load();
-            },
-          ),
-          IconButton(
-            tooltip: AppStrings.t('hub.desktopsTitle'),
-            icon: const Icon(Icons.computer),
-            onPressed: () async {
-              await Navigator.push(context, MaterialPageRoute(builder: (_) => const DesktopsScreen()));
-              _load();
-            },
-          ),
-        ],
       ),
       body: _loading
           ? const Center(child: CircularProgressIndicator())
-          : _profiles.isEmpty
-              ? Center(
-                  child: Padding(
-                    padding: const EdgeInsets.all(32),
-                    child: Column(
-                      mainAxisSize: MainAxisSize.min,
-                      children: [
-                        Text(
-                          AppStrings.t('profiles.empty'),
-                          textAlign: TextAlign.center,
-                        ),
-                        const SizedBox(height: 16),
-                        ElevatedButton.icon(
-                          onPressed: _newProfile,
-                          icon: const Icon(Icons.add),
-                          label: Text(AppStrings.t('profiles.newProfile')),
-                        ),
-                      ],
-                    ),
-                  ),
-                )
-              : ListView.separated(
-                  itemCount: _profiles.length,
-                  separatorBuilder: (_, _) => const Divider(height: 1),
-                  itemBuilder: (context, i) {
-                    final profile = _profiles[i];
-                    final isActive = profile.id == _activeId;
-                    return ListTile(
-                      leading: Icon(
-                        profile.type == ConnectionProfileType.gateway ? Icons.dns_outlined : Icons.cloud_outlined,
-                      ),
-                      title: Text(profile.name.isNotEmpty ? profile.name : AppStrings.t('profiles.unnamed')),
-                      subtitle: Text(profile.subtitle),
-                      trailing: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          if (isActive)
-                            Padding(
-                              padding: const EdgeInsets.only(right: 4),
-                              child: Icon(Icons.check_circle, color: Theme.of(context).colorScheme.primary),
-                            ),
-                          PopupMenuButton<String>(
-                            onSelected: (value) {
-                              if (value == 'edit') _editProfile(profile);
-                              if (value == 'delete') _deleteProfile(profile);
-                            },
-                            itemBuilder: (context) => [
-                              PopupMenuItem(value: 'edit', child: Text(AppStrings.t('common.edit'))),
-                              PopupMenuItem(value: 'delete', child: Text(AppStrings.t('common.delete'))),
-                            ],
-                          ),
-                        ],
-                      ),
-                      onTap: () => _setActive(profile),
-                    );
-                  },
+          : Column(
+              children: [
+                // The QR path used to be two unlabeled app-bar icons; it's the main
+                // way in (connection-ux-review-2026-11-25.md §B), so it gets a row.
+                ListTile(
+                  leading: Icon(Icons.qr_code_scanner, color: Theme.of(context).colorScheme.primary),
+                  title: Text(AppStrings.t('connect.cta')),
+                  subtitle: Text(AppStrings.t('connect.ctaSubtitle')),
+                  trailing: const Icon(Icons.chevron_right),
+                  onTap: _connectComputer,
                 ),
+                const Divider(height: 1),
+                Expanded(child: _buildList()),
+              ],
+            ),
       floatingActionButton: _profiles.isEmpty
           ? null
           : FloatingActionButton.extended(

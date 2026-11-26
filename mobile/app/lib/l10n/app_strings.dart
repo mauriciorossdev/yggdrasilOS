@@ -102,8 +102,9 @@ class AppStrings {
     'hub.notOurQr': {'es': 'Ese QR no es de Yggdrasil. Usa el de Ajustes → Teléfono en el desktop.', 'en': 'That QR is not a Yggdrasil one. Use the one in Settings → Phone on the desktop.'},
     'hub.insecureQr': {'es': 'Ese servidor es público y no está cifrado: la clave quedaría expuesta. Configúralo con https en el desktop.', 'en': 'That server is public and unencrypted, which would expose the key. Set it up with https on the desktop.'},
     'hub.linked': {'es': 'Enlazado con tu servidor de enlace', 'en': 'Linked to your link server'},
-    'hub.desktopsTitle': {'es': 'Escritorios', 'en': 'Desktops'},
-    'hub.noHub': {'es': 'Aún no sabes dónde está tu servidor de enlace. Escanea el QR que muestra el desktop en Ajustes → Teléfono.', 'en': "This phone doesn't know your link server yet. Scan the QR the desktop shows in Settings → Phone."},
+    'hub.linkedLocal': {'es': 'Enlazado con tu computadora', 'en': 'Linked to your computer'},
+    'hub.desktopsTitle': {'es': 'Tus computadoras', 'en': 'Your computers'},
+    'hub.noHub': {'es': 'Para conectar, abre Yggdrasil en tu computadora, ve a Ajustes → Teléfono → Mostrar QR y escanéalo con el botón de abajo.', 'en': 'To connect, open Yggdrasil on your computer, go to Settings → Phone → Show QR and scan it with the button below.'},
     'hub.noDesktops': {'es': 'Ningún escritorio publicado. En el desktop, activa "Publicar este equipo en el servidor de enlace" (Ajustes → Teléfono).', 'en': 'No desktop published. On the desktop, turn on "Publish this computer to the link server" (Settings → Phone).'},
     'hub.noProjectsOpen': {'es': 'Sin proyectos abiertos.', 'en': 'No projects open.'},
     'hub.online': {'es': 'En línea', 'en': 'Online'},
@@ -114,7 +115,26 @@ class AppStrings {
     'hub.unreachable': {'es': 'No se alcanza: no está en tu misma red y su túnel no está activo. En el desktop revisa Ajustes → Teléfono ("Túnel: conectado").', 'en': 'Not reachable: not on your network and its tunnel is not active. On the desktop check Settings → Phone ("Tunnel: connected").'},
     'hub.onComputers': {'es': 'Abiertos en tus computadoras', 'en': 'Open on your computers'},
     'hub.connectingProject': {'es': 'Conectando…', 'en': 'Connecting…'},
-    'hub.viaTunnel': {'es': 'vía servidor de enlace (túnel)', 'en': 'via link server (tunnel)'},
+    'hub.viaTunnel': {'es': 'Por internet', 'en': 'Over the internet'},
+    'hub.viaLan': {'es': 'En tu red Wi-Fi', 'en': 'On your Wi-Fi'},
+    'hub.viaTailscale': {'es': 'Por Tailscale', 'en': 'Over Tailscale'},
+    // ---- One connect flow (connection-ux-review-2026-11-25.md §B) ----
+    'assistant.reaching': {'es': 'Conectando con tu asistente…', 'en': 'Reaching your assistant…'},
+    'connect.cta': {'es': 'Conectar con tu computadora', 'en': 'Connect to your computer'},
+    'connect.ctaSubtitle': {'es': 'Escanea el QR que muestra Yggdrasil en tu computadora', 'en': 'Scan the QR Yggdrasil shows on your computer'},
+    'connect.action': {'es': 'Conectar', 'en': 'Connect'},
+    'connect.manual': {'es': 'Configurar a mano (avanzado)', 'en': 'Set up manually (advanced)'},
+    'connect.computerSubtitle': {'es': 'Tu computadora', 'en': 'Your computer'},
+    'connect.assistantName': {'es': 'Tu asistente', 'en': 'Your assistant'},
+    'connect.assistantSubtitle': {'es': 'Siempre encendido, en tu servidor de enlace', 'en': 'Always on, on your link server'},
+    'connect.another': {'es': 'Conectar otra computadora', 'en': 'Connect another computer'},
+    'connect.homeHint': {'es': 'Aún no estás conectado. Conecta tu computadora para empezar a hablar con tu asistente.', 'en': "You're not connected yet. Connect your computer to start talking to your assistant."},
+    'connect.droppedHint': {'es': 'Sin conexión con {name}. Reintentando…', 'en': 'No connection to {name}. Retrying…'},
+    'connect.droppedTitle': {'es': 'Sin conexión con {name}', 'en': 'No connection to {name}'},
+    'connect.droppedBody': {'es': 'Reintentando solo. Si cambiaste de red o tu computadora se reinició, puede tardar unos segundos.', 'en': 'Retrying on its own. After a network change or a computer restart it can take a few seconds.'},
+    'connect.notConnectedTitle': {'es': 'No estás conectado', 'en': "You're not connected"},
+    'connect.notConnectedBody': {'es': 'Tus chats aparecen aquí cuando el teléfono está conectado a tu computadora o a tu asistente.', 'en': 'Your chats show up here once the phone is connected to your computer or your assistant.'},
+    'hub.projectsReady': {'es': 'Proyectos usa ahora {name}', 'en': 'Projects now uses {name}'},
     'hub.connected': {'es': 'Conectado a {name}', 'en': 'Connected to {name}'},
     'hub.loadError': {'es': 'No se pudo consultar el servidor de enlace.', 'en': 'Could not reach the link server.'},
     'memory.title': {'es': 'Memoria del asistente', 'en': 'Assistant memory'},
@@ -201,7 +221,7 @@ class AppStrings {
     'chat.retryingNote': {'es': '🔄 Reintentando: {label}', 'en': '🔄 Retrying: {label}'},
     'chat.retryLabelFallback': {'es': 'la acción', 'en': 'the action'},
     'chat.turnError': {'es': 'Error en el turno', 'en': 'Turn error'},
-    'chat.sendFailed': {'es': 'No se pudo enviar: sin conexión con el gateway.', 'en': 'Not sent: no connection to the gateway.'},
+    'chat.sendFailed': {'es': 'No se pudo enviar: el teléfono no está conectado.', 'en': "Not sent: the phone isn't connected."},
     'chat.sendInterrupted': {
       'es': 'Se cortó la conexión. Si el gateway lo recibió, la respuesta llegará al reconectar.',
       'en': 'Connection lost. If the gateway got it, the reply will arrive once reconnected.',
@@ -224,14 +244,14 @@ class AppStrings {
     // voice-stt-quality-investigation.md §1 — replace the generic
     // voice.notUnderstood above for the specific cases the recognizer
     // actually distinguishes (silence also covers §4b's no-onError case).
-    'voice.error.silence': {'es': 'No te escuché, probá de nuevo', 'en': "Didn't hear you, try again"},
+    'voice.error.silence': {'es': 'No te escuché, prueba de nuevo', 'en': "Didn't hear you, try again"},
     'voice.error.noMatch': {'es': 'No entendí lo que dijiste', 'en': "Didn't understand what you said"},
-    'voice.error.network': {'es': 'Sin conexión, revisá tu internet', 'en': "No connection, check your internet"},
-    'voice.error.busy': {'es': 'Probá de nuevo en un momento', 'en': 'Try again in a moment'},
+    'voice.error.network': {'es': 'Sin conexión, revisa tu internet', 'en': "No connection, check your internet"},
+    'voice.error.busy': {'es': 'Prueba de nuevo en un momento', 'en': 'Try again in a moment'},
     // §5 — SODA on-device language pack not downloaded for the requested
     // locale, confirmed on real hardware (logcat error 13).
     'voice.error.languageUnavailable': {
-      'es': 'El idioma no está descargado, revisá tu conexión',
+      'es': 'El idioma no está descargado, revisa tu conexión',
       'en': 'Language pack not downloaded, check your connection',
     },
     // Shown as a brief toast when the notification's tap-to-listen shortcut
@@ -240,14 +260,14 @@ class AppStrings {
     // coming from the notification tray, unlike a manual tap on the
     // (visibly dimmed) mic button.
     'voice.turnInProgress': {
-      'es': 'Hay un turno en curso, esperá a que termine',
+      'es': 'Hay un turno en curso, espera a que termine',
       'en': 'A turn is in progress, wait for it to finish',
     },
 
     // ---- voice notification (voice-notification-shortcut-design.md §2) ----
     'voiceNotification.title': {'es': 'Yggdrasil', 'en': 'Yggdrasil'},
     'voiceNotification.body': {
-      'es': 'Tocá para hablar con Yggdrasil',
+      'es': 'Toca para hablar con Yggdrasil',
       'en': 'Tap to talk to Yggdrasil',
     },
     'voiceNotification.action': {'es': 'Hablar', 'en': 'Speak'},
@@ -436,7 +456,6 @@ class AppStrings {
       'en': 'Helps you clarify and move forward in small steps',
     },
     'settings.activeConnection': {'es': 'Conexión activa', 'en': 'Active connection'},
-    'settings.connectToGateway': {'es': 'Conectar a un gateway', 'en': 'Connect to a gateway'},
     'settings.agentSection': {'es': 'Agente', 'en': 'Agent'},
     'settings.agentConfig': {'es': 'Configuración de agente', 'en': 'Agent configuration'},
     'settings.general': {'es': 'General', 'en': 'General'},
@@ -534,7 +553,7 @@ class AppStrings {
     // ---- local projects (Termux-hosted, independent of the desktop mirror) ----
     'localProjects.title': {'es': 'Proyectos Locales', 'en': 'Local Projects'},
     'localProjects.disabledHint': {
-      'es': 'Activá Terminal Local en Ajustes para usar esta función.',
+      'es': 'Activa Terminal Local en Ajustes para usar esta función.',
       'en': 'Enable Local Terminal in Settings to use this feature.',
     },
     'localProjects.empty': {'es': 'Todavía no hay proyectos locales.', 'en': 'No local projects yet.'},
@@ -622,10 +641,7 @@ class AppStrings {
     'projects.info': {'es': 'Información del proyecto', 'en': 'Project info'},
     'agentflow.counts': {'es': '{nodes} nodos · {edges} conexiones', 'en': '{nodes} nodes · {edges} edges'},
     'projects.lastOpened': {'es': 'Última vez abierto', 'en': 'Last opened'},
-    'projects.gatewayDisabled': {
-      'es': 'Activá el Gateway en Ajustes para usar esta función.',
-      'en': 'Enable the Gateway in Settings to use this feature.',
-    },
+    'projects.gatewayDisabled': {'es': 'Conecta tu computadora para usar Proyectos.', 'en': 'Connect your computer to use Projects.'},
 
     // ---- project detail (tabs: Terminales/Sessions/Agent Flow/Workflows/Files) ----
     'projects.tabTerminals': {'es': 'Terminales', 'en': 'Terminals'},
@@ -664,7 +680,7 @@ class AppStrings {
     'projects.workflowCancel': {'es': 'Cancelar', 'en': 'Cancel'},
     'projects.workflowDisabled': {'es': 'Deshabilitado', 'en': 'Disabled'},
     'projects.workflowRemoteTriggerOff': {
-      'es': 'Este workflow no permite disparo remoto — activá "allowRemoteTrigger" desde la app de escritorio.',
+      'es': 'Este workflow no permite disparo remoto — activa "allowRemoteTrigger" desde la app de escritorio.',
       'en': 'This workflow doesn\'t allow remote trigger — turn on "allowRemoteTrigger" from the desktop app.',
     },
     'projects.workflowRunHistory': {'es': 'HISTORIAL', 'en': 'RUN HISTORY'},
@@ -715,7 +731,7 @@ class AppStrings {
     'capabilities.openApp': {'es': 'Abrir apps', 'en': 'Open apps'},
     'capabilities.openAppDesc': {'es': 'Abrir apps instaladas del cel', 'en': "Open apps installed on your phone"},
     'capabilities.listApps': {'es': 'Listar apps', 'en': 'List apps'},
-    'capabilities.listAppsDesc': {'es': 'Ver qué apps tenés instaladas', 'en': 'See what apps you have installed'},
+    'capabilities.listAppsDesc': {'es': 'Ver qué apps tienes instaladas', 'en': 'See what apps you have installed'},
     'capabilities.findFiles': {'es': 'Buscar archivos', 'en': 'Find files'},
     'capabilities.findFilesDesc': {
       'es': 'Buscar por nombre en fotos, videos, audio y descargas',
@@ -830,7 +846,7 @@ class AppStrings {
     'auto.title': {'es': 'Automatizaciones', 'en': 'Automations'},
     'auto.new': {'es': 'Nueva', 'en': 'New'},
     'auto.edit': {'es': 'Editar automatización', 'en': 'Edit automation'},
-    'auto.empty': {'es': 'Todavía no hay automatizaciones. Creá una con + Nueva: elegí capacidades del teléfono y el orden en que corren.', 'en': 'No automations yet. Create one with + New: pick phone capabilities and the order they run in.'},
+    'auto.empty': {'es': 'Todavía no hay automatizaciones. Crea una con + Nueva: elige capacidades del teléfono y el orden en que corren.', 'en': 'No automations yet. Create one with + New: pick phone capabilities and the order they run in.'},
     'auto.stepCount': {'es': '{n} pasos', 'en': '{n} steps'},
     'auto.neverRun': {'es': 'nunca ejecutada', 'en': 'never run'},
     'auto.lastOk': {'es': 'última: ok', 'en': 'last: ok'},
@@ -843,12 +859,12 @@ class AppStrings {
     'auto.runFailed': {'es': 'Falló en {step}: {error}', 'en': 'Failed at {step}: {error}'},
     'auto.deleteConfirm': {'es': '¿Borrar "{name}" y su historial?', 'en': 'Delete "{name}" and its history?'},
     'auto.nameRequired': {'es': 'Ponele un nombre', 'en': 'Give it a name'},
-    'auto.dictate': {'es': 'Dictá lo que querés automatizar', 'en': 'Dictate what you want to automate'},
+    'auto.dictate': {'es': 'Dicta lo que quieres automatizar', 'en': 'Dictate what you want to automate'},
     'auto.dictating': {'es': 'Armando la automatización…', 'en': 'Building the automation…'},
     'auto.dictateDone': {'es': 'Borrador listo. Revisalo y guardalo.', 'en': 'Draft ready. Review and save it.'},
     'auto.dictateFailed': {'es': 'No pude armar la automatización', 'en': 'Could not build the automation'},
     'auto.name': {'es': 'Nombre', 'en': 'Name'},
-    'auto.noSteps': {'es': 'Sin pasos. Agregá una capacidad, una condición o una espera.', 'en': 'No steps. Add a capability, a condition or a wait.'},
+    'auto.noSteps': {'es': 'Sin pasos. Agrega una capacidad, una condición o una espera.', 'en': 'No steps. Add a capability, a condition or a wait.'},
     'auto.addStep': {'es': 'Agregar paso', 'en': 'Add step'},
     'auto.ifStep': {'es': 'Si (condición)', 'en': 'If (condition)'},
     'auto.ifStepDesc': {'es': 'Ramas: entonces / si no', 'en': 'Branches: then / else'},
@@ -896,7 +912,7 @@ class AppStrings {
     'trig.onExit': {'es': 'Al salir', 'en': 'When leaving'},
     'trig.useCurrent': {'es': 'Usar ubicación actual', 'en': 'Use current location'},
     'trig.noLocation': {'es': 'No se pudo leer la ubicación', 'en': 'Could not read the location'},
-    'trig.geoInvalid': {'es': 'Revisá latitud, longitud y radio (mín 50 m)', 'en': 'Check latitude, longitude and radius (min 50 m)'},
+    'trig.geoInvalid': {'es': 'Revisa latitud, longitud y radio (mín 50 m)', 'en': 'Check latitude, longitude and radius (min 50 m)'},
     'trig.count': {'es': 'DISPARADORES ({n})', 'en': 'TRIGGERS ({n})'},
     'trig.add': {'es': 'Agregar', 'en': 'Add'},
     'trig.manualOnly': {'es': 'Sin disparadores: solo corre con ▶', 'en': 'No triggers: runs only with ▶'},
@@ -905,7 +921,7 @@ class AppStrings {
     'capabilities.currentTimeDesc': {'es': 'Hora local del teléfono (hh:mm)', 'en': 'Phone local time (hh:mm)'},
     'tool.currentTime.verb': {'es': 'Leyendo la hora', 'en': 'Reading the time'},
     'tool.currentTime.ok': {'es': 'Hora leída', 'en': 'Time read'},
-    'trig.tapToEdit': {'es': 'Tocá para editar', 'en': 'Tap to edit'},
+    'trig.tapToEdit': {'es': 'Toca para editar', 'en': 'Tap to edit'},
     'capabilities.categoryDevice': {'es': 'Dispositivo', 'en': 'Device'},
     'capabilities.categoryComm': {'es': 'Comunicación', 'en': 'Communication'},
     'capabilities.categoryLinks': {'es': 'Enlaces y apps', 'en': 'Links and apps'},
@@ -923,7 +939,7 @@ class AppStrings {
     'connectors.statusUnknown': {'es': 'Estado desconocido', 'en': 'Unknown status'},
     'connectors.errorGeneric': {'es': 'No se pudo conectar. Intenta de nuevo.', 'en': "Couldn't connect. Try again."},
     'connectors.googleDescription': {
-      'es': 'Conectá tu cuenta de Google para que Yggdrasil pueda usar Calendar y Gmail. El token queda guardado solo en tu gateway, nunca en este teléfono.',
+      'es': 'Conecta tu cuenta de Google para que Yggdrasil pueda usar Calendar y Gmail. El token queda guardado solo en tu gateway, nunca en este teléfono.',
       'en': "Connect your Google account so Yggdrasil can use Calendar and Gmail. The token is stored only on your gateway, never on this phone.",
     },
 
@@ -959,8 +975,8 @@ class AppStrings {
     'editor.directSegment': {'es': 'Provider directo', 'en': 'Direct provider'},
     'editor.gatewayUrlLabel': {'es': 'URL del gateway', 'en': 'Gateway URL'},
     'editor.gatewayUrlHint': {'es': 'ws://100.x.x.x:18789', 'en': 'ws://100.x.x.x:18789'},
-    'editor.apiKeyOptionalLabel': {'es': 'API key (opcional)', 'en': 'API key (optional)'},
-    'editor.apiKeyLabel': {'es': 'API key', 'en': 'API key'},
+    'editor.apiKeyOptionalLabel': {'es': 'Clave (si tu computadora la pide)', 'en': 'Key (if your computer asks for one)'},
+    'editor.apiKeyLabel': {'es': 'Clave', 'en': 'Key'},
     'editor.providerLabel': {'es': 'Provider', 'en': 'Provider'},
     'editor.modelOptionalLabel': {'es': 'Modelo (opcional)', 'en': 'Model (optional)'},
     'editor.modelOptionalHint': {'es': 'ej. claude-sonnet-5-5', 'en': 'e.g. claude-sonnet-5-5'},

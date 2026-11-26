@@ -36,7 +36,7 @@ class _HubScanScreenState extends State<HubScanScreen> {
       _handled = true;
       await applyHubLink(link);
       if (!mounted) return;
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.t('hub.linked'))));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.t(link.local ? 'hub.linkedLocal' : 'hub.linked'))));
       Navigator.pop(context, true);
       return;
     }

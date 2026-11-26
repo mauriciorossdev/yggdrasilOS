@@ -751,4 +751,6 @@ export type PhoneLinkInfo = {
   tunnel: { state: "disabled" | "connecting" | "connected" | "error"; lastError?: string };
   /** Open projects left out of the hub because they were opened before publishing. */
   needsReopen: string[];
+  /** Same-network link without a link server (only usable while no hub URL is set). */
+  localLink: { enabled: boolean; active: boolean; url?: string; error?: string };
 };

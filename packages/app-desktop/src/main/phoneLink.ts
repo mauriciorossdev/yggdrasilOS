@@ -8,8 +8,14 @@ import {
   HubPublisher,
   checkHubUrl,
   friendlyHostName,
+  gatewaysNeedKey,
   hubQrPayload,
   localGatewayRequiresKey,
+  localLinkActive,
+  localLinkUrl,
+  localQrPayload,
+  startLocalLinkServer,
+  type LocalLinkServer,
   isPublishable,
   newDesktopId,
   newGatewayKey,
@@ -35,6 +41,8 @@ export type PhoneLinkInfo = {
   status: PublishStatus;
   tunnel: { state: TunnelState; lastError?: string };
   needsReopen: string[];
+  /** Same-network link without a link server (only usable while no hub URL is set). */
+  localLink: { enabled: boolean; active: boolean; url?: string; error?: string };
 };
 
 const userData = () => app.getPath("userData");
@@ -63,7 +71,7 @@ async function ensureIdentity(settings: PhoneLinkSettings): Promise<PhoneLinkSet
  */
 export async function gatewayAuthForNewProject(): Promise<{ apiKey: string } | undefined> {
   const settings = await loadPhoneLinkSettings();
-  if (!settings.publish) return undefined;
+  if (!gatewaysNeedKey(settings)) return undefined;
   const withIdentity = await ensureIdentity(settings);
   return { apiKey: withIdentity.gatewayKey! };
 }
@@ -103,9 +111,65 @@ const tunnel = new TunnelClient({
   },
 });
 
+// Local link: this desktop answers the phone's directory call itself, on the
+// same network, when there's no link server (phoneLinkCore.ts, "Local link").
+let localServer: LocalLinkServer | undefined;
+let localKey: string | undefined;
+let localError: string | undefined;
+
+async function localDesktopEntry(): Promise<Record<string, unknown>> {
+  const s = await loadPhoneLinkSettings();
+  return {
+    desktopId: s.desktopId,
+    name: friendlyHostName(hostname()),
+    online: true,
+    lastSeen: Date.now(),
+    projects: await openProjectsSnapshot(),
+    endpoints: pickAddresses(networkInterfaces()),
+    gatewayKey: s.gatewayKey,
+    tunnel: false,
+  };
+}
+
+/** Starts or stops the local-link listener to match the saved settings. Calls run one at a time. */
+let localSync: Promise<void> = Promise.resolve();
+function syncLocalLink(): Promise<void> {
+  localSync = localSync.then(syncLocalLinkNow, syncLocalLinkNow);
+  return localSync;
+}
+
+async function syncLocalLinkNow(): Promise<void> {
+  let s = await loadPhoneLinkSettings();
+  if (!localLinkActive(s)) {
+    localKey = undefined;
+    localError = undefined;
+    const server = localServer;
+    localServer = undefined;
+    await server?.close();
+    return;
+  }
+  s = await ensureIdentity(s);
+  localKey = s.gatewayKey;
+  if (localServer) return;
+  try {
+    localServer = await startLocalLinkServer(
+      { getKey: () => localKey, getDesktop: localDesktopEntry },
+      { preferredPort: s.localLinkPort, onError: (err) => console.warn("[phoneLink] local link:", err.message) },
+    );
+    localError = undefined;
+    // First start, or the saved port was taken: keep the one in use (the QR shows it).
+    if (localServer.port !== s.localLinkPort) {
+      await savePhoneLinkSettings({ ...(await loadPhoneLinkSettings()), localLinkPort: localServer.port });
+    }
+  } catch (err) {
+    localError = err instanceof Error ? err.message : String(err);
+  }
+}
+
 export function startPhoneLink(): void {
   publisher.start();
   void tunnel.start();
+  void syncLocalLink();
 }
 
 /** A project opened or closed: tell the hub now instead of at the next heartbeat. */
@@ -116,28 +180,40 @@ export function notifyPhoneLinkChanged(): void {
 export async function stopPhoneLink(): Promise<void> {
   publisher.stop();
   tunnel.stop();
+  const server = localServer;
+  localServer = undefined;
+  await server?.close();
   await publisher.goOffline();
 }
 
 async function info(): Promise<PhoneLinkInfo> {
   const s = await loadPhoneLinkSettings();
+  const addresses = pickAddresses(networkInterfaces());
+  const localUrl = localServer ? localLinkUrl(addresses, localServer.port) : undefined;
+  if (localLinkActive(s)) await openProjectsSnapshot(); // fresh needsReopen without a hub publisher
   return {
     hubUrl: s.hubUrl ?? "",
     hubUrlCheck: checkHubUrl(s.hubUrl ?? ""),
     hasHubKey: !!s.hubKey,
     publish: !!s.publish,
     desktopName: friendlyHostName(hostname()),
-    addresses: pickAddresses(networkInterfaces()),
+    addresses,
     status: isPublishable(s) ? publisher.status : { state: "disabled" },
     tunnel: { state: tunnel.state, ...(tunnel.lastError ? { lastError: tunnel.lastError } : {}) },
-    needsReopen: isPublishable(s) ? needsReopen : [],
+    needsReopen: isPublishable(s) || localLinkActive(s) ? needsReopen : [],
+    localLink: {
+      enabled: !!s.localLink,
+      active: localLinkActive(s),
+      ...(localUrl ? { url: localUrl } : {}),
+      ...(localError ? { error: localError } : {}),
+    },
   };
 }
 
 export function registerPhoneLinkIpc(): void {
   ipcMain.handle("phoneLink:get", () => info());
 
-  ipcMain.handle("phoneLink:save", async (_event, input: { hubUrl?: string; hubKey?: string; publish?: boolean }) => {
+  ipcMain.handle("phoneLink:save", async (_event, input: { hubUrl?: string; hubKey?: string; publish?: boolean; localLink?: boolean }) => {
     let next: PhoneLinkSettings = { ...(await loadPhoneLinkSettings()) };
     if (savedKeyWouldMove(next, input)) throw new Error("Pega la clave de este servidor: la guardada no se envía a otra URL.");
     if (typeof input.hubUrl === "string") {
@@ -148,10 +224,12 @@ export function registerPhoneLinkIpc(): void {
     // An empty key field means "keep the saved one" — the UI never receives it back.
     if (typeof input.hubKey === "string" && input.hubKey.trim()) next.hubKey = input.hubKey.trim();
     if (typeof input.publish === "boolean") next.publish = input.publish;
+    if (typeof input.localLink === "boolean") next.localLink = input.localLink;
     await savePhoneLinkSettings(next);
     if (next.publish) next = await ensureIdentity(next);
     await publisher.publishNow();
     await tunnel.start(); // new URL/key, or publishing switched on/off
+    await syncLocalLink(); // local link switched on/off, or a hub URL now replaces it
     return info();
   });
 
@@ -170,6 +248,15 @@ export function registerPhoneLinkIpc(): void {
   ipcMain.handle("phoneLink:publishNow", async () => {
     await publisher.publishNow();
     return info();
+  });
+
+  // Local link QR: this desktop's address + its gateway key, for the same network only.
+  ipcMain.handle("phoneLink:localQr", async () => {
+    const s = await loadPhoneLinkSettings();
+    if (!localLinkActive(s) || !localServer || !s.gatewayKey) throw new Error("Activa primero la conexión en esta red.");
+    const url = localLinkUrl(pickAddresses(networkInterfaces()), localServer.port);
+    if (!url) throw new Error("Este equipo no tiene una dirección de red local ni de Tailscale.");
+    return QRCode.toDataURL(localQrPayload(url, s.gatewayKey), { margin: 1, width: 320 });
   });
 
   // The hub key travels inside the QR: only generated on demand, never stored as an image.

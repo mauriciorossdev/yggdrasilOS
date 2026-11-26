@@ -36,6 +36,7 @@ export function PhoneLinkSection() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [qr, setQr] = useState<string | null>(null);
+  const [localQr, setLocalQr] = useState<string | null>(null);
   const [trustedDevices, setTrustedDevices] = useState<TrustedDevice[]>([]);
 
   // Per-project, not per-desktop (unlike the publish settings above) — this
@@ -133,6 +134,15 @@ export function PhoneLinkSection() {
     }
   };
 
+  const showLocalQr = async () => {
+    setError(null);
+    try {
+      setLocalQr(await window.yggdrasil.phoneLink.localQr());
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    }
+  };
+
   if (!info) return <p className="muted">{t("set.phone.loading")}</p>;
   const st = info.status;
   const urlBlocked = urlCheck === "invalid" || urlCheck === "insecure-public";
@@ -145,6 +155,48 @@ export function PhoneLinkSection() {
       <p className="muted">
         {t("set.phone.intro")}
       </p>
+
+      {/* Same network, no link server (connection-ux-review-2026-11-25.md §E). */}
+      <h4 style={{ marginTop: 12 }}>{t("set.phone.local.title")}</h4>
+      <p className="muted">{t("set.phone.local.intro")}</p>
+      {info.hubUrl ? (
+        <p className="muted">{t("set.phone.local.hubWins")}</p>
+      ) : (
+        <>
+          <label className="settings-check">
+            <input
+              type="checkbox"
+              checked={info.localLink.enabled}
+              disabled={busy}
+              onChange={(e) => {
+                setLocalQr(null);
+                void run(() => window.yggdrasil.phoneLink.save({ localLink: e.target.checked }));
+              }}
+            />
+            {t("set.phone.local.enable")}
+          </label>
+          {info.localLink.error && <p className="error">{t("set.phone.local.error", { error: info.localLink.error })}</p>}
+          {info.localLink.active && !info.localLink.url && !info.localLink.error && <p className="error">{t("set.phone.local.noAddress")}</p>}
+          {info.localLink.active && info.needsReopen.length > 0 && (
+            <p className="error">{t("set.phone.needsReopen", { names: info.needsReopen.join(", ") })}</p>
+          )}
+          {info.localLink.active && info.localLink.url && (
+            <div className="ide-option-row">
+              <button type="button" onClick={() => (localQr ? setLocalQr(null) : void showLocalQr())}>
+                {localQr ? t("set.phone.hideQr") : t("set.phone.showQr")}
+              </button>
+              <span className="muted">{info.localLink.url}</span>
+            </div>
+          )}
+          {localQr && (
+            <div style={{ marginTop: 12 }}>
+              <img src={localQr} alt={t("set.phone.qrAlt")} width={240} height={240} />
+              <p className="muted">{t("set.phone.local.qrHint")}</p>
+            </div>
+          )}
+        </>
+      )}
+      <h4 style={{ marginTop: 16 }}>{t("set.phone.hub.title")}</h4>
 
       <div className="ide-option-row">
         <button type="button" onClick={() => setWizardOpen(true)}>

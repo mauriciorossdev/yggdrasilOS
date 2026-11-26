@@ -182,10 +182,20 @@ export function mergeConfig(base: YggdrasilConfig, override?: Partial<YggdrasilC
   };
 }
 
+/**
+ * The agent a turn runs with: the requested one, else this config's default
+ * agent, else one called "default", else the first agent configured. Asking
+ * for an agent this gateway doesn't have (the phone's "assistant" against a
+ * desktop project) used to yield an empty agent with no provider, which ran
+ * the builtin echo harness and answered "echo: …" with no hint of why.
+ * Only a config with no agents at all still gets that empty agent.
+ */
 export function resolveAgent(config: YggdrasilConfig, agentId?: string): AgentConfig {
-  const id = agentId ?? config.defaultAgent ?? "default";
-  const agent = config.agents?.find((a) => a.id === id);
+  const agents = config.agents ?? [];
+  const find = (id: string | undefined) => (id ? agents.find((a) => a.id === id) : undefined);
+  const agent = find(agentId) ?? find(config.defaultAgent) ?? find("default") ?? agents[0];
   if (!agent) {
+    const id = agentId ?? config.defaultAgent ?? "default";
     return { id, label: id };
   }
   return agent;

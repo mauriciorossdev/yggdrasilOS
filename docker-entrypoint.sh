@@ -36,6 +36,10 @@ if [ ! -f "$YGGDRASIL_WORKSPACE/yggdrasil.config.json" ] || [ "${YGGDRASIL_KEEP_
   cp /app/deploy/gateway-template/yggdrasil.config.json "$YGGDRASIL_WORKSPACE/yggdrasil.config.json"
 fi
 
+# Provider/model of the assistant from ASSISTANT_PROVIDER / ASSISTANT_MODEL /
+# ASSISTANT_BASE_URL (see the script). A bad value stops the deploy here.
+node /app/deploy/gateway-template/apply-assistant-env.mjs "$YGGDRASIL_WORKSPACE/yggdrasil.config.json"
+
 echo "Starting gateway: host=$YGGDRASIL_GATEWAY_HOST port=$YGGDRASIL_GATEWAY_PORT workspace=$YGGDRASIL_WORKSPACE"
 
 # The gateway keeps state relative to where it runs: from here it lands on the

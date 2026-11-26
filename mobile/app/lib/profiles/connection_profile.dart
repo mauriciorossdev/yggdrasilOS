@@ -3,6 +3,8 @@
 /// don't rename them without re-checking that section.
 library;
 
+import '../l10n/app_strings.dart';
+
 enum ConnectionProfileType { gateway, direct }
 
 enum DirectProvider { anthropic, openai, ollamaCloud }
@@ -97,7 +99,11 @@ class ConnectionProfile {
 
   bool get isFromHub => hubDesktopId != null && hubProjectId != null;
 
+  /// A computer found through the QR is shown as such: its address is an
+  /// IP:port that changes on every desktop restart and means nothing to read.
   String get subtitle => type == ConnectionProfileType.gateway
-      ? (baseUrl?.isNotEmpty ?? false) ? baseUrl! : 'Gateway'
+      ? isFromHub
+          ? AppStrings.t('connect.computerSubtitle')
+          : (baseUrl?.isNotEmpty ?? false) ? baseUrl! : 'Gateway'
       : (provider?.label ?? 'Provider directo');
 }
