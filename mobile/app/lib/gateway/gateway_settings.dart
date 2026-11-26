@@ -49,8 +49,25 @@ class GatewaySettingsStore {
       }
     }
     final seeded = await _seedFromGatewayProfile();
-    await save(seeded);
+    // An empty seed is not saved: on a fresh install this runs before any
+    // profile exists, and saving it would block every later seed for good.
+    if (seeded.baseUrl.isNotEmpty) await save(seeded);
     return seeded;
+  }
+
+  /// Picking one of your computers (QR → Tus computadoras) is the explicit
+  /// opt-in `_seedFromGatewayProfile` leaves to the user, so Proyectos follows
+  /// that computer right away instead of asking for its address again.
+  static Future<void> useComputer(String baseUrl, String? apiKey) =>
+      save(GatewaySettings(enabled: true, baseUrl: baseUrl, apiKey: apiKey));
+
+  /// A computer came back on a new address (its desktop restarted, so the port
+  /// changed). Proyectos moves with it, but only if it was pointing at the old one.
+  static Future<void> followMove(String? oldBaseUrl, String newBaseUrl, String? apiKey) async {
+    if (oldBaseUrl == null || oldBaseUrl.isEmpty) return;
+    final current = await load();
+    if (current.baseUrl != oldBaseUrl) return;
+    await save(GatewaySettings(enabled: current.enabled, baseUrl: newBaseUrl, apiKey: apiKey));
   }
 
   static Future<void> save(GatewaySettings settings) async {
@@ -68,7 +85,9 @@ class GatewaySettingsStore {
       (p) => p.type == ConnectionProfileType.gateway && (p.baseUrl?.isNotEmpty ?? false),
     );
     if (matches.isEmpty) return GatewaySettings(enabled: false, baseUrl: '');
-    final profile = matches.first;
+    // A computer found through the QR beats the link server itself (the
+    // always-on assistant), which has no projects of its own to manage.
+    final profile = matches.firstWhere((p) => p.isFromHub, orElse: () => matches.first);
     return GatewaySettings(enabled: false, baseUrl: profile.baseUrl!, apiKey: profile.apiKey);
   }
 }

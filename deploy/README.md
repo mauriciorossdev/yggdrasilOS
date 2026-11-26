@@ -171,6 +171,16 @@ Sin más configuración, el servidor solo enlaza el teléfono con tu computador,
 
 Tiene costo según el uso de cada proveedor.
 
+Por defecto el asistente usa Anthropic con Claude Haiku. Para cambiar el proveedor o el modelo sin reconstruir la imagen, añade estas variables:
+
+| Variable | Valores | Clave que usa |
+|---|---|---|
+| `ASSISTANT_PROVIDER` | `anthropic` (por defecto), `openai-compat` (OpenAI y servidores compatibles, como Ollama Cloud) u `ollama` | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` u `OLLAMA_API_KEY` |
+| `ASSISTANT_MODEL` | El id del modelo, por ejemplo `claude-sonnet-4-5` o `gpt-4o-mini`. Si cambias de proveedor sin indicarlo, se usa el de ese proveedor (obligatorio con `ollama`) | |
+| `ASSISTANT_BASE_URL` | Opcional: la dirección del servidor, por ejemplo `https://ollama.com/v1` para Ollama Cloud con `openai-compat`, o la de tu servidor de Ollama | |
+
+El registro de arranque muestra `Assistant: provider=… model=…`. Un valor inválido detiene el arranque con un mensaje claro, y una clave que falta aparece como aviso. El asistente es además el agente por defecto del servidor, así que cualquier chat lo usa. Estas variables se aplican también con `YGGDRASIL_KEEP_CONFIG=1`; sin ninguna de ellas, la configuración no se toca.
+
 ## Mantenimiento
 
 **Actualizar.** Tus datos están en el volumen y se conservan. Cambia `YGGDRASIL_VERSION` en `deploy/.env` a la versión nueva de tu app, o déjala vacía si usas `latest`, y descarga la imagen:

@@ -4,8 +4,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../assistant/assistant_home_screen.dart' show assistantAgentId, assistantSessionKey;
 import '../assistant/assistant_tts.dart';
-import '../profiles/connection_profile.dart';
-import '../profiles/profile_store.dart';
+import '../assistant/assistant_route.dart';
 import '../services/yggdrasil_client.dart';
 import 'bubble_permissions.dart';
 
@@ -60,11 +59,14 @@ class BubbleAssistantSession {
   YggdrasilClient? _client;
   String? _connectedTo;
 
+  // Whether the connected gateway is the assistant itself (has the "assistant" agent).
+  bool _toAssistant = false;
+
   Future<YggdrasilClient> _ensureClient() async {
-    final profile = await ProfileStore.getActive();
-    if (profile == null || profile.type == ConnectionProfileType.direct || (profile.baseUrl ?? '').isEmpty) {
-      throw StateError('gateway_required');
-    }
+    final route = await bubbleGatewayRoute();
+    if (route == null) throw StateError('gateway_required');
+    final profile = route.profile!;
+    _toAssistant = route.kind == AssistantRouteKind.assistant;
     final target = '${profile.baseUrl}|${profile.apiKey}';
     var client = _client;
     if (client == null || _connectedTo != target) {
@@ -109,7 +111,7 @@ class BubbleAssistantSession {
     try {
       // A send that fails (socket closed, gateway error) ends the wait now
       // instead of after the 3-minute timeout.
-      client.sendMessage(text, sessionKey: assistantSessionKey, agentId: assistantAgentId).catchError((Object e) {
+      client.sendMessage(text, sessionKey: assistantSessionKey, agentId: _toAssistant ? assistantAgentId : null).catchError((Object e) {
         if (!done.isCompleted) done.completeError(e);
       });
       final reply = (await done.future.timeout(const Duration(minutes: 3))).trim();

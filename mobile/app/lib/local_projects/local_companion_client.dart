@@ -62,7 +62,7 @@ class LocalCompanionClient {
       throw LocalCompanionException('No se pudo conectar al companion — ¿está corriendo en Termux?');
     }
     if (res.statusCode == 401) {
-      throw LocalCompanionException('Token incorrecto — revisá los ajustes de Terminal Local.');
+      throw LocalCompanionException('Token incorrecto — revisa los ajustes de Terminal Local.');
     }
     if (res.statusCode < 200 || res.statusCode >= 300) {
       String message = 'Error ${res.statusCode}';

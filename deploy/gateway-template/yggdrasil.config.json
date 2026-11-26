@@ -8,6 +8,7 @@
     },
     "discoverNodeModules": false
   },
+  "defaultAgent": "assistant",
   "agents": [
     {
       "id": "assistant",

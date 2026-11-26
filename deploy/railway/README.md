@@ -24,6 +24,7 @@ En el servicio, pestaña **Variables**:
 |---|---|---|
 | `YGGDRASIL_API_KEY` | Clave del servidor. Sin ella no arranca. Mira [cómo generarla](../README.md#1-generar-la-clave) | Sí |
 | `ANTHROPIC_API_KEY`, `REPLICATE_API_TOKEN`, `FCM_SERVICE_ACCOUNT_JSON` | [Asistente en la nube](../README.md#asistente-en-la-nube-opcional) | No |
+| `ASSISTANT_PROVIDER`, `ASSISTANT_MODEL`, `ASSISTANT_BASE_URL` | Proveedor y modelo del asistente. Mira [Asistente en la nube](../README.md#asistente-en-la-nube-opcional) | No |
 
 `PORT` lo define Railway, y la imagen lo usa automáticamente: no lo definas a mano.
 

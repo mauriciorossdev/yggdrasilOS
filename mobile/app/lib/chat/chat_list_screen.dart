@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_strings.dart';
+import '../hub/connect_flow.dart';
+import '../services/connection_errors.dart';
 import '../services/gateway_scope.dart';
 import '../services/user_name_store.dart';
 import '../services/yggdrasil_client.dart';
@@ -14,7 +16,6 @@ import '../ui/ui.dart';
 import '../workflows_local/automations_screen.dart';
 import '../gateway/gateway_connection.dart';
 import '../gateway/gateway_settings.dart';
-import '../gateway/gateway_settings_screen.dart';
 import '../local_projects/local_companion_settings.dart';
 import '../local_projects/local_companion_settings_screen.dart';
 import '../local_projects/local_projects_list_screen.dart';
@@ -124,6 +125,9 @@ class _ChatListScreenState extends State<ChatListScreen> {
   ConnectionProfile? _activeProfile;
   bool _loading = true;
   String? _error;
+  // The chat list failed only because nothing answers (no computer/assistant
+  // connected yet): shown as "Conectar", not as a raw socket error.
+  bool _errorIsConnection = false;
   String _searchQuery = '';
   String? _userNamePref;
   bool _gatewayReady = false;
@@ -233,9 +237,15 @@ class _ChatListScreenState extends State<ChatListScreen> {
       setState(() {
         _activeProfile = profile;
         _error = '$e';
+        _errorIsConnection = isConnectionError(e);
         _loading = false;
       });
     }
+  }
+
+  Future<void> _connectComputer() async {
+    await ConnectFlow.open(context);
+    if (mounted) _load();
   }
 
   String _newSessionKey() => 'mobile-${DateTime.now().millisecondsSinceEpoch}';
@@ -300,11 +310,18 @@ class _ChatListScreenState extends State<ChatListScreen> {
 
   Future<void> _openProjects() async {
     if (!_gatewayReady) {
+      // Proyectos needs a computer: offer the same connect flow as everywhere
+      // else (QR first); the raw URL form stays under Ajustes → Gateway.
       ScaffoldMessenger.of(context).showSnackBar(SnackBar(
         content: Text(AppStrings.t('projects.gatewayDisabled')),
         action: SnackBarAction(
-          label: AppStrings.t('settings.gateway'),
-          onPressed: () => Navigator.push(context, MaterialPageRoute(builder: (_) => const GatewaySettingsScreen())).then((_) => _load()),
+          label: AppStrings.t('connect.action'),
+          onPressed: () async {
+            await ConnectFlow.open(context, forProjects: true);
+            if (!mounted) return;
+            await _load();
+            if (_gatewayReady && mounted) _openProjects();
+          },
         ),
       ));
       return;
@@ -631,6 +648,39 @@ class _ChatListScreenState extends State<ChatListScreen> {
     _load();
   }
 
+  Widget _buildNotConnected() {
+    // No profile = never connected (fresh install); otherwise a connection that
+    // dropped and is retrying on its own — don't call that "not connected yet".
+    final profile = _activeProfile;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(24, 24, 24, 0),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            profile == null ? AppStrings.t('connect.notConnectedTitle') : AppStrings.tp('connect.droppedTitle', {'name': profile.name}),
+            style: TextStyle(color: YggColors.text, fontSize: 15, fontWeight: FontWeight.w600),
+          ),
+          const SizedBox(height: 6),
+          Text(
+            AppStrings.t(profile == null ? 'connect.notConnectedBody' : 'connect.droppedBody'),
+            style: TextStyle(color: YggColors.textMuted, fontSize: 13.5),
+          ),
+          const SizedBox(height: 14),
+          YggNavButton(
+            icon: Icons.qr_code_scanner,
+            label: AppStrings.t(profile == null ? 'connect.cta' : 'connect.another'),
+            onTap: () {
+              Navigator.pop(context);
+              _connectComputer();
+            },
+          ),
+          TextButton(onPressed: _load, child: Text(AppStrings.t('common.retry'))),
+        ],
+      ),
+    );
+  }
+
   Widget _buildDrawer(BuildContext context) {
     final rows = _buildRows();
     final grouped = _groupedRows(rows);
@@ -727,10 +777,12 @@ class _ChatListScreenState extends State<ChatListScreen> {
               child: _loading
                   ? Center(child: CircularProgressIndicator(color: YggColors.accent))
                   : _error != null
-                      ? Padding(
-                          padding: const EdgeInsets.all(24),
-                          child: Text('${AppStrings.t('common.errorPrefix')}: $_error', style: TextStyle(color: YggColors.textMuted)),
-                        )
+                      ? _errorIsConnection
+                          ? _buildNotConnected()
+                          : Padding(
+                              padding: const EdgeInsets.all(24),
+                              child: Text('${AppStrings.t('common.errorPrefix')}: $_error', style: TextStyle(color: YggColors.textMuted)),
+                            )
                       : ListView(
                           padding: const EdgeInsets.fromLTRB(12, 6, 12, 20),
                           children: [

@@ -7,7 +7,9 @@ import '../assistant/assistant_tts.dart';
 import '../assistant/assistant_usage.dart';
 import '../assistant/assistant_usage_sheet.dart';
 import '../capabilities/capability_registry.dart';
+import '../hub/connect_flow.dart';
 import '../l10n/app_strings.dart';
+import '../services/gateway_scope.dart';
 import '../services/yggdrasil_client.dart';
 import '../theme/ygg_theme.dart';
 import '../ui/ui.dart';
@@ -158,6 +160,24 @@ class _ChatScreenState extends State<ChatScreen> {
     if (mounted) _tracker.markHistory(_items.map((e) => e.id));
   }
 
+  // Pushed with the client that existed at that moment; after connecting from
+  // here (or any profile switch) main.dart has a new one, published through
+  // GatewayScope — same as ChatListScreen (F-lista-cliente-viejo).
+  GatewayScope? _scope;
+  YggdrasilClient get _client => _scope?.client ?? widget.client;
+  Future<void> get _connected => _scope?.connected ?? widget.connected;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _scope = GatewayScope.maybeOf(context);
+  }
+
+  Future<void> _connectAndResend(_Item item) async {
+    final connected = await ConnectFlow.open(context);
+    if (connected && mounted && !_thinking) _resend(item);
+  }
+
   @override
   void dispose() {
     if (_isAssistantChat) AssistantTts.instance.stop();
@@ -188,8 +208,8 @@ class _ChatScreenState extends State<ChatScreen> {
     for (var attempt = 0; attempt < 4; attempt++) {
       if (!mounted) return;
       try {
-        await widget.connected;
-        await widget.client.whenOpen();
+        await _connected;
+        await _client.whenOpen();
         await _loadHistoryOnce();
         return;
       } catch (_) {
@@ -201,7 +221,7 @@ class _ChatScreenState extends State<ChatScreen> {
   }
 
   Future<void> _loadHistoryOnce() async {
-    final res = await widget.client.call('sessions.get', {'sessionKey': widget.sessionKey});
+    final res = await _client.call('sessions.get', {'sessionKey': widget.sessionKey});
     final session = res is Map ? res['session'] : null;
     // null = a new chat with no server-side history yet — nothing to show.
     if (session is! Map) return;
@@ -329,7 +349,7 @@ class _ChatScreenState extends State<ChatScreen> {
     _localTurn = false;
     final tts = AssistantTts.instance;
     if (_isAssistantChat && tts.enabled && text.isNotEmpty && mine) {
-      tts.speak(widget.client, text);
+      tts.speak(_client, text);
     }
     _scrollToBottom();
   }
@@ -452,7 +472,7 @@ class _ChatScreenState extends State<ChatScreen> {
       item.status = approved ? 'approved' : 'denied';
     });
     try {
-      await widget.client.call('tools.approve', {'requestId': requestId, 'approved': approved});
+      await _client.call('tools.approve', {'requestId': requestId, 'approved': approved});
     } catch (_) {
       // tool.approval.resolved will correct local state if it still arrives
     }
@@ -534,7 +554,7 @@ class _ChatScreenState extends State<ChatScreen> {
     if (requestId == null) return;
     setState(() => item.status = 'cancelling');
     try {
-      await widget.client.call('device.tool.invoke.cancel', {'requestId': requestId});
+      await _client.call('device.tool.invoke.cancel', {'requestId': requestId});
       if (!mounted) return;
       setState(() => _resolveItem(item, 'cancelled'));
       return;
@@ -573,8 +593,8 @@ class _ChatScreenState extends State<ChatScreen> {
   static const _sendOpenTimeout = Duration(seconds: 15);
 
   Future<void> _sendToGateway(String text) async {
-    await widget.client.whenOpen(timeout: _sendOpenTimeout);
-    await widget.client.sendMessage(text, sessionKey: widget.sessionKey, agentId: widget.agentId, model: _isAssistantChat ? AssistantUsage.instance.modelId : null);
+    await _client.whenOpen(timeout: _sendOpenTimeout);
+    await _client.sendMessage(text, sessionKey: widget.sessionKey, agentId: widget.agentId, model: _isAssistantChat ? AssistantUsage.instance.modelId : null);
   }
 
   /// Sends the user message [item] and, if that fails, marks it with a
@@ -582,9 +602,9 @@ class _ChatScreenState extends State<ChatScreen> {
   Future<void> _deliver(_Item item) async {
     var reachedGateway = false;
     try {
-      await widget.client.whenOpen(timeout: _sendOpenTimeout);
+      await _client.whenOpen(timeout: _sendOpenTimeout);
       reachedGateway = true;
-      await widget.client.sendMessage(item.text, sessionKey: widget.sessionKey, agentId: widget.agentId, model: _isAssistantChat ? AssistantUsage.instance.modelId : null);
+      await _client.sendMessage(item.text, sessionKey: widget.sessionKey, agentId: widget.agentId, model: _isAssistantChat ? AssistantUsage.instance.modelId : null);
     } catch (e) {
       if (!mounted) return;
       // A closed socket after the message went out may still produce a reply;
@@ -634,7 +654,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     if (source == null) return null;
     try {
-      return await pickAndUploadToAssistant(widget.client, source: source);
+      return await pickAndUploadToAssistant(_client, source: source);
     } catch (e) {
       if (mounted) {
         final msg = '$e'.replaceFirst('Exception: ', '');
@@ -691,7 +711,7 @@ class _ChatScreenState extends State<ChatScreen> {
     );
     if (newTitle == null || newTitle.trim().isEmpty) return;
     try {
-      await widget.client.call('sessions.patch', {'sessionKey': widget.sessionKey, 'title': newTitle.trim()});
+      await _client.call('sessions.patch', {'sessionKey': widget.sessionKey, 'title': newTitle.trim()});
       if (!mounted) return;
       setState(() => _title = newTitle.trim());
     } catch (_) {
@@ -780,7 +800,7 @@ class _ChatScreenState extends State<ChatScreen> {
     return AnimatedBuilder(
       animation: tts,
       builder: (context, _) => GestureDetector(
-        onTap: () => tts.speaking ? tts.stop() : tts.speak(widget.client, text),
+        onTap: () => tts.speaking ? tts.stop() : tts.speak(_client, text),
         child: Tooltip(
           message: AppStrings.t(tts.speaking ? 'tts.stop' : 'tts.speak'),
           child: Container(
@@ -807,7 +827,7 @@ class _ChatScreenState extends State<ChatScreen> {
                 ? '${formatTokens(usage.totalIn + usage.totalOut)} tok · ${formatUsd(usage.totalUsd)}'
                 : '${formatTokens(usage.totalIn + usage.totalOut)} tok';
         return GestureDetector(
-          onTap: () => showAssistantUsageSheet(context, client: widget.client),
+          onTap: () => showAssistantUsageSheet(context, client: _client),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 3),
             decoration: BoxDecoration(
@@ -857,6 +877,11 @@ class _ChatScreenState extends State<ChatScreen> {
             onPressed: _thinking ? null : () => _resend(item),
             child: Text(AppStrings.t('common.retry')),
           ),
+          if (!_client.isOpen)
+            TextButton(
+              onPressed: _thinking ? null : () => _connectAndResend(item),
+              child: Text(AppStrings.t('connect.action')),
+            ),
         ],
       ),
     );

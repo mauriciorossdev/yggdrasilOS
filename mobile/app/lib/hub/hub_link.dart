@@ -1,4 +1,7 @@
+import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+
+import '../l10n/app_strings.dart';
 
 import '../profiles/connection_profile.dart';
 import '../profiles/profile_store.dart';
@@ -9,7 +12,12 @@ class HubLink {
   final String url;
   final String key;
 
-  const HubLink(this.url, this.key);
+  /// The desktop itself answering on the same network (`local=1` in the QR,
+  /// Ajustes → Teléfono → "En la misma red, sin servidor"): a directory of
+  /// that one computer, not a gateway — never a chat profile.
+  final bool local;
+
+  const HubLink(this.url, this.key, {this.local = false});
 
   /// Parses the QR/deep-link payload; null for anything else, including a
   /// server this phone must not send its key to (see [isInsecurePayload]).
@@ -27,7 +35,11 @@ class HubLink {
       _ => null,
     };
     if (scheme == null || (scheme == 'http' && !isLocalHost(parsed.host))) return null;
-    return HubLink(parsed.replace(scheme: scheme).toString().replaceAll(RegExp(r'/+$'), ''), key);
+    return HubLink(
+      parsed.replace(scheme: scheme).toString().replaceAll(RegExp(r'/+$'), ''),
+      key,
+      local: uri.queryParameters['local'] == '1',
+    );
   }
 
   /// A complete link rejected only because it is unencrypted on a public host.
@@ -63,18 +75,20 @@ String _norm(String? url) => (url ?? '').trim().replaceAll(RegExp(r'/+$'), '').t
 class HubStore {
   static const _kUrl = 'yggdrasil_pref_hub_url';
   static const _kKey = 'yggdrasil_pref_hub_key';
+  static const _kLocal = 'yggdrasil_pref_hub_local';
 
   static Future<void> save(HubLink link) async {
     final p = await SharedPreferences.getInstance();
     await p.setString(_kUrl, link.url);
     await p.setString(_kKey, link.key);
+    await p.setBool(_kLocal, link.local);
   }
 
   static Future<HubLink?> saved() async {
     final p = await SharedPreferences.getInstance();
     final url = p.getString(_kUrl);
     final key = p.getString(_kKey);
-    return (url == null || key == null) ? null : HubLink(url, key);
+    return (url == null || key == null) ? null : HubLink(url, key, local: p.getBool(_kLocal) ?? false);
   }
 
   /// The saved hub or, failing that, the active profile when it points at an
@@ -93,8 +107,10 @@ class HubStore {
 
 /// Saves the hub and makes sure there is a profile for the link server
 /// itself (the assistant). Becomes the active profile only if nothing is active yet.
-Future<ConnectionProfile> applyHubLink(HubLink link) async {
+/// A local link (the desktop itself) gets no profile: it has no chat to offer.
+Future<ConnectionProfile?> applyHubLink(HubLink link) async {
   await HubStore.save(link);
+  if (link.local) return null;
   final profiles = await ProfileStore.list();
   ConnectionProfile? profile;
   for (final p in profiles) {
@@ -102,12 +118,53 @@ Future<ConnectionProfile> applyHubLink(HubLink link) async {
   }
   profile ??= ConnectionProfile(
     id: 'hub-${DateTime.now().millisecondsSinceEpoch}',
-    name: 'Asistente remoto',
+    name: AppStrings.t('connect.assistantName'),
     type: ConnectionProfileType.gateway,
     baseUrl: link.url,
   );
   profile.apiKey = link.key;
+  if (profile.name == legacyAssistantName) profile.name = AppStrings.t('connect.assistantName');
   await ProfileStore.upsert(profile);
   if (await ProfileStore.getActiveId() == null) await ProfileStore.setActiveId(profile.id);
   return profile;
+}
+
+/// What older builds named the link-server profile. Renamed only while it still
+/// has exactly this name: a name the user chose is never touched.
+const legacyAssistantName = 'Asistente remoto';
+
+/// The QR creates two profiles with different jobs (connection-ux-review-2026-11-25.md §D):
+/// the link server itself, an always-on assistant, and the computer project.
+enum ProfileRole { assistant, computer, other }
+
+ProfileRole profileRole(ConnectionProfile profile, HubLink? hub) {
+  if (profile.isFromHub) return ProfileRole.computer;
+  if (hub != null && !hub.local && profile.type == ConnectionProfileType.gateway && _norm(profile.baseUrl) == _norm(hub.url)) {
+    return ProfileRole.assistant;
+  }
+  return ProfileRole.other;
+}
+
+/// Subtitle that says what the profile is for, not where it lives.
+String profileSubtitle(ConnectionProfile profile, HubLink? hub) => switch (profileRole(profile, hub)) {
+      ProfileRole.assistant => AppStrings.t('connect.assistantSubtitle'),
+      _ => profile.subtitle,
+    };
+
+IconData profileIcon(ConnectionProfile profile, HubLink? hub) => switch (profileRole(profile, hub)) {
+      ProfileRole.assistant => Icons.auto_awesome_outlined,
+      ProfileRole.computer => Icons.computer_outlined,
+      ProfileRole.other => profile.type == ConnectionProfileType.gateway ? Icons.dns_outlined : Icons.cloud_outlined,
+    };
+
+/// One-time rename for phones that linked before profiles had role names.
+Future<void> renameLegacyAssistantProfile() async {
+  final hub = await HubStore.saved();
+  if (hub == null) return;
+  for (final p in await ProfileStore.list()) {
+    if (p.name == legacyAssistantName && profileRole(p, hub) == ProfileRole.assistant) {
+      p.name = AppStrings.t('connect.assistantName');
+      await ProfileStore.upsert(p);
+    }
+  }
 }

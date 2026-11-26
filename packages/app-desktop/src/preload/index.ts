@@ -866,8 +866,9 @@ const api = {
   },
   phoneLink: {
     get: (): Promise<PhoneLinkInfo> => ipcRenderer.invoke("phoneLink:get"),
-    save: (input: { hubUrl?: string; hubKey?: string; publish?: boolean }): Promise<PhoneLinkInfo> =>
+    save: (input: { hubUrl?: string; hubKey?: string; publish?: boolean; localLink?: boolean }): Promise<PhoneLinkInfo> =>
       ipcRenderer.invoke("phoneLink:save", input),
+    localQr: (): Promise<string> => ipcRenderer.invoke("phoneLink:localQr"),
     publishNow: (): Promise<PhoneLinkInfo> => ipcRenderer.invoke("phoneLink:publishNow"),
     qr: (): Promise<string> => ipcRenderer.invoke("phoneLink:qr"),
     checkUrl: (hubUrl: string): Promise<HubUrlCheck> => ipcRenderer.invoke("phoneLink:checkUrl", hubUrl),

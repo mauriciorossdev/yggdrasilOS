@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../connectors/google_connector_screen.dart';
+import '../hub/connect_flow.dart';
+import '../hub/hub_link.dart';
 import '../l10n/app_strings.dart';
 import '../workflows_local/automations_screen.dart';
 import '../profiles/connection_profile.dart';
@@ -53,6 +55,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   String _voiceLabel = '';
   int _enabledCapabilitiesCount = 0;
   bool _loading = true;
+  HubLink? _hub;
 
   @override
   void initState() {
@@ -67,8 +70,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final states = await CapabilitiesStore.allStates(names);
     final persona = await PersonaStore.resolve(null);
     final tts = await TtsSettingsStore.load();
+    final hub = await HubStore.saved();
     if (!mounted) return;
     setState(() {
+      _hub = hub;
       _voiceLabel = _voiceEngineLabel(tts);
       _activeProfile = profile;
       _userName = name;
@@ -182,6 +187,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
     await _load();
   }
 
+  Future<void> _connectComputer() async {
+    // ConnectFlow re-syncs main.dart's live connection itself.
+    await ConnectFlow.open(context);
+    await _load();
+  }
+
   Future<void> _openProfiles() async {
     await Navigator.push(context, MaterialPageRoute(builder: (_) => const ProfilesScreen()));
     await widget.onProfileChanged();
@@ -252,17 +263,30 @@ class _SettingsScreenState extends State<SettingsScreen> {
             children: [
               if (profile != null)
                 YggListRow(
-                  leading: Icon(profile.type == ConnectionProfileType.gateway ? Icons.dns_outlined : Icons.cloud_outlined),
+                  leading: Icon(profileIcon(profile, _hub)),
                   title: profile.name.isNotEmpty ? profile.name : AppStrings.t('profiles.unnamed'),
-                  subtitle: profile.subtitle,
+                  subtitle: profileSubtitle(profile, _hub),
                   onTap: _openActiveConnection,
                 )
-              else
+              else ...[
                 YggListRow(
-                  leading: const Icon(Icons.add_link),
-                  title: AppStrings.t('settings.connectToGateway'),
+                  leading: const Icon(Icons.qr_code_scanner),
+                  title: AppStrings.t('connect.cta'),
+                  subtitle: AppStrings.t('connect.ctaSubtitle'),
                   accent: true,
+                  onTap: _connectComputer,
+                ),
+                YggListRow(
+                  leading: const Icon(Icons.edit_outlined),
+                  title: AppStrings.t('connect.manual'),
                   onTap: _openActiveConnection,
+                ),
+              ],
+              if (profile != null)
+                YggListRow(
+                  leading: const Icon(Icons.qr_code_scanner),
+                  title: AppStrings.t('connect.another'),
+                  onTap: _connectComputer,
                 ),
             ],
           ),

@@ -8,6 +8,7 @@ import 'package:permission_handler/permission_handler.dart';
 
 import 'assistant/assistant_home_screen.dart';
 import 'bubble/bubble_assistant_main.dart';
+import 'hub/connect_flow.dart';
 import 'hub/desktop_discovery.dart';
 import 'hub/hub_link.dart';
 import 'services/push_service.dart';
@@ -92,6 +93,8 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
   @override
   void initState() {
     super.initState();
+    ConnectFlow.onProfileChanged = _onProfileChanged;
+    unawaited(renameLegacyAssistantProfile());
     _client = YggdrasilClient(baseUrl: defaultGatewayUrl, apiKey: '');
     _connectFuture = _syncToActiveProfile();
     LocaleStore.get().then((saved) {
@@ -122,7 +125,7 @@ class _YggdrasilAppState extends State<YggdrasilApp> {
     await _onProfileChanged();
     final context = _navigatorKey.currentContext;
     if (context != null && context.mounted) {
-      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.t('hub.linked'))));
+      ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.t(link.local ? 'hub.linkedLocal' : 'hub.linked'))));
     }
   }
 

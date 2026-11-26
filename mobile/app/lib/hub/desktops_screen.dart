@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_strings.dart';
+import '../profiles/profile_editor_screen.dart';
+import '../profiles/profile_store.dart';
 import 'desktop_discovery.dart';
 import 'hub_link.dart';
 import 'hub_scan_screen.dart';
@@ -9,7 +11,11 @@ import 'hub_scan_screen.dart';
 /// Tapping a project finds an address that answers (Tailscale, then LAN),
 /// creates the profile with the published key and makes it active.
 class DesktopsScreen extends StatefulWidget {
-  const DesktopsScreen({super.key});
+  /// Opened from Proyectos: set up Proyectos on the picked computer but leave
+  /// the chat where it is (e.g. on the always-on assistant).
+  final bool forProjects;
+
+  const DesktopsScreen({super.key, this.forProjects = false});
 
   @override
   State<DesktopsScreen> createState() => _DesktopsScreenState();
@@ -75,15 +81,48 @@ class _DesktopsScreenState extends State<DesktopsScreen> {
         ScaffoldMessenger.of(context).showSnackBar(SnackBar(content: Text(AppStrings.t('hub.unreachable'))));
         return;
       }
-      final profile = await saveDesktopProfile(desktop, project, url);
+      final profile = await saveDesktopProfile(desktop, project, url, switchChat: !widget.forProjects);
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
-        SnackBar(content: Text(AppStrings.tp('hub.connected', {'name': profile.name}))),
+        SnackBar(content: Text(AppStrings.tp(widget.forProjects ? 'hub.projectsReady' : 'hub.connected', {'name': profile.name}))),
       );
       Navigator.pop(context, true);
     } finally {
       if (mounted) setState(() => _connecting = null);
     }
+  }
+
+  /// How the phone can reach this project, in words ("En tu red Wi-Fi · Por
+  /// internet") — the raw IP:port meant nothing to anyone and changes on every
+  /// desktop restart anyway.
+  String _routesLabel(HubDesktop desktop, HubProject project) {
+    final labels = <String>{};
+    for (final url in desktop.candidateBaseUrls(project, hubUrl: _hub?.url)) {
+      if (isTunnelUrl(url)) {
+        labels.add(AppStrings.t('hub.viaTunnel'));
+      } else if (desktop.tailscale != null && Uri.tryParse(url)?.host == desktop.tailscale) {
+        labels.add(AppStrings.t('hub.viaTailscale'));
+      } else {
+        labels.add(AppStrings.t('hub.viaLan'));
+      }
+    }
+    return labels.join('  ·  ');
+  }
+
+  // "Avanzado": typing a gateway URL by hand, for setups without the QR.
+  Future<void> _manual() async {
+    final hadActive = await ProfileStore.getActiveId() != null;
+    if (!mounted) return;
+    final saved = await Navigator.push<bool>(context, MaterialPageRoute(builder: (_) => const ProfileEditorScreen()));
+    if (saved != true) return;
+    if (!hadActive) {
+      final profiles = await ProfileStore.list();
+      if (profiles.isNotEmpty) {
+        profiles.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+        await ProfileStore.setActiveId(profiles.first.id);
+      }
+    }
+    if (mounted) Navigator.pop(context, true);
   }
 
   String _ago(int ms) {
@@ -120,6 +159,8 @@ class _DesktopsScreenState extends State<DesktopsScreen> {
                           icon: const Icon(Icons.qr_code_scanner),
                           label: Text(AppStrings.t('hub.scanTitle')),
                         ),
+                        const SizedBox(height: 8),
+                        TextButton(onPressed: _manual, child: Text(AppStrings.t('connect.manual'))),
                       ],
                     ),
                   ),
@@ -150,12 +191,7 @@ class _DesktopsScreenState extends State<DesktopsScreen> {
                                     ListTile(
                                       contentPadding: const EdgeInsets.only(left: 72, right: 16),
                                       title: Text(p.name),
-                                      subtitle: Text(
-                                        d
-                                            .candidateBaseUrls(p, hubUrl: _hub?.url)
-                                            .map((u) => isTunnelUrl(u) ? AppStrings.t('hub.viaTunnel') : u.replaceFirst('http://', ''))
-                                            .join('  ·  '),
-                                      ),
+                                      subtitle: Text(_routesLabel(d, p)),
                                       trailing: _connecting == '${d.desktopId}/${p.id}'
                                           ? const SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))
                                           : const Icon(Icons.chevron_right),

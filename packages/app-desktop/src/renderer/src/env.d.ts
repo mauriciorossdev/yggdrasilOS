@@ -103,7 +103,8 @@ declare global {
       windowsBuildNumber: number | undefined;
       phoneLink: {
         get: () => Promise<PhoneLinkInfo>;
-        save: (input: { hubUrl?: string; hubKey?: string; publish?: boolean }) => Promise<PhoneLinkInfo>;
+        save: (input: { hubUrl?: string; hubKey?: string; publish?: boolean; localLink?: boolean }) => Promise<PhoneLinkInfo>;
+        localQr: () => Promise<string>;
         publishNow: () => Promise<PhoneLinkInfo>;
         qr: () => Promise<string>;
         checkUrl: (hubUrl: string) => Promise<HubUrlCheck>;

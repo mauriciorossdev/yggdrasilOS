@@ -86,7 +86,12 @@ export class ReplyDispatcher {
   }
 
   async dispatchToHarness(message: NormalizedInboundMessage): Promise<DispatchResult> {
-    const agent = resolveAgent(this.options.config, message.metadata?.agentId as string | undefined);
+    const requestedAgentId = message.metadata?.agentId as string | undefined;
+    const agent = resolveAgent(this.options.config, requestedAgentId);
+    if (requestedAgentId && agent.id !== requestedAgentId) {
+      // resolveAgent fell back (e.g. the phone's "assistant" on a desktop project): say so.
+      console.warn(`[turn] agent "${requestedAgentId}" not configured here; using "${agent.id}" for ${message.sessionKey}`);
+    }
     // A per-message provider/model override (e.g. a UI model picker) takes
     // precedence over the resolved agent's own defaults, without mutating
     // the agent's stored config — same metadata-passthrough pattern agentId

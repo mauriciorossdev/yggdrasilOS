@@ -1,5 +1,6 @@
-import { randomBytes } from "node:crypto";
-import WebSocket from "ws";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
+import type { AddressInfo } from "node:net";
+import WebSocket, { WebSocketServer } from "ws";
 
 /**
  * Phone link (notes/asistente-personal/enlace-escritorio.md, phase E2): the
@@ -20,6 +21,13 @@ export type PhoneLinkSettings = {
   desktopId?: string;
   /** Key this desktop's project gateways require from non-local clients. */
   gatewayKey?: string;
+  /**
+   * Same-network link without a link server: this desktop answers the phone's
+   * directory call itself on [localLinkPort] (connection-ux-review-2026-11-25.md §E).
+   */
+  localLink?: boolean;
+  /** Port of that listener, chosen once and kept so the QR stays valid. */
+  localLinkPort?: number;
 };
 
 export type OpenProject = { id: string; name: string; port: number };
@@ -411,4 +419,133 @@ export class HubPublisher {
       // quitting anyway
     }
   }
+}
+
+// ---------------------------------------------------------------------------
+// Local link (no link server): the desktop is its own one-desktop directory.
+// The phone's existing hub code (QR → desktops.list → project gateway with the
+// desktop key, re-asking when a port changes) works unchanged against it.
+// ---------------------------------------------------------------------------
+
+/** Local link only stands in for a missing link server: with a hub configured, its QR wins. */
+export function localLinkActive(s: PhoneLinkSettings): boolean {
+  return !!s.localLink && !s.hubUrl?.trim();
+}
+
+/** Project gateways require the desktop key from other devices while either link is on. */
+export function gatewaysNeedKey(s: PhoneLinkSettings): boolean {
+  return !!s.publish || localLinkActive(s);
+}
+
+/**
+ * Address the phone should use for the local link: the LAN address first (the
+ * feature is "same network", and a phone without Tailscale couldn't reach the
+ * other), Tailscale only when there is no LAN. Undefined when neither exists.
+ */
+export function localLinkUrl(addresses: { lan?: string; tailscale?: string }, port: number): string | undefined {
+  const host = addresses.lan ?? addresses.tailscale;
+  return host ? `http://${host}:${port}` : undefined;
+}
+
+/** Same shape as the hub QR plus `local=1`, so the phone doesn't make a chat profile of it. */
+export function localQrPayload(url: string, gatewayKey: string): string {
+  return `yggdrasil://hub?url=${encodeURIComponent(url)}&key=${encodeURIComponent(gatewayKey)}&local=1`;
+}
+
+function sameKey(provided: string, expected: string): boolean {
+  if (!expected) return false;
+  const a = createHash("sha256").update(provided).digest();
+  const b = createHash("sha256").update(expected).digest();
+  return timingSafeEqual(a, b);
+}
+
+export type LocalLinkDeps = {
+  /** The desktop key; null/empty refuses everyone. */
+  getKey: () => string | undefined;
+  /** This desktop as a desktops.list entry (projects with a keyed gateway only). */
+  getDesktop: () => Promise<Record<string, unknown>>;
+};
+
+type RpcRequest = { id?: unknown; method?: unknown; params?: unknown };
+
+/**
+ * One message on a local-link socket. Only `health`, `auth` and, after auth,
+ * `desktops.list` are answered — it is a directory, not a gateway.
+ */
+export async function handleLocalLinkMessage(
+  state: { authed: boolean },
+  raw: string,
+  deps: LocalLinkDeps,
+): Promise<Record<string, unknown> | undefined> {
+  let req: RpcRequest;
+  try {
+    req = JSON.parse(raw) as RpcRequest;
+  } catch {
+    return undefined;
+  }
+  const id = req.id ?? null;
+  const error = (code: string, message: string) => ({ id, error: { code, message } });
+  switch (req.method) {
+    case "health":
+      return { id, result: { ok: true, localLink: true } };
+    case "auth": {
+      const apiKey = String((req.params as { apiKey?: unknown } | undefined)?.apiKey ?? "");
+      state.authed = sameKey(apiKey, deps.getKey() ?? "");
+      return state.authed ? { id, result: { ok: true } } : error("UNAUTHORIZED", "Wrong key: scan the QR again.");
+    }
+    case "desktops.list":
+      if (!state.authed) return error("UNAUTHORIZED", "Authentication required.");
+      return { id, result: { desktops: [await deps.getDesktop()] } };
+    default:
+      return error("METHOD_NOT_FOUND", "This is a phone-link directory, not a gateway.");
+  }
+}
+
+export type LocalLinkServer = { port: number; close: () => Promise<void> };
+
+/**
+ * Listens for the phone on every interface. Tries [preferredPort] first and
+ * falls back to a free one if it's taken (the caller persists the result).
+ */
+export async function startLocalLinkServer(
+  deps: LocalLinkDeps,
+  options: { preferredPort?: number; host?: string; authTimeoutMs?: number; onError?: (err: Error) => void } = {},
+): Promise<LocalLinkServer> {
+  const listen = (port: number) =>
+    new Promise<WebSocketServer>((resolve, reject) => {
+      const wss = new WebSocketServer({ host: options.host ?? "0.0.0.0", port, maxPayload: 64 * 1024 });
+      wss.once("listening", () => resolve(wss));
+      wss.once("error", reject);
+    });
+  let wss: WebSocketServer;
+  try {
+    wss = await listen(options.preferredPort ?? 0);
+  } catch (err) {
+    if (!options.preferredPort) throw err;
+    wss = await listen(0);
+  }
+  // Anyone on the network can reach this port: nothing it sends may throw in
+  // the main process (an oversized frame makes ws emit "error" on the socket).
+  wss.on("error", (err) => options.onError?.(err));
+  wss.on("connection", (socket) => {
+    const state = { authed: false };
+    socket.on("error", () => socket.terminate());
+    const authTimer = setTimeout(() => {
+      if (!state.authed) socket.terminate();
+    }, options.authTimeoutMs ?? 10_000);
+    socket.on("close", () => clearTimeout(authTimer));
+    socket.on("message", (data) => {
+      void handleLocalLinkMessage(state, String(data), deps).then((reply) => {
+        if (reply && socket.readyState === WebSocket.OPEN) socket.send(JSON.stringify(reply));
+      });
+    });
+  });
+  return {
+    port: (wss.address() as AddressInfo).port,
+    close: () =>
+      new Promise<void>((resolve) => {
+        for (const client of wss.clients) client.terminate();
+        wss.close(() => resolve());
+      }),
+  };
 }
