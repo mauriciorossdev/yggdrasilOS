@@ -795,7 +795,7 @@ export async function startPaneControlServer(
       if (req.method === "POST" && parts.length === 2 && parts[0] === "plugins" && parts[1] === "scaffold") {
         const body = await readJsonBody(req);
         const rawViews = Array.isArray(body.views) ? body.views : undefined;
-        const views = rawViews?.filter((v): v is PluginView => v === "tab" || v === "panel");
+        const views = rawViews?.filter((v): v is PluginView => v === "tab" || v === "panel" || v === "widget");
         try {
           const record = await plugins.scaffold({
             id: typeof body.id === "string" ? body.id : "",

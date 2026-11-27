@@ -2,6 +2,8 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { useI18n } from "../../i18n/index.js";
 import type { SkillInfo } from "../../types.js";
 
+const FOLD_ABOVE = 8;
+
 /**
  * Registry of the skills Claude Code would see in this project: the
  * project's own (.claude/skills), the user's (~/.claude/skills) and those
@@ -117,14 +119,20 @@ export function SkillsSection() {
       {skills === null && !error && <p className="muted">{t("set.skills.reading")}</p>}
       {skills !== null && groups.length === 0 && <p className="muted">{t("set.skills.noMatch")}</p>}
 
+      {/* Long groups start folded; filtering opens whatever matched. */}
       {groups.map(([title, items]) => (
-        <div key={title} className="skill-group">
-          <h4>{title}</h4>
+        <details key={`${title}:${query ? "filtered" : "all"}`} className="skill-group" open={!!query || items.length <= FOLD_ABOVE}>
+          <summary>
+            <h4>{title}</h4>
+            <span className="muted">{items.length}</span>
+          </summary>
           {items.map((skill) => (
             <div key={skill.path} className="skill-row">
               <div className="skill-row-main">
                 <strong>{skill.name}</strong>
-                <span className="muted skill-row-desc">{skill.description || t("set.skills.noDesc")}</span>
+                <span className="muted skill-row-desc" title={skill.description}>
+                  {skill.description || t("set.skills.noDesc")}
+                </span>
                 <span className="muted skill-row-path" title={skill.path}>
                   {skill.path}
                 </span>
@@ -139,7 +147,7 @@ export function SkillsSection() {
               </div>
             </div>
           ))}
-        </div>
+        </details>
       ))}
     </section>
   );

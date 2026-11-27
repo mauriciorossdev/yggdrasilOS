@@ -1349,6 +1349,15 @@
   color: var(--ygg-danger-text);
 }
 
+.skill-row-desc.muted, .skill-row-path.muted {
+  padding: 0;
+}
+
+.settings-unsaved > span.muted {
+  padding: 0;
+  color: var(--ygg-text-muted);
+}
+
 @keyframes blink {
   50% {
     opacity: 0;

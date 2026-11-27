@@ -37,7 +37,7 @@ export const enSettingsA = {
   "set.mcp.entryNeedsCommandOrUrl": "\"{id}\": must have either \"command\" (stdio) or \"url\" (http)",
   "set.mcp.noEntries": "No server entries found",
   "set.mcp.title": "MCP Servers",
-  "set.mcp.intro": "Connect Model Context Protocol servers to give agents more tools. Servers connect in the background; save to apply changes, or use Reconnect on a single server.",
+  "set.mcp.intro": "Connect Model Context Protocol servers to give agents more tools. Servers connect in the background; changes apply when you leave the section, or use Reconnect on a single server.",
   "set.mcp.removeServer": "Remove server",
   "set.mcp.transport": "Transport",
   "set.mcp.stdioOption": "stdio (local command)",

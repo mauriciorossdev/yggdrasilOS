@@ -17,7 +17,7 @@ type Props = {
 const VIEW_LABELS: Record<PluginView, MessageKey> = {
   tab: "studio.create.viewTab",
   panel: "studio.create.viewPanel",
-  mobile: "studio.create.viewMobile",
+  mobile: "studio.create.viewMobile", widget: "studio.create.viewWidget",
 };
 
 const PERMISSION_LABELS: Record<string, MessageKey> = {

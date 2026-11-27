@@ -1,6 +1,6 @@
 // Settings sections, group B. Keys: set.<section>.<name>.
 export const enSettingsB = {
-  "set.whisper.title": "STT (speech-to-text) — for dictation in Documents",
+  "set.whisper.title": "Dictation (speech-to-text)",
   "set.whisper.source": "Source",
   "set.whisper.sourceLocal": "Local (Whisper)",
   "set.whisper.sourceCloud": "Cloud",
@@ -26,7 +26,7 @@ export const enSettingsB = {
   "set.whisper.downloading": "Downloading… {pct}%",
   "set.whisper.delete": "Delete",
   "set.whisper.download": "Download",
-  "set.voice.title": "Voice",
+  "set.voice.title": "Read aloud",
   "set.voice.intro": "Text-to-speech on this machine (e.g. \"speak the last reply\" in a terminal, and what the phone uses when it connects to this gateway).",
   "set.voice.loading": "Loading…",
   "set.voice.enable": "Enable text-to-speech",

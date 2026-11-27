@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { XMarkIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import type {
@@ -15,6 +15,19 @@ import { GeneralSection } from "./sections/GeneralSection.js";
 import { AgentSection } from "@yggdrasil/ui-kit";
 import { ProvidersSection } from "@yggdrasil/ui-kit";
 import { buildProvidersPatch, splitProvidersPatch } from "@yggdrasil/ui-kit";
+import {
+  ALL_PARTS,
+  changedParts,
+  DEFERRED_PARTS,
+  incompleteMcpServers,
+  mcpPart,
+  NO_PROVIDER_EDITS,
+  settingsParts,
+  TYPING_PARTS,
+  type SettingsForm,
+  type SettingsPart,
+  type SettingsParts,
+} from "./autosave.js";
 import { HarnessSection } from "./sections/HarnessSection.js";
 import { CliAgentsSection } from "./sections/CliAgentsSection.js";
 import { ChannelsSection } from "./sections/ChannelsSection.js";
@@ -46,10 +59,9 @@ export type SettingsSection =
   | "agent"
   | "providers"
   | "mcp"
-  | "harness"
   | "cliAgents"
   | "channels"
-  | "stt"
+  | "voice"
   | "devices"
   | "phone"
   | "connectors"
@@ -57,32 +69,21 @@ export type SettingsSection =
   | "skills"
   | "sync"
   | "automation"
-  | "voice"
   | "transfer";
 
-const SECTIONS: Array<{ id: SettingsSection; label: MessageKey }> = [
-  { id: "general", label: "set.nav.general" },
-  { id: "appearance", label: "set.nav.appearance" },
-  { id: "editor", label: "set.nav.editor" },
-  { id: "workspace", label: "set.nav.workspace" },
-  { id: "agent", label: "set.nav.agent" },
-  { id: "providers", label: "set.nav.providers" },
-  { id: "mcp", label: "set.nav.mcp" },
-  { id: "harness", label: "set.nav.harness" },
-  { id: "cliAgents", label: "set.nav.cliAgents" },
-  { id: "channels", label: "set.nav.channels" },
-  { id: "stt", label: "set.nav.stt" },
-  { id: "devices", label: "set.nav.devices" },
-  { id: "phone", label: "set.nav.phone" },
-  { id: "connectors", label: "set.nav.connectors" },
-  { id: "ide", label: "set.nav.ide" },
-  { id: "onboarding", label: "set.nav.onboarding" },
-  { id: "skills", label: "set.nav.skills" },
-  { id: "sync", label: "set.nav.sync" },
-  { id: "automation", label: "set.nav.automation" },
-  { id: "voice", label: "set.nav.voice" },
-  { id: "transfer", label: "set.nav.transfer" },
+type Entry = { id: SettingsSection; label: MessageKey };
+const entry = (id: SettingsSection): Entry => ({ id, label: `set.nav.${id}` as MessageKey });
+
+const GROUPS: Array<{ label: MessageKey; sections: Entry[] }> = [
+  { label: "set.group.app", sections: (["general", "appearance", "editor", "ide"] as const).map(entry) },
+  { label: "set.group.ai", sections: (["providers", "agent", "cliAgents", "mcp", "skills", "voice"] as const).map(entry) },
+  { label: "set.group.devices", sections: (["phone", "devices", "channels"] as const).map(entry) },
+  { label: "set.group.project", sections: (["workspace", "sync", "connectors", "automation"] as const).map(entry) },
+  { label: "set.group.system", sections: (["onboarding", "transfer"] as const).map(entry) },
 ];
+
+/** How long typing must pause before a field is written. */
+const SAVE_DELAY_MS = 700;
 
 type Props = {
   onClose: () => void;
@@ -96,11 +97,15 @@ export function SettingsView({ onClose, initialSection }: Props) {
   const { call } = useGateway();
   const [config, setConfig] = useState<ConfigShape | null>(null);
   const [harnesses, setHarnesses] = useState<HarnessInfo[]>([]);
-  const [providers, setProviders] = useState<ProviderInfo[]>([]);
+  // null until the Providers view first asks: listing models reaches each provider's host,
+  // and an unreachable one (e.g. Ollama) would hold back the whole modal.
+  const [providers, setProviders] = useState<ProviderInfo[] | null>(null);
+  const [providersError, setProvidersError] = useState<string | null>(null);
+  const providersRequested = useRef(false);
   const [mcpStatus, setMcpStatus] = useState<McpServerStatus[]>([]);
   const [section, setSection] = useState<SettingsSection>(initialSection ?? "general");
-  const [saved, setSaved] = useState(false);
-  const [savedRequiresRestart, setSavedRequiresRestart] = useState(false);
+  const [status, setStatus] = useState<"idle" | "saving" | "saved">("idle");
+  const [requiresRestart, setRequiresRestart] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [apiKeyEdits, setApiKeyEdits] = useState<Record<string, string>>({});
   // Providers as last loaded/saved — the save sends only what changed against this, since
@@ -109,10 +114,13 @@ export function SettingsView({ onClose, initialSection }: Props) {
   const [providerSources, setProviderSources] = useState<ProviderSources>({});
   const [providerProjectOnly, setProviderProjectOnly] = useState<Record<string, boolean>>({});
   const [mcpSecretEdits, setMcpSecretEdits] = useState<Record<string, string>>({});
+  // Each part as last loaded or written; null = take the next render as that.
+  const [savedParts, setSavedParts] = useState<SettingsParts | null>(null);
+  // Set when closing failed to write something: ask before losing it.
+  const [confirmClose, setConfirmClose] = useState(false);
   // Whisper/STT settings don't go through the gateway's config.patch — they're
   // local-only (Electron IPC, desktop-settings.json), same pattern app-avatar
-  // uses. Loaded/saved alongside config here so there's still one Settings
-  // modal and one Save button.
+  // uses. Loaded and saved alongside config here.
   const [whisperSettings, setWhisperSettings] = useState<WhisperSettings | null>(null);
   const [sttSettings, setSttSettings] = useState<SttSettings | null>(null);
   // Local-only (Electron IPC, desktop-settings.json), same non-gateway
@@ -121,34 +129,193 @@ export function SettingsView({ onClose, initialSection }: Props) {
   // Same local-only pattern as ideSettings above — see main/syncSettings.ts.
   const [syncSettings, setSyncSettings] = useState<SyncSettings | null>(null);
 
-  useEffect(() => {
-    (async () => {
-      try {
-        const [cfg, h, p, m, whisper, stt, ide, sync] = await Promise.all([
-          call<ConfigGetResult>("config.get"),
-          call<{ harnesses: HarnessInfo[] }>("harnesses.list"),
-          call<{ providers: ProviderInfo[] }>("providers.list"),
-          call<{ servers: McpServerStatus[] }>("mcp.status").catch(() => ({ servers: [] })),
-          window.yggdrasil.whisper.getSettings(),
-          window.yggdrasil.stt.getSettings(),
-          window.yggdrasil.ide.getSettings(),
-          window.yggdrasil.sync.getSettings(),
-        ]);
-        setConfig(cfg.config);
-        setLoadedProviders(cfg.config.providers ?? {});
-        setProviderSources(cfg.providerSources ?? {});
-        setHarnesses(h.harnesses ?? []);
-        setProviders(p.providers ?? []);
-        setMcpStatus(m.servers ?? []);
-        setWhisperSettings(whisper);
-        setSttSettings(stt);
-        setIdeSettings(ide);
-        setSyncSettings(sync);
-      } catch (err) {
-        setError(err instanceof Error ? err.message : String(err));
-      }
-    })();
+  const load = useCallback(async () => {
+    try {
+      const [cfg, h, m, whisper, stt, ide, sync] = await Promise.all([
+        call<ConfigGetResult>("config.get"),
+        call<{ harnesses: HarnessInfo[] }>("harnesses.list"),
+        call<{ servers: McpServerStatus[] }>("mcp.status").catch(() => ({ servers: [] })),
+        window.yggdrasil.whisper.getSettings(),
+        window.yggdrasil.stt.getSettings(),
+        window.yggdrasil.ide.getSettings(),
+        window.yggdrasil.sync.getSettings(),
+      ]);
+      setConfig(cfg.config);
+      setLoadedProviders(cfg.config.providers ?? {});
+      setProviderSources(cfg.providerSources ?? {});
+      setHarnesses(h.harnesses ?? []);
+      setMcpStatus(m.servers ?? []);
+      setWhisperSettings(whisper);
+      setSttSettings(stt);
+      setIdeSettings(ide);
+      setSyncSettings(sync);
+    } catch (err) {
+      setError(err instanceof Error ? err.message : String(err));
+    }
   }, [call]);
+
+  useEffect(() => {
+    void load();
+  }, [load]);
+
+  useEffect(() => {
+    if (section !== "providers" || providers !== null || providersRequested.current) return;
+    providersRequested.current = true;
+    setProvidersError(null);
+    call<{ providers: ProviderInfo[] }>("providers.list")
+      .then((p) => setProviders(p.providers ?? []))
+      .catch((err) => setProvidersError(err instanceof Error ? err.message : String(err)))
+      // Cleared so that coming back to the view retries after a failure.
+      .finally(() => (providersRequested.current = false));
+  }, [section, providers, call]);
+
+  // An import writes to disk behind the form: read it all again, or the next save would put the old values back.
+  const reloadAfterImport = async () => {
+    setError(null);
+    await load();
+    // Fetched again when the Providers view is next opened.
+    setProviders(null);
+    setApiKeyEdits({});
+    setMcpSecretEdits({});
+    setProviderProjectOnly({});
+    setSavedParts(null);
+  };
+
+  const form: SettingsForm = {
+    config,
+    loadedProviders,
+    apiKeyEdits,
+    mcpSecretEdits,
+    whisper: whisperSettings,
+    stt: sttSettings,
+    ide: ideSettings,
+    sync: syncSettings,
+  };
+  const parts = settingsParts(form);
+  const loaded = !!(config && whisperSettings && sttSettings && ideSettings && syncSettings);
+  useEffect(() => {
+    if (loaded && savedParts === null) setSavedParts(parts);
+  }, [loaded, savedParts, parts]);
+
+  // Read by the queued save, which may run after later renders.
+  const formRef = useRef(form);
+  formRef.current = form;
+  const projectOnlyRef = useRef(providerProjectOnly);
+  projectOnlyRef.current = providerProjectOnly;
+  const savedRef = useRef(savedParts);
+  savedRef.current = savedParts;
+  const queue = useRef<Promise<boolean>>(Promise.resolve(true));
+
+  const markSaved = (part: SettingsPart, value: string) => {
+    if (savedRef.current) savedRef.current = { ...savedRef.current, [part]: value };
+    setSavedParts((prev) => (prev ? { ...prev, [part]: value } : prev));
+  };
+
+  const writePart = async (part: SettingsPart): Promise<void> => {
+    const f = formRef.current;
+    const value = settingsParts(f)[part];
+    const cfg = f.config!;
+    const patched = (res: ConfigPatchResult) => {
+      if (res.requiresRestart) setRequiresRestart(true);
+    };
+    switch (part) {
+      case "general":
+        patched(await call<ConfigPatchResult>("config.patch", { language: cfg.language, harness: cfg.harness, channels: cfg.channels }));
+        break;
+      case "whisper":
+        await window.yggdrasil.whisper.saveSettings(f.whisper!);
+        break;
+      case "stt":
+        await window.yggdrasil.stt.saveSettings(f.stt!);
+        break;
+      case "ide":
+        await window.yggdrasil.ide.saveSettings(f.ide!);
+        break;
+      case "sync":
+        await window.yggdrasil.sync.saveSettings(f.sync!);
+        break;
+      case "providers": {
+        const edits = splitProvidersPatch(buildProvidersPatch(cfg, f.loadedProviders, f.apiKeyEdits), projectOnlyRef.current);
+        if (Object.keys(edits.global).length > 0) patched(await call<ConfigPatchResult>("config.patch", { providers: edits.global }));
+        if (Object.keys(edits.project).length > 0) {
+          patched(await call<ConfigPatchResult>("config.patch", { providersScope: "project", providers: edits.project }));
+        }
+        const fresh = await call<ConfigGetResult>("config.get");
+        setConfig((prev) => (prev ? { ...prev, providers: fresh.config.providers } : prev));
+        setLoadedProviders(fresh.config.providers ?? {});
+        setProviderSources(fresh.providerSources ?? {});
+        // Keys typed while this was being written stay pending.
+        setApiKeyEdits((now) => Object.fromEntries(Object.entries(now).filter(([id, key]) => f.apiKeyEdits[id] !== key)));
+        markSaved(part, NO_PROVIDER_EDITS);
+        const list = await call<{ providers: ProviderInfo[] }>("providers.list");
+        setProviders(list.providers ?? []);
+        return;
+      }
+      case "mcp": {
+        const incomplete = incompleteMcpServers(cfg.mcpServers);
+        if (incomplete.length > 0) throw new Error(t("set.mcp.incomplete", { ids: incomplete.join(", ") }));
+        patched(await call<ConfigPatchResult>("config.patch", { mcpServers: buildMcpServersPatch(cfg, f.mcpSecretEdits) }));
+        const fresh = (await call<ConfigGetResult>("config.get")).config.mcpServers;
+        // Take the stored form (secrets masked) unless the person kept editing.
+        const untouched = JSON.stringify(formRef.current.config?.mcpServers) === JSON.stringify(cfg.mcpServers);
+        if (untouched) setConfig((prev) => (prev ? { ...prev, mcpServers: fresh } : prev));
+        setMcpSecretEdits((now) => Object.fromEntries(Object.entries(now).filter(([id, raw]) => f.mcpSecretEdits[id] !== raw)));
+        markSaved(part, mcpPart(untouched ? fresh : cfg.mcpServers, {}));
+        // Apply live (connect new or changed, drop removed), no restart.
+        await call("mcp.reload").catch(() => undefined);
+        const m = await call<{ servers: McpServerStatus[] }>("mcp.status").catch(() => ({ servers: [] }));
+        setMcpStatus(m.servers ?? []);
+        return;
+      }
+    }
+    markSaved(part, value);
+  };
+
+  /** Writes whatever changed among `among`, one save at a time. False if something failed. */
+  const flush = (among: SettingsPart[]): Promise<boolean> => {
+    const run = async (): Promise<boolean> => {
+      const saved = savedRef.current;
+      if (!saved || !formRef.current.config) return true;
+      const pending = changedParts(saved, settingsParts(formRef.current), among);
+      if (pending.length === 0) return true;
+      setStatus("saving");
+      setError(null);
+      // A part that fails must not keep the others from being written.
+      const failures: string[] = [];
+      for (const part of pending) {
+        try {
+          await writePart(part);
+        } catch (err) {
+          failures.push(err instanceof Error ? err.message : String(err));
+        }
+      }
+      setStatus(failures.length > 0 ? "idle" : "saved");
+      if (failures.length > 0) setError(failures.join(" · "));
+      return failures.length === 0;
+    };
+    queue.current = queue.current.then(run, run);
+    return queue.current;
+  };
+
+  const typingPending = savedParts ? changedParts(savedParts, parts, TYPING_PARTS).map((p) => parts[p]).join("\n") : "";
+  useEffect(() => {
+    if (!typingPending) return;
+    const timer = setTimeout(() => void flush(TYPING_PARTS), SAVE_DELAY_MS);
+    return () => clearTimeout(timer);
+    // Restarted by each further change; `flush` reads the latest form itself.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [typingPending]);
+  const deferredPending = !!savedParts && changedParts(savedParts, parts, DEFERRED_PARTS).length > 0;
+
+  const goTo = (next: SettingsSection) => {
+    if (next === section) return;
+    setSection(next);
+    void flush(DEFERRED_PARTS);
+  };
+
+  const requestClose = () => {
+    void flush(ALL_PARTS).then((ok) => (ok ? onClose() : setConfirmClose(true)));
+  };
 
   // Servers connect in the background, so keep refreshing while any is still
   // coming up instead of showing a stale "connecting".
@@ -164,6 +331,8 @@ export function SettingsView({ onClose, initialSection }: Props) {
   }, [anyConnecting, call]);
 
   const mcpAction = async (method: "mcp.reconnect" | "mcp.disconnect", serverId: string) => {
+    // Reconnect what is on screen, not the last written version.
+    if (!(await flush(["mcp"]))) return;
     setError(null);
     // Mark it connecting right away; the reconnect call itself only returns once it settles.
     if (method === "mcp.reconnect") {
@@ -193,81 +362,44 @@ export function SettingsView({ onClose, initialSection }: Props) {
     return call<McpTestResult>("mcp.test", { serverId, server });
   };
 
-  const save = async () => {
-    setSaved(false);
-    setError(null);
-    try {
-      const providerEdits = splitProvidersPatch(buildProvidersPatch(config, loadedProviders, apiKeyEdits), providerProjectOnly);
-      const result = await call<ConfigPatchResult>("config.patch", {
-        agents: config.agents,
-        defaultAgent: config.defaultAgent,
-        language: config.language,
-        harness: config.harness,
-        channels: config.channels,
-        ...(Object.keys(providerEdits.global).length > 0 ? { providers: providerEdits.global } : {}),
-        mcpServers: buildMcpServersPatch(config, mcpSecretEdits),
-      });
-      if (Object.keys(providerEdits.project).length > 0) {
-        await call("config.patch", { providersScope: "project", providers: providerEdits.project });
-      }
-      const fresh = await call<ConfigGetResult>("config.get");
-      setConfig((prev) => (prev ? { ...prev, providers: fresh.config.providers } : prev));
-      setLoadedProviders(fresh.config.providers ?? {});
-      setProviderSources(fresh.providerSources ?? {});
-      if (whisperSettings) await window.yggdrasil.whisper.saveSettings(whisperSettings);
-      if (sttSettings) await window.yggdrasil.stt.saveSettings(sttSettings);
-      if (ideSettings) await window.yggdrasil.ide.saveSettings(ideSettings);
-      if (syncSettings) await window.yggdrasil.sync.saveSettings(syncSettings);
-      setApiKeyEdits({});
-      setMcpSecretEdits({});
-      setSavedRequiresRestart(result.requiresRestart);
-      setSaved(true);
-      // Apply MCP changes live (connect new/changed, drop removed) — no restart.
-      await call("mcp.reload").catch(() => undefined);
-      const [p, m] = await Promise.all([
-        call<{ providers: ProviderInfo[] }>("providers.list"),
-        call<{ servers: McpServerStatus[] }>("mcp.status").catch(() => ({ servers: [] })),
-      ]);
-      setProviders(p.providers ?? []);
-      setMcpStatus(m.servers ?? []);
-    } catch (err) {
-      setError(err instanceof Error ? err.message : String(err));
-    }
-  };
-
   return (
-    <div className="modal-overlay" onClick={onClose}>
+    <div className="modal-overlay" onClick={requestClose}>
       <div className="modal settings-view" onClick={(e) => e.stopPropagation()}>
         <div className="modal-header">
           <h2>{t("set.title")}</h2>
-          <button type="button" className="icon-btn" onClick={onClose}>
+          <button type="button" className="icon-btn" onClick={requestClose}>
             <XMarkIcon className="hero-icon" />
           </button>
         </div>
-        <p className="muted settings-gateway-url">Gateway: {gatewayLanUrl}</p>
-
-        {saved && (
-          <p className="banner">
-            {savedRequiresRestart
-              ? t("set.savedRestart")
-              : t("set.saved")}
-          </p>
-        )}
+        {requiresRestart && <p className="banner">{t("set.savedRestart")}</p>}
         {error && <p className="error">{error}</p>}
 
         <div className="settings-body">
           <nav className="settings-nav">
-            {SECTIONS.map((s) => (
-              <button
-                key={s.id}
-                type="button"
-                className={`settings-nav-item ${section === s.id ? "active" : ""}`}
-                onClick={() => setSection(s.id)}
-              >
-                {t(s.label)}
-              </button>
+            {GROUPS.map((group) => (
+              <div key={group.label} className="settings-nav-group" role="group" aria-label={t(group.label)}>
+                <span className="settings-nav-heading" aria-hidden="true">
+                  {t(group.label)}
+                </span>
+                {group.sections.map((s) => (
+                  <button
+                    key={s.id}
+                    type="button"
+                    className={`settings-nav-item ${section === s.id ? "active" : ""}`}
+                    aria-current={section === s.id ? "page" : undefined}
+                    onClick={() => goTo(s.id)}
+                  >
+                    {t(s.label)}
+                  </button>
+                ))}
+              </div>
             ))}
-            <span className="settings-nav-version">Yggdrasil v{__APP_VERSION__}</span>
+            <span className="settings-nav-version">
+              Yggdrasil v{__APP_VERSION__}
+              <span className="settings-gateway-url" title={gatewayLanUrl ?? undefined}>
+                Gateway: {gatewayLanUrl}
+              </span>
+            </span>
           </nav>
 
           <div className="settings-panel">
@@ -275,8 +407,11 @@ export function SettingsView({ onClose, initialSection }: Props) {
             {section === "appearance" && <AppearanceSection />}
             {section === "editor" && <EditorSection />}
             {section === "workspace" && <WorkspaceSection />}
-            {section === "agent" && <AgentSection config={config} setConfig={setConfig} providers={providers} onGoToProviders={() => setSection("providers")} />}
-            {section === "providers" && (
+            {section === "agent" && <AgentSection config={config} setConfig={setConfig} providers={providers ?? []} onGoToProviders={() => goTo("providers")} />}
+            {section === "providers" &&
+              !providers &&
+              (providersError ? <p className="error">{providersError}</p> : <p className="muted">{t("ui.loading")}</p>)}
+            {section === "providers" && providers && (
               <ProvidersSection
                 config={config}
                 setConfig={setConfig}
@@ -304,18 +439,23 @@ export function SettingsView({ onClose, initialSection }: Props) {
                 setMcpSecretEdits={setMcpSecretEdits}
               />
             )}
-            {section === "harness" && (
-              <HarnessSection config={config} setConfig={setConfig} harnesses={harnesses} />
+            {section === "cliAgents" && (
+              <>
+                <CliAgentsSection />
+                <HarnessSection config={config} setConfig={setConfig} harnesses={harnesses} />
+              </>
             )}
-            {section === "cliAgents" && <CliAgentsSection />}
             {section === "channels" && <ChannelsSection config={config} setConfig={setConfig} />}
-            {section === "stt" && whisperSettings && sttSettings && (
-              <WhisperSection
-                settings={whisperSettings}
-                setSettings={setWhisperSettings}
-                sttSettings={sttSettings}
-                setSttSettings={setSttSettings}
-              />
+            {section === "voice" && whisperSettings && sttSettings && (
+              <>
+                <WhisperSection
+                  settings={whisperSettings}
+                  setSettings={setWhisperSettings}
+                  sttSettings={sttSettings}
+                  setSttSettings={setSttSettings}
+                />
+                <VoiceSection />
+              </>
             )}
             {section === "devices" && <PairedDevicesSection />}
             {section === "phone" && <PhoneLinkSection />}
@@ -328,19 +468,38 @@ export function SettingsView({ onClose, initialSection }: Props) {
             )}
             {section === "skills" && <SkillsSection />}
             {section === "automation" && <AutomationSection />}
-            {section === "voice" && <VoiceSection />}
-            {section === "transfer" && <TransferSection />}
+            {section === "transfer" && <TransferSection beforeImport={() => flush(ALL_PARTS)} onImported={reloadAfterImport} />}
           </div>
         </div>
 
-        <div className="agent-form-actions">
-          <button type="button" onClick={onClose}>
-            {t("ui.close")}
-          </button>
-          <button type="button" onClick={() => void save()}>
-            {t("set.save")}
-          </button>
-        </div>
+        {confirmClose ? (
+          <div className="agent-form-actions settings-unsaved" role="alertdialog" aria-label={t("set.unsaved.message")}>
+            <span>{t("set.unsaved.message")}</span>
+            <button type="button" autoFocus onClick={() => setConfirmClose(false)}>
+              {t("set.unsaved.keep")}
+            </button>
+            <button type="button" onClick={onClose}>
+              {t("set.unsaved.discard")}
+            </button>
+          </div>
+        ) : (
+          <div className="agent-form-actions settings-unsaved">
+            <span className="muted" role="status">
+              {section === "phone"
+                ? t("set.autosave.phone")
+                : status === "saving"
+                ? t("set.autosave.saving")
+                : deferredPending
+                  ? t("set.autosave.onLeave")
+                  : status === "saved"
+                    ? t("set.autosave.saved")
+                    : t("set.autosave.idle")}
+            </span>
+            <button type="button" onClick={requestClose}>
+              {t("ui.close")}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   );

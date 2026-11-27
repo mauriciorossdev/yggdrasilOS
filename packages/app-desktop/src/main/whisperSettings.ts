@@ -77,7 +77,11 @@ export async function loadSttSettings(userDataDir: string): Promise<SttSettings>
   const defaults = defaultSttSettings();
   const raw = await readSettingsFile(userDataDir);
   const stored = (raw as { stt?: Partial<SttSettings> }).stt;
-  return { ...defaults, ...stored, cloud: { ...defaults.cloud, ...(stored?.cloud ?? {}) } };
+  // A provider no longer offered (an early test setup) is dropped whole: its URL and key belong
+  // to that service, and the form would show it under another provider's name.
+  const provider = stored?.cloud?.provider;
+  const known = provider === undefined || Object.hasOwn(STT_CLOUD_PRESETS, provider);
+  return { ...defaults, ...stored, cloud: { ...defaults.cloud, ...(known ? stored?.cloud : {}) } };
 }
 
 export async function saveSttSettings(userDataDir: string, settings: SttSettings): Promise<void> {

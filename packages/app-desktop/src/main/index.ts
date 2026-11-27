@@ -135,6 +135,7 @@ import {
   onTurnEnd as queueTurnEnd,
 } from "./paneQueueHost.js";
 import { installLspIpc } from "./lsp/ipc.js";
+import { installDashboardIpc } from "./dashboardIpc.js";
 import { loadSyncSettings, saveSyncSettings, type SyncSettings } from "./syncSettings.js";
 import { resourceKeyFor, type ResourceRef } from "./sharedResources.js";
 import {
@@ -238,7 +239,7 @@ try {
 }
 
 // Also loads the monorepo root .env (ANTHROPIC_API_KEY for the `claude` CLI
-// terminals spawn, GROQ_API_KEY for the cloud STT preset, etc). Dev-checkout
+// terminals spawn, etc). Dev-checkout
 // only — app.getAppPath() points inside the packaged app.asar/Resources in a
 // build, where this path never exists. loadEnvFile never overrides a key
 // already set above or in the real environment.
@@ -1982,6 +1983,7 @@ function registerIpc(): void {
   ipcMain.handle("theme:set", (_event, settings: ThemeSettings) => applyTheme(settings));
   ipcMain.handle("theme:reset", () => applyTheme(defaultThemeSettings()));
 
+  installDashboardIpc();
   lspIpc = installLspIpc({
     userDataDir: app.getPath("userData"),
     projectForSender: (sender) => {

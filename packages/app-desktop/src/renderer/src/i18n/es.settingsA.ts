@@ -38,7 +38,7 @@ export const esSettingsA: Record<keyof typeof enSettingsA, string> = {
   "set.mcp.entryNeedsCommandOrUrl": "\"{id}\": debe tener \"command\" (stdio) o \"url\" (http)",
   "set.mcp.noEntries": "No se encontraron entradas de servidores",
   "set.mcp.title": "Servidores MCP",
-  "set.mcp.intro": "Conecta servidores de Model Context Protocol para dar más herramientas a los agentes. Los servidores se conectan en segundo plano; guarda para aplicar los cambios o usa Reconectar en un solo servidor.",
+  "set.mcp.intro": "Conecta servidores de Model Context Protocol para dar más herramientas a los agentes. Los servidores se conectan en segundo plano; los cambios se aplican al salir de la sección o usa Reconectar en un solo servidor.",
   "set.mcp.removeServer": "Quitar servidor",
   "set.mcp.transport": "Transporte",
   "set.mcp.stdioOption": "stdio (comando local)",

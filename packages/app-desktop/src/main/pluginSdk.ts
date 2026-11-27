@@ -17,7 +17,7 @@
 export const PLUGIN_SDK_SOURCE = `(function () {
   if (window.ygg) return;
   var pending = new Map();
-  var listeners = { theme: new Set(), visibility: new Set(), "fs.changed": new Set(), "storage.changed": new Set() };
+  var listeners = { theme: new Set(), visibility: new Set(), "fs.changed": new Set(), "storage.changed": new Set(), refresh: new Set() };
   var readyResolve;
   var readyPromise = new Promise(function (resolve) { readyResolve = resolve; });
   // ygg.tools.register — handlers for calls the HOST initiates (ygg:toolcall),
@@ -40,7 +40,12 @@ export const PLUGIN_SDK_SOURCE = `(function () {
       if (!p) return;
       pending.delete(msg.id);
       if (msg.ok) p.resolve(msg.result);
-      else p.reject(new Error(msg.error || "plugin host error"));
+      else {
+        var error = new Error(msg.error || "plugin host error");
+        var code = /^([a-z]+(?:-[a-z]+)+|timeout|network): /.exec(error.message);
+        if (code) error.code = code[1];
+        p.reject(error);
+      }
     } else if (msg.type === "ygg:event") {
       if (msg.name === "init") readyResolve(msg.payload);
       var set = listeners[msg.name];
@@ -137,6 +142,12 @@ export const PLUGIN_SDK_SOURCE = `(function () {
         return call("gateway.call", { method: method, params: params });
       },
     },
+    net: {
+      /** Dashboard widgets only: GET over HTTPS to a granted net:<domain>. options.auth names a secret field of the widget. */
+      fetch: function (url, options) {
+        return call("net.fetch", { url: url, auth: options && options.auth }, 30000);
+      },
+    },
     mic: {
       start: function () {
         return call("mic.start", {});
@@ -160,6 +171,9 @@ export const PLUGIN_SDK_SOURCE = `(function () {
       },
     },
     app: {
+      openLink: function (url) {
+        return call("app.openLink", { url: url });
+      },
       openFile: function (relativePath) {
         return call("app.openFile", { relativePath: relativePath });
       },

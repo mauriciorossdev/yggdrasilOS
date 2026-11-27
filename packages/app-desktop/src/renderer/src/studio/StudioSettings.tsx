@@ -13,7 +13,7 @@ type Props = {
 const VIEW_LABELS: Record<PluginView, MessageKey> = {
   tab: "studio.create.viewTab",
   panel: "studio.create.viewPanel",
-  mobile: "studio.create.viewMobile",
+  mobile: "studio.create.viewMobile", widget: "studio.create.viewWidget",
 };
 
 /** The fixed permissions, in plain language first, technical id second. */
@@ -154,8 +154,8 @@ export function StudioSettings({ plugin, lint, onSaved }: Props) {
       <div className="studio-set-row">
         <span className="studio-set-label">{t("studio.create.views")}</span>
         <div className="studio-set-field studio-set-inline">
-          {(["tab", "panel", "mobile"] as PluginView[]).map((v) => {
-            const blocked = v === "mobile" && plugin.scope === "global";
+          {(["tab", "panel", "mobile", "widget"] as PluginView[]).map((v) => {
+            const blocked = v === "mobile" ? plugin.scope === "global" : v === "widget" && plugin.scope === "project";
             return (
               <button
                 key={v}
@@ -163,7 +163,7 @@ export function StudioSettings({ plugin, lint, onSaved }: Props) {
                 className={`studio-chip-btn${draft.views.includes(v) ? " on" : ""}`}
                 aria-pressed={draft.views.includes(v)}
                 disabled={blocked}
-                title={blocked ? t("studio.create.mobileUnavailable") : undefined}
+                title={blocked ? t(v === "widget" ? "dashboard.preview.globalOnly" : "studio.create.mobileUnavailable") : undefined}
                 onClick={() => setDraft((d) => ({ ...d, views: toggle(d.views, v) }))}
               >
                 {t(VIEW_LABELS[v])}

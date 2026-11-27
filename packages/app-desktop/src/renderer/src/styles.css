@@ -11532,3 +11532,73 @@ textarea.repo-input.mono { font-family: var(--ygg-font-mono); font-size: 12px; }
 .wt-bulk-step.error .wt-bulk-icon, .wt-bulk-step.error .wt-bulk-state { color: var(--ygg-danger-text); }
 .wt-bulk-why { grid-column: 2 / -1; display: flex; flex-wrap: wrap; align-items: center; gap: 8px; font-size: 12px; color: var(--ygg-text-muted); }
 .wt-bulk-detail { grid-column: 2 / -1; margin: 2px 0 0; max-height: 120px; overflow: auto; }
+
+/* ---------- Settings: unsaved prompt, gateway, sync options, skill groups ---------- */
+.settings-nav-version .settings-gateway-url { display: block; margin: 2px 0 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-family: var(--ygg-font-mono); font-size: 10px; }
+.settings-unsaved { align-items: center; }
+.settings-unsaved > span { margin-right: auto; color: var(--ygg-text); }
+.sync-join-kind { display: flex; flex-direction: column; gap: 6px; }
+.skill-group summary { display: flex; align-items: baseline; gap: 4px; margin: 12px 0 4px; cursor: pointer; }
+.skill-group summary::before { content: "▸"; }
+.skill-group[open] summary::before { content: "▾"; }
+.skill-group summary h4 { margin: 0; }
+/* .muted's own padding let a third line show past the two-line clamp. */
+.skill-row-desc.muted, .skill-row-path.muted { padding: 0; }
+.settings-nav { width: 170px; }
+.settings-nav-group { display: flex; flex-direction: column; gap: 2px; margin-bottom: 8px; }
+.settings-nav-heading { padding: 4px 10px 2px; font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--ygg-text-muted); }
+.settings-nav-item { padding-block: 6px; }
+.settings-unsaved > span.muted { padding: 0; color: var(--ygg-text-muted); }
+/* ---------- Dashboard (dashboard/DashboardView.tsx) ---------- */
+.dash { flex: 1; min-width: 0; overflow: auto; padding: 16px 20px; display: flex; flex-direction: column; gap: 14px; container-type: inline-size; }
+.dash-head { display: flex; align-items: center; gap: 8px; }
+.dash-head h1 { flex: 1; margin: 0; font-size: 18px; }
+.dash-empty { max-width: 560px; margin: 32px auto; display: flex; flex-direction: column; gap: 8px; text-align: center; }
+.dash-empty h2 { margin: 0; font-size: 16px; }
+.dash-catalog { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; text-align: left; }
+.dash-catalog-item { width: 100%; display: flex; flex-direction: column; align-items: flex-start; gap: 2px; padding: 10px 12px; text-align: left; cursor: pointer; color: var(--ygg-text); background: var(--ygg-sidebar); border: 1px solid var(--ygg-border); border-radius: 8px; }
+.dash-catalog-item:hover, .dash-catalog-item:focus-visible { border-color: var(--project-accent-color); }
+.dash-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: 200px; grid-auto-flow: dense; gap: 14px; }
+.dash-card { display: flex; flex-direction: column; min-width: 0; overflow: hidden; background: var(--ygg-sidebar); border: 1px solid var(--ygg-border); border-radius: 10px; }
+.dash-card.dash-size-s { grid-column: span 1; }
+.dash-card.dash-size-m { grid-column: span 2; }
+.dash-card.dash-size-l { grid-column: span 2; grid-row: span 2; }
+.dash-card--error { border-color: var(--ygg-danger); }
+.dash-card[draggable="true"] { cursor: grab; border-style: dashed; }
+.dash-card[draggable="true"] iframe { pointer-events: none; }
+.dash-card-head { display: flex; align-items: center; gap: 6px; padding: 8px 10px 4px 14px; }
+.dash-card-title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dash-card-meta { font-size: 12px; white-space: nowrap; }
+.dash-card-edit { display: flex; flex-wrap: wrap; align-items: center; gap: 4px; padding: 0 10px 6px; }
+.dash-card-problem { margin: 0; padding: 0 14px 6px; font-size: 12px; color: var(--ygg-danger); }
+.dash-link { padding: 0; border: 0; background: none; cursor: pointer; color: var(--project-accent-color); font: inherit; text-decoration: underline; }
+.dash-card-body { flex: 1; min-height: 0; display: flex; }
+.dash-card-body > * { flex: 1; }
+.dash-card-note { padding: 0 14px; }
+@container (max-width: 760px) {
+  .dash-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+.ygg-modal:has(.dash-config) { width: min(940px, 94vw); max-width: 94vw; max-height: 90vh; overflow: auto; }
+.dash-config { display: flex; flex-wrap: wrap; gap: 20px; align-items: flex-start; }
+.dash-config-form { flex: 1 1 300px; display: flex; flex-direction: column; gap: 10px; }
+.dash-config-preview { display: flex; flex-direction: column; gap: 6px; max-width: 100%; }
+.dash-preview-box { display: flex; max-width: 100%; overflow: hidden; background: var(--ygg-sidebar); border: 1px solid var(--project-accent-color); border-radius: 10px; }
+.dash-preview-box > * { flex: 1; }
+.dash-preview-box.dash-size-s { width: 240px; height: 200px; }
+.dash-preview-box.dash-size-m { width: 480px; height: 200px; }
+.dash-preview-box.dash-size-l { width: 480px; height: 414px; }
+.dash-sizes { display: flex; gap: 4px; }
+.dash-form-field { display: flex; flex-direction: column; gap: 3px; }
+.dash-check { display: flex; align-items: center; gap: 8px; min-height: 28px; }
+.dash-hint { font-size: 12px; }
+.dash-permission { margin: 0; padding: 8px 12px; border: 1px solid var(--ygg-border); border-radius: 8px; }
+.studio-widget-controls { display: flex; flex-direction: column; gap: 8px; padding: 8px 10px; max-height: 55%; overflow: auto; border-bottom: 1px solid var(--ygg-border); }
+.studio-widget-form { display: flex; flex-direction: column; gap: 10px; }
+.studio-widget-form[hidden] { display: none; }
+.studio-preview-stage-widget .studio-preview-app-ghost { display: none; }
+.studio-preview-stage-widget .studio-frame-host { display: flex; flex: 1; align-items: center; justify-content: center; overflow: auto; padding: 12px; }
+.studio-preview-stage-widget .studio-frame-scaled, .studio-preview-stage-widget .studio-frame-shell { flex: none; width: auto; height: auto; }
+.studio-preview-stage-widget .studio-preview-frame.dash-preview-box { flex: none; }
+/* A small card has no room for the age next to the title: it goes on its own line. */
+.dash-card.dash-size-s .dash-card-head { flex-wrap: wrap; row-gap: 0; padding-top: 2px; padding-bottom: 0; }
+.dash-card.dash-size-s .dash-card-meta { order: 1; flex-basis: 100%; margin: -4px 0 0; padding: 0; line-height: 1.2; }

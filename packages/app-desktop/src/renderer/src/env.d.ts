@@ -33,6 +33,11 @@ import type {
   PaneSummary,
   PermissionKind,
   PermissionLint,
+  DashboardLayout,
+  WidgetDraft,
+  WidgetFetchResult,
+  WidgetInstance,
+  WidgetSecretStatus,
   PluginFileEntry,
   PluginManifestPatch,
   PluginRecord,
@@ -332,6 +337,18 @@ declare global {
       documents: {
         getLayout: () => Promise<DocumentTabsLayout>;
         saveLayout: (layout: DocumentTabsLayout) => Promise<void>;
+      };
+      dashboard: {
+        get: () => Promise<DashboardLayout>;
+        save: (layout: DashboardLayout) => Promise<DashboardLayout>;
+        commit: (instance: WidgetInstance, secrets: Record<string, string>, draftId?: string) => Promise<DashboardLayout>;
+        setDraft: (id: string, draft: WidgetDraft) => Promise<void>;
+        dropDraft: (id: string) => Promise<void>;
+        secretStatus: (instanceId: string) => Promise<WidgetSecretStatus>;
+        fetch: (instanceId: string, url: string, auth?: string) => Promise<WidgetFetchResult>;
+        invalidate: (instanceId: string) => Promise<void>;
+        openLink: (url: string) => Promise<void>;
+        onChanged: (handler: (layout: DashboardLayout) => void) => () => void;
       };
       plugins: {
         list: () => Promise<PluginRecord[]>;

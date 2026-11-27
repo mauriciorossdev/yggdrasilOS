@@ -9,9 +9,11 @@ export type OnboardingStore = {
   autoOpen: boolean;
   /** Whether the wizard is on screen right now (auto-opened, or opened from Settings). */
   open: boolean;
+  /** Opened by hand (Settings): leaving it changes nothing. */
+  manual: boolean;
 };
 
-let state: OnboardingStore = { loaded: false, settings: null, autoOpen: false, open: false };
+let state: OnboardingStore = { loaded: false, settings: null, autoOpen: false, open: false, manual: false };
 let inflight: Promise<void> | null = null;
 const listeners = new Set<() => void>();
 
@@ -30,7 +32,7 @@ export function loadOnboarding(): Promise<void> {
     .getState()
     .then(({ settings, autoOpen }) => {
       applyLanguage(settings);
-      emit({ loaded: true, settings, autoOpen, open: autoOpen });
+      emit({ loaded: true, settings, autoOpen, open: autoOpen, manual: false });
     })
     .catch(() => emit({ ...state, loaded: true }))
     .finally(() => {
@@ -47,11 +49,17 @@ export async function saveOnboarding(settings: OnboardingSettings): Promise<Onbo
 }
 
 export function openWizard(): void {
-  emit({ ...state, open: true });
+  emit({ ...state, open: true, manual: true });
 }
 
 export function closeWizard(): void {
-  emit({ ...state, open: false });
+  emit({ ...state, open: false, manual: false });
+}
+
+/** Leaves a wizard opened by hand without saving; the language step previews live, so put it back. */
+export function cancelWizard(): void {
+  if (state.settings) applyLanguage(state.settings);
+  closeWizard();
 }
 
 function subscribe(listener: () => void): () => void {

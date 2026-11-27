@@ -36,6 +36,11 @@ import type {
   PaneSummary,
   PermissionKind,
   PermissionLint,
+  DashboardLayout,
+  WidgetDraft,
+  WidgetFetchResult,
+  WidgetInstance,
+  WidgetSecretStatus,
   PluginFileEntry,
   PluginManifestPatch,
   PluginRecord,
@@ -589,6 +594,24 @@ const api = {
       ipcRenderer.invoke("documents:getLayout", readArg("--ygg-project-id")),
     saveLayout: (layout: DocumentTabsLayout): Promise<void> =>
       ipcRenderer.invoke("documents:saveLayout", readArg("--ygg-project-id"), layout),
+  },
+  dashboard: {
+    get: (): Promise<DashboardLayout> => ipcRenderer.invoke("dashboard:get"),
+    save: (layout: DashboardLayout): Promise<DashboardLayout> => ipcRenderer.invoke("dashboard:save", layout),
+    commit: (instance: WidgetInstance, secrets: Record<string, string>, draftId?: string): Promise<DashboardLayout> =>
+      ipcRenderer.invoke("dashboard:commit", instance, secrets, draftId),
+    setDraft: (id: string, draft: WidgetDraft): Promise<void> => ipcRenderer.invoke("dashboard:setDraft", id, draft),
+    dropDraft: (id: string): Promise<void> => ipcRenderer.invoke("dashboard:dropDraft", id),
+    secretStatus: (instanceId: string): Promise<WidgetSecretStatus> => ipcRenderer.invoke("dashboard:secretStatus", instanceId),
+    fetch: (instanceId: string, url: string, auth?: string): Promise<WidgetFetchResult> =>
+      ipcRenderer.invoke("dashboard:fetch", instanceId, url, auth),
+    invalidate: (instanceId: string): Promise<void> => ipcRenderer.invoke("dashboard:invalidate", instanceId),
+    openLink: (url: string): Promise<void> => ipcRenderer.invoke("dashboard:openLink", url),
+    onChanged: (handler: (layout: DashboardLayout) => void): (() => void) => {
+      const listener = (_event: IpcRendererEvent, layout: DashboardLayout) => handler(layout);
+      ipcRenderer.on("dashboard:changed", listener);
+      return () => ipcRenderer.removeListener("dashboard:changed", listener);
+    },
   },
   plugins: {
     list: (): Promise<PluginRecord[]> => ipcRenderer.invoke("plugins:list", readArg("--ygg-project-id")),

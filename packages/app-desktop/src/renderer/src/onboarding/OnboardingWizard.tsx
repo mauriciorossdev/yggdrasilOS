@@ -4,7 +4,7 @@ import { useGateway } from "@yggdrasil/client-web";
 import { getLanguage, useI18n, type MessageKey } from "../i18n/index.js";
 import type { CliId, DetectedCli, OnboardingSettings } from "../types.js";
 import type { WizardDraft, WizardUpdate } from "./draft.js";
-import { closeWizard, saveOnboarding, useOnboarding } from "./store.js";
+import { cancelWizard, closeWizard, saveOnboarding, useOnboarding } from "./store.js";
 import { createAsciiTree, type AsciiTree } from "./asciiTree.js";
 import { LanguageStep } from "./steps/LanguageStep.js";
 import { NameStep } from "./steps/NameStep.js";
@@ -78,7 +78,7 @@ function TypedLine({ text, reduced, onDone }: { text: string; reduced: boolean; 
 export function OnboardingWizard() {
   const { t } = useI18n();
   const { call } = useGateway();
-  const { settings } = useOnboarding();
+  const { settings, manual } = useOnboarding();
   const reduced = useReducedMotion();
 
   const [phase, setPhase] = useState<"boot" | "steps" | "leaving">("boot");
@@ -206,6 +206,24 @@ export function OnboardingWizard() {
     advance();
   };
 
+  // Always a way out. Opened from Settings it just closes; on a first run it counts as
+  // skipping setup, so it doesn't come back on the next start.
+  const leave = () => {
+    if (busy) return;
+    if (manual) cancelWizard();
+    else void finish(true);
+  };
+  // Escape only for the by-hand run: a stray key must not mark a first run as done.
+  // On window, because nothing inside may have focus yet.
+  useEffect(() => {
+    if (!manual) return;
+    const onEscape = (e: globalThis.KeyboardEvent) => {
+      if (e.key === "Escape" && !e.defaultPrevented) cancelWizard();
+    };
+    window.addEventListener("keydown", onEscape);
+    return () => window.removeEventListener("keydown", onEscape);
+  }, [manual]);
+
   const say: Record<StepId, string> = {
     lang: t("ob.lang.say"),
     name: t("ob.name.say"),
@@ -228,15 +246,15 @@ export function OnboardingWizard() {
     <div className={`ob-screen ob-screen--${phase}`} role="dialog" aria-modal="true" aria-label={t("ob.aria")} onKeyDown={onKeyDown}>
       <canvas ref={canvasRef} className="ob-tree" aria-hidden />
       <div className="ob-drag" aria-hidden />
+      {phase !== "leaving" && (
+        <button type="button" className="ob-quiet ob-quiet--mono ob-exit" onClick={leave} disabled={busy}>
+          {manual ? t("ob.exit") : t("ob.skipAll")} <span aria-hidden>✕</span>
+        </button>
+      )}
       <section className="ob-left">
         <header className={`ob-top${phase === "steps" ? " is-on" : ""}`}>
           <span>{t("ob.brand")}</span>
           <div className="ob-top-right">
-            {phase === "steps" && id !== "done" && (
-              <button type="button" className="ob-quiet ob-quiet--mono" onClick={() => void finish(true)} disabled={busy}>
-                {t("ob.skipAll")}
-              </button>
-            )}
             <div className="ob-progress" aria-hidden>
               {STEPS.map((s, i) => (
                 <i key={s} className={phase !== "steps" ? "" : i < step ? "is-done" : i === step ? "is-now" : ""} />

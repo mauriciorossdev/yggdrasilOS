@@ -94,12 +94,12 @@ export function SyncSection({ syncSettings, setSyncSettings }: Props) {
         {t("set.sync.joinIntro")}
       </p>
 
-      <div className="ide-option-row">
-        <label>
+      <div className="sync-join-kind">
+        <label className="settings-check">
           <input type="radio" name="join-kind" checked={kind === "notes-file"} onChange={() => setKind("notes-file")} />
           {t("set.sync.kindNote")}
         </label>
-        <label>
+        <label className="settings-check">
           <input
             type="radio"
             name="join-kind"

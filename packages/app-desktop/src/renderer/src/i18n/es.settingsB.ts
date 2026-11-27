@@ -1,7 +1,7 @@
 import type { enSettingsB } from "./en.settingsB.js";
 
 export const esSettingsB: Record<keyof typeof enSettingsB, string> = {
-  "set.whisper.title": "STT (voz a texto) — para dictar en Documentos",
+  "set.whisper.title": "Dictado (voz a texto)",
   "set.whisper.source": "Origen",
   "set.whisper.sourceLocal": "Local (Whisper)",
   "set.whisper.sourceCloud": "Nube",
@@ -27,7 +27,7 @@ export const esSettingsB: Record<keyof typeof enSettingsB, string> = {
   "set.whisper.downloading": "Descargando… {pct}%",
   "set.whisper.delete": "Eliminar",
   "set.whisper.download": "Descargar",
-  "set.voice.title": "Voz",
+  "set.voice.title": "Lectura en voz alta",
   "set.voice.intro": "Texto-a-voz de este equipo (ej. \"hablar la última respuesta\" en una terminal, y lo que use el teléfono cuando se conecta a este gateway).",
   "set.voice.loading": "Cargando…",
   "set.voice.enable": "Activar texto-a-voz",

@@ -447,7 +447,38 @@ export type DocumentTabsLayout = { openPaths: string[]; activePath: string | nul
 // a "complemento": a folder with manifest.json + HTML/JS/CSS, loaded in a
 // sandboxed iframe via the ygg-plugin:// protocol (see PluginFrame.tsx).
 // Mirrored here structurally, same convention as ProjectRecord/PaneNode above.
-export type PluginView = "tab" | "panel" | "mobile";
+export type PluginView = "tab" | "panel" | "mobile" | "widget";
+// Mirrors main/widgetSpec.ts, dashboardStore.ts and dashboardIpc.ts.
+export type WidgetSize = "s" | "m" | "l";
+export type WidgetFieldType = "text" | "number" | "bool" | "list" | "secret";
+export type WidgetField = {
+  key: string;
+  type: WidgetFieldType;
+  title: string;
+  description?: string;
+  default?: string | number | boolean;
+  required?: boolean;
+  options?: { value: string; label: string }[];
+  domain?: string;
+  header?: string;
+  prefix?: string;
+};
+export type WidgetSpec = { defaultSize: WidgetSize; refresh: { defaultSeconds: number; minSeconds: number }; fields: WidgetField[] };
+export type WidgetInstance = {
+  instanceId: string;
+  pluginKey: string;
+  title: string;
+  size: WidgetSize;
+  config: Record<string, unknown>;
+  refreshSeconds: number;
+  grantedDomains: string[];
+};
+export type DashboardLayout = { instances: WidgetInstance[] };
+export type WidgetDraft = { instance: WidgetInstance; secrets: Record<string, string>; secretsFrom?: string };
+export type WidgetFetchResult =
+  | { ok: true; response: { status: number; ok: boolean; body: string; fetchedAt: number; cached: boolean } }
+  | { ok: false; error: string };
+export type WidgetSecretStatus = { saved: Record<string, string>; canStore: boolean };
 export type PluginPermission = "fs" | "fs:write" | "panes" | string;
 /** Absent = "published" — see main/plugins.ts's PluginStatus doc comment. */
 export type PluginStatus = "draft" | "published";
@@ -466,6 +497,7 @@ export type PluginManifest = {
   status?: PluginStatus;
   tools?: PluginToolDef[];
   description?: string;
+  widget?: WidgetSpec;
 };
 export type PluginScope = "global" | "project";
 /** Mirrors main/plugins.ts — fields the Estudio's Ajustes tab can change. */

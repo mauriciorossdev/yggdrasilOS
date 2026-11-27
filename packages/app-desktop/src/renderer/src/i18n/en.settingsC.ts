@@ -2,7 +2,7 @@
 export const enSettingsC = {
   "set.sync.joinedNote": "Done — \"{path}\" synced.",
   "set.sync.joinedBoard": "Done — board \"{id}\" synced.",
-  "set.sync.title": "Sharing (sync)",
+  "set.sync.title": "Sharing",
   "set.sync.intro": "Share specific notes or a plugin's storage (e.g. a kanban board) with a handful of trusted people, through your own server. Async — everyone edits in turns, with no real-time simultaneous editing.",
   "set.sync.serverUrl": "Sync server URL",
   "set.sync.serverUrlPh": "https://sync.your-domain.com",
@@ -55,7 +55,7 @@ export const enSettingsC = {
   "set.transfer.exported": "Exported to {path}",
   "set.transfer.desktop": "desktop: {keys}",
   "set.transfer.gateway": "gateway: {keys}",
-  "set.transfer.imported": "Imported ({parts}). Close and reopen Settings to see the changes.",
+  "set.transfer.imported": "Imported ({parts}).",
   "set.transfer.nothing": "Nothing was imported.",
   "set.transfer.warnings": "{applied}\nWarnings: {warnings}",
   "set.transfer.title": "Export / Import",

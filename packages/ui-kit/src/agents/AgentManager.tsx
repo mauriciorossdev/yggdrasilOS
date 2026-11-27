@@ -219,7 +219,9 @@ export function AgentManager({ agents, onCreated, onDeleted, defaultAgentId, onS
                   <div>
                     <div className="agent-row-title">{a.label ?? a.id}</div>
                     <div className="agent-row-meta">
-                      {providers.find((p) => p.id === a.provider)?.label ?? a.provider ?? "?"} · {a.model ?? "?"}
+                      {!a.provider && !a.model
+                        ? t("agents.manager.noProviderNoModel")
+                        : `${providers.find((p) => p.id === a.provider)?.label ?? a.provider ?? t("agents.manager.noProvider")} · ${a.model ?? t("agents.manager.noModel")}`}
                       {a.scope && <span className="scope-tag">{a.scope}</span>}
                     </div>
                   </div>

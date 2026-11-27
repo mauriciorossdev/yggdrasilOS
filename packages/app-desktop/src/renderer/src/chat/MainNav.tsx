@@ -10,6 +10,7 @@ import {
   HomeIcon,
   QueueListIcon,
   Squares2X2Icon,
+  ViewColumnsIcon,
   RectangleGroupIcon,
   ShareIcon,
   SparklesIcon,
@@ -27,11 +28,12 @@ import {
   type BuiltinMainTab,
 } from "../ui/mainTabsStore.js";
 
-const SECTIONS: BuiltinMainTab[] = ["chat", "terminal", "agentFlow", "worktrees", "workflows", "documents", "browser", "studio", "repository"];
+const SECTIONS: BuiltinMainTab[] = ["dashboard", "chat", "terminal", "agentFlow", "worktrees", "workflows", "documents", "browser", "studio", "repository"];
 
 const SECTION_ICONS: Partial<Record<BuiltinMainTab, typeof HomeIcon>> = {
   home: HomeIcon,
   workspaces: Squares2X2Icon,
+  dashboard: ViewColumnsIcon,
   chat: ChatBubbleLeftRightIcon,
   terminal: CommandLineIcon,
   agentFlow: ShareIcon,

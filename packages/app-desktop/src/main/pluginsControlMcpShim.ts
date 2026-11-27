@@ -63,11 +63,12 @@ export const TOOLS = [
         },
         views: {
           type: "array",
-          items: { type: "string", enum: ["tab", "panel", "mobile"] },
+          items: { type: "string", enum: ["tab", "panel", "mobile", "widget"] },
           description:
             'Where it can be opened — "tab" (a main tab next to Chat/Terminal/Documents), "panel" (the ' +
             'right-hand aside, same as an opened file), and/or "mobile" (the Yggdrasil phone app\'s own ' +
             "Complementos tab — add this when the user wants it usable from their phone, not just desktop). " +
+            '"widget" is a card on the Dashboard tab: it requires scope "global" and a "widget" block in manifest.json (see read_plugin_api_docs). ' +
             'Defaults to ["tab"].',
         },
         defaultView: { type: "string", enum: ["tab", "panel"], description: "Which view opening it from the sidebar uses first — desktop only, \"mobile\" isn't a valid value here. Defaults to the first tab/panel entry in views." },
@@ -77,7 +78,7 @@ export const TOOLS = [
           description:
             'Which window.ygg capabilities this complemento gets: "fs" (read the project), "fs:write" (write ' +
             'it too), "panes" (spawn/write terminal panes), "gateway:<method>" (one exact gateway RPC method, ' +
-            'e.g. "gateway:chat.send"). Leave empty for a complemento that only needs its own storage. See ' +
+            'e.g. "gateway:chat.send"), "net:<domain>" (Dashboard widgets only: HTTPS requests to that exact host through ygg.net.fetch). Leave empty for a complemento that only needs its own storage. See ' +
             "read_plugin_api_docs for the full list and what each unlocks.",
         },
         description: { type: "string", description: "One line describing what it does — dropped into the scaffolded README.md." },
