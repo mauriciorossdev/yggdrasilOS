@@ -79,6 +79,57 @@ const off = ygg.on("theme", (t) => { ... });        // "theme" | "visibility" | 
 off(); // deja de escuchar
 \`\`\`
 
+## Widgets del Dashboard
+
+Un complemento **global** con \`"widget"\` en \`views\` aparece en el catálogo del Dashboard (una vez
+publicado). Cada persona puede agregar varias instancias, cada una con su configuración.
+
+\`\`\`json
+{
+  "views": ["widget"],
+  "permissions": ["net:api.example.com"],
+  "widget": {
+    "defaultSize": "m",
+    "refresh": { "defaultSeconds": 3600, "minSeconds": 900 },
+    "configSchema": {
+      "type": "object",
+      "properties": {
+        "city": { "type": "string", "title": "Ciudad", "required": true },
+        "count": { "type": "number", "title": "Cantidad", "default": 3 },
+        "compact": { "type": "boolean", "title": "Compacto" },
+        "unit": { "type": "list", "title": "Unidad", "options": [{ "value": "c", "label": "°C" }, { "value": "f", "label": "°F" }] },
+        "apiKey": { "type": "secret", "title": "API key", "domain": "api.example.com", "sendAs": { "header": "Authorization", "prefix": "Bearer " } }
+      }
+    }
+  }
+}
+\`\`\`
+
+\`\`\`js
+const { widget, theme } = await ygg.ready(); // widget: { instanceId, config, size, preview, language }
+
+async function load() {
+  try {
+    const res = await ygg.net.fetch("https://api.example.com/v1/x?city=" + encodeURIComponent(widget.config.city), { auth: "apiKey" });
+    if (res.ok) render(JSON.parse(res.body));
+  } catch (err) {
+    // err.code: "not-granted" | "no-secret" | "bad-url" | "blocked-address" | "too-large" | "timeout" | "network"
+    if (widget.preview && (err.code === "not-granted" || err.code === "no-secret")) renderSample();
+    else renderError(err.message);
+  }
+}
+ygg.on("refresh", load); // la app marca el ritmo: sin setInterval propio
+load();
+\`\`\`
+
+- \`net:<dominio>\`: dominio exacto, sin comodines. Solo GET por HTTPS, sin direcciones privadas, máx 1 MB.
+- La app guarda la última respuesta por instancia y la reutiliza dentro del intervalo elegido.
+- \`secret\`: lo escribe la persona en el formulario; el widget nunca lo lee. La app lo agrega al header.
+- \`widget\` es \`undefined\` si el mismo complemento está abierto como pestaña o panel (ahí no hay \`ygg.net\`).
+- Un widget no tiene \`fs\`, \`panes\`, \`gateway.call\`, \`mic\`, \`openFile\` ni \`openTab\`. Sí \`storage\`, \`app.notify\` y
+  \`ygg.app.openLink(url)\` (https, solo como respuesta a un clic dentro del widget).
+- Tema: \`theme\` trae \`panel\`, \`fg\`, \`muted\`, \`line\`, \`accent\`. Dibujá para los tres tamaños.
+
 ## tools (exponer funciones al resto del proyecto)
 
 \`\`\`json

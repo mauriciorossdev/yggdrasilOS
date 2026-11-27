@@ -1,7 +1,7 @@
 import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from "react";
 import { useGateway } from "@yggdrasil/client-web";
 import type { PluginRecord } from "../types.js";
-import { createPluginHost } from "./pluginHost.js";
+import { createPluginHost, type WidgetContext, type WidgetFetchOutcome } from "./pluginHost.js";
 import { useI18n } from "../i18n/index.js";
 import type { PluginConsoleEntry, PluginErrorEntry } from "./pluginTypes.js";
 import { ERROR_DEDUPE_MS, ERROR_DEDUPE_WAIT_MS, errorCore, isFrameOf, relativeSource, tidyStack } from "./frameErrors.js";
@@ -18,10 +18,15 @@ type Props = {
   onError?: (entry: Omit<PluginErrorEntry, "kind">) => void;
   /** The plugin's SDK announced ygg:ready — its document loaded and ran (the Estudio's "probado" check). */
   onReady?: () => void;
+  /** Renders it as a Dashboard widget instance. Read once per mount: callers change the `key` to apply new settings. */
+  widget?: WidgetContext;
+  onWidgetFetch?: (outcome: WidgetFetchOutcome) => void;
 };
 
 /** Imperative API for a parent holding a ref — currently just tool-call dispatch, used by PluginToolRuntime.tsx to invoke a plugin's own ygg.tools.register handlers, visible or not. */
 export type PluginFrameHandle = {
+  /** Pushes a ygg:event, e.g. the dashboard's "refresh". */
+  emit: (name: string, payload: unknown) => void;
   callTool: (tool: string, params: unknown) => Promise<unknown>;
 };
 
@@ -57,7 +62,7 @@ type PendingToolCall = { resolve: (v: unknown) => void; reject: (e: Error) => vo
  * renders `<PluginFrame .../>` with no ref at all, unaffected.
  */
 export const PluginFrame = forwardRef<PluginFrameHandle, Props>(function PluginFrame(
-  { plugin, version, visible, onOpenFile, onOpenTab, onConsole, onError, onReady },
+  { plugin, version, visible, onOpenFile, onOpenTab, onConsole, onError, onReady, widget, onWidgetFetch },
   ref,
 ) {
   const { t } = useI18n();
@@ -66,8 +71,20 @@ export const PluginFrame = forwardRef<PluginFrameHandle, Props>(function PluginF
   // Keyed by plugin.key via the parent's own `key` prop convention (callers
   // remount this component per plugin key) — a fresh host per mount is fine,
   // it holds no state worth surviving an unmount.
+  const widgetRef = useRef(widget);
+  const onWidgetFetchRef = useRef(onWidgetFetch);
+  onWidgetFetchRef.current = onWidgetFetch;
   const host = useMemo(
-    () => createPluginHost({ plugin, onOpenFile, onOpenTab, gatewayCall: call }),
+    () =>
+      createPluginHost({
+        plugin,
+        widget: widgetRef.current,
+        onWidgetFetch: (outcome) => onWidgetFetchRef.current?.(outcome),
+        isFocused: () => document.activeElement === iframeRef.current,
+        onOpenFile,
+        onOpenTab,
+        gatewayCall: call,
+      }),
     [plugin, onOpenFile, onOpenTab, call],
   );
 
@@ -129,7 +146,7 @@ export const PluginFrame = forwardRef<PluginFrameHandle, Props>(function PluginF
   // Only a plugin that declared "fs" gets the workspace's own fs.changed
   // stream — the same permission that gates ygg.fs.list/read in pluginHost.ts.
   useEffect(() => {
-    if (!(plugin.manifest.permissions ?? []).includes("fs")) return;
+    if (widgetRef.current || !(plugin.manifest.permissions ?? []).includes("fs")) return;
     return onEvent((ev) => {
       if (ev.event === "fs.changed") host.pushEvent("fs.changed", ev.payload);
     });
@@ -184,6 +201,13 @@ export const PluginFrame = forwardRef<PluginFrameHandle, Props>(function PluginF
 
   useEffect(() => () => host.dispose(), [host]);
 
+  // A rescan hands us a new plugin record, hence a new host, over the same
+  // document: reconnect it, or the dashboard's "refresh" would be dropped.
+  useEffect(() => {
+    const win = iframeRef.current?.contentWindow;
+    if (win) host.attach((m) => win.postMessage(m, "*"));
+  }, [host]);
+
   useEffect(() => {
     host.setVisible(visible);
   }, [host, visible]);
@@ -191,6 +215,7 @@ export const PluginFrame = forwardRef<PluginFrameHandle, Props>(function PluginF
   useImperativeHandle(
     ref,
     () => ({
+      emit: (name, payload) => host.pushEvent(name, payload),
       async callTool(tool, params) {
         await Promise.race([
           readyPromiseRef.current,
@@ -220,7 +245,7 @@ export const PluginFrame = forwardRef<PluginFrameHandle, Props>(function PluginF
         });
       },
     }),
-    [plugin.manifest.name],
+    [host, plugin.manifest.name],
   );
 
   if (plugin.error || !plugin.url) {

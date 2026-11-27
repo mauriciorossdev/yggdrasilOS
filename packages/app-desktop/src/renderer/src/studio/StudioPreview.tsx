@@ -3,6 +3,8 @@ import { PluginFrame } from "../plugins/PluginFrame.js";
 import type { PluginConsoleEntry, PluginErrorEntry, PluginLogEntry } from "../plugins/pluginTypes.js";
 import type { PluginRecord, PluginView } from "../types.js";
 import { StudioStage } from "./StudioStage.js";
+import { WidgetPreview } from "../dashboard/WidgetPreview.js";
+import { StudioWidgetControls, useWidgetTest } from "./studioWidgetTest.js";
 import { useI18n } from "../i18n/index.js";
 
 /** What the preview tells the workspace: console counts, and whether the plugin finished loading (its SDK said ygg:ready) since the last reload. */
@@ -48,12 +50,14 @@ export function StudioPreview({ plugin, view, version, onStatusChange, onAskFix 
   const [ready, setReady] = useState(false);
   const [consoleOpen, setConsoleOpen] = useState(false);
   const autoOpenedRef = useRef(false);
+  const widgetTest = useWidgetTest(plugin);
+  const asWidget = view === "widget";
 
   useEffect(() => {
     setLogs([]);
     setReady(false);
     autoOpenedRef.current = false;
-  }, [version, plugin.key]);
+  }, [version, plugin.key, view]);
 
   useEffect(() => {
     onStatusChange?.({ ...countsOf(logs), ready });
@@ -75,15 +79,29 @@ export function StudioPreview({ plugin, view, version, onStatusChange, onAskFix 
 
   return (
     <div className="studio-preview">
-      <StudioStage view={view}>
-        <PluginFrame
-          plugin={plugin}
-          version={version}
-          visible
-          onConsole={pushConsole}
-          onError={pushError}
-          onReady={() => setReady(true)}
-        />
+      {asWidget && widgetTest && plugin.scope === "global" && <StudioWidgetControls plugin={plugin} test={widgetTest} />}
+      <StudioStage view={view} widgetSize={widgetTest?.instance.size}>
+        {!asWidget ? (
+          <PluginFrame
+            plugin={plugin}
+            version={version}
+            visible
+            onConsole={pushConsole}
+            onError={pushError}
+            onReady={() => setReady(true)}
+          />
+        ) : plugin.scope === "global" && widgetTest ? (
+          <WidgetPreview
+            plugin={plugin}
+            version={version}
+            draft={widgetTest.draft}
+            onConsole={pushConsole}
+            onError={pushError}
+            onReady={() => setReady(true)}
+          />
+        ) : (
+          <p className="muted">{t("dashboard.preview.globalOnly")}</p>
+        )}
       </StudioStage>
       <div className={`studio-console${consoleOpen ? " open" : ""}`}>
         <button

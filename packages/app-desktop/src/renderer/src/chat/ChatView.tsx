@@ -35,6 +35,7 @@ import { StudioView } from "../studio/StudioView.js";
 import { usePlugins } from "../plugins/usePlugins.js";
 import { PluginFrame } from "../plugins/PluginFrame.js";
 import { PluginToolRuntime } from "../plugins/PluginToolRuntime.js";
+import { DashboardView } from "../dashboard/DashboardView.js";
 import { PluginPanel } from "../plugins/PluginPanel.js";
 import { sidePanelKey, type SidePanel } from "../plugins/pluginTypes.js";
 import { PanelTabs, type PanelTabInfo } from "./PanelTabs.js";
@@ -197,8 +198,11 @@ export function ChatView() {
   /** The sidebar's click handler — opens a complemento in whichever view its manifest prefers (defaultView, else its first declared view). */
   const openPlugin = useCallback(
     (key: string) => {
-      const view = pluginsByKey.get(key)?.manifest.defaultView ?? pluginsByKey.get(key)?.manifest.views[0] ?? "tab";
+      const manifest = pluginsByKey.get(key)?.manifest;
+      const view = manifest?.defaultView ?? manifest?.views.find((v) => v === "tab" || v === "panel") ?? manifest?.views[0] ?? "tab";
       if (view === "panel") openPluginPanel(key);
+      // A widget-only complement lives on the Dashboard.
+      else if (view === "widget") requestTab("dashboard");
       else openPluginTab(key);
     },
     [pluginsByKey, openPluginPanel, openPluginTab],
@@ -671,6 +675,7 @@ export function ChatView() {
             workflowsContent={<WorkflowsView />}
             documentsContent={<DocumentsView />}
             browserContent={<BrowserTabView />}
+            dashboardContent={<DashboardView plugins={plugins} version={pluginsVersion} />}
             studioContent={<StudioView onOpenFile={openFile} />}
             repositoryContent={<RepositoryView />}
             filesContent={<FilesView />}

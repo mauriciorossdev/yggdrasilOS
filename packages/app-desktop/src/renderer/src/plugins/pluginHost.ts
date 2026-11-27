@@ -1,4 +1,4 @@
-import type { PluginRecord } from "../types.js";
+import type { PluginRecord, WidgetSize } from "../types.js";
 import { blobToWav } from "../mic/wavEncoder.js";
 
 type YggReq = { type: "ygg:req"; id: string; method: string; params?: unknown };
@@ -79,13 +79,34 @@ function assertSafeRelativePath(value: unknown): string {
 export type PluginHost = {
   handleMessage: (data: unknown, send: Send) => Promise<void>;
   setVisible: (visible: boolean) => void;
+  /** Gives a host created over an already loaded iframe its way to push events. */
+  attach: (send: Send) => void;
   /** Forwards a host-side event (e.g. the gateway's own "fs.changed") to the plugin as a ygg:event — see PluginFrame.tsx's useGateway().onEvent subscription. */
   pushEvent: (name: string, payload: unknown) => void;
   dispose: () => void;
 };
 
+/** What makes a frame a Dashboard widget instance (or a preview of one). */
+export type WidgetContext = {
+  instanceId: string;
+  config: Record<string, unknown>;
+  size: WidgetSize;
+  /** Configure dialog or Estudio: the widget may show sample data when a grant or key is missing. */
+  preview: boolean;
+  language: string;
+};
+
+export type WidgetFetchOutcome = { error?: string; status?: number; fetchedAt?: number };
+
+// The dashboard spans projects, so a widget gets no project access, whatever its manifest says.
+const WIDGET_BLOCKED = /^(fs\.|panes\.|gateway\.|mic\.|app\.openTab$|app\.openFile$)/;
+
 export type PluginHostDeps = {
   plugin: PluginRecord;
+  widget?: WidgetContext;
+  onWidgetFetch?: (outcome: WidgetFetchOutcome) => void;
+  /** Whether the person is interacting with this frame (gates opening links in the browser). */
+  isFocused?: () => boolean;
   onOpenFile?: (relativePath: string) => void;
   onOpenTab?: (tab: string) => void;
   /** The gateway's own RPC call — backs ygg.fs.list/read (fs permission) and ygg.gateway.call (gateway:<method> permission). Undefined only in a context with no gateway connection (there isn't one today, but keeps this module decoupled from useGateway). */
@@ -98,7 +119,7 @@ export type PluginHostDeps = {
  * matching script running inside the iframe), gated by the manifest's own
  * declared `permissions` (plugins.ts's PluginPermission).
  */
-export function createPluginHost({ plugin, onOpenFile, onOpenTab, gatewayCall }: PluginHostDeps): PluginHost {
+export function createPluginHost({ plugin, widget, onWidgetFetch, isFocused, onOpenFile, onOpenTab, gatewayCall }: PluginHostDeps): PluginHost {
   let visible = false;
   let lastSend: Send | null = null;
   let mic: MicSession | null = null;
@@ -167,8 +188,28 @@ export function createPluginHost({ plugin, onOpenFile, onOpenTab, gatewayCall }:
     return { text: await window.yggdrasil.whisper.transcribe(wav, settings) };
   }
 
+  async function netFetch(params: Record<string, unknown>): Promise<unknown> {
+    // Hidden tool frames and tabs have no instance: only a widget card or preview may go online.
+    if (!widget) throw new Error("ygg.net.fetch solo está disponible en un widget del Dashboard");
+    const auth = typeof params.auth === "string" ? params.auth : undefined;
+    const result = await window.yggdrasil.dashboard.fetch(widget.instanceId, String(params.url ?? ""), auth);
+    if (!result.ok) {
+      onWidgetFetch?.({ error: result.error });
+      throw new Error(result.error);
+    }
+    onWidgetFetch?.({ status: result.response.status, fetchedAt: result.response.fetchedAt });
+    return result.response;
+  }
+
   async function run(method: string, params: Record<string, unknown>): Promise<unknown> {
+    if (widget && WIDGET_BLOCKED.test(method)) throw new Error(`no disponible en un widget del Dashboard: ${method}`);
     switch (method) {
+      case "net.fetch":
+        return netFetch(params);
+      case "app.openLink":
+        if (!widget || !isFocused?.()) throw new Error("openLink solo funciona desde un clic en el widget");
+        await window.yggdrasil.dashboard.openLink(String(params.url ?? ""));
+        return null;
       case "storage.get":
         return window.yggdrasil.plugins.storageGet(plugin.scope, plugin.manifest.id, String(params.key ?? ""));
       case "storage.set":
@@ -271,6 +312,7 @@ export function createPluginHost({ plugin, onOpenFile, onOpenTab, gatewayCall }:
             project: { id: window.yggdrasil.projectId, name: window.yggdrasil.projectName },
             theme: themeSnapshot(),
             visible,
+            widget,
           },
         });
         return;
@@ -284,6 +326,9 @@ export function createPluginHost({ plugin, onOpenFile, onOpenTab, gatewayCall }:
       } catch (err) {
         send({ type: "ygg:res", id: req.id, ok: false, error: err instanceof Error ? err.message : String(err) });
       }
+    },
+    attach(send) {
+      lastSend = send;
     },
     setVisible(next) {
       if (visible === next) return;

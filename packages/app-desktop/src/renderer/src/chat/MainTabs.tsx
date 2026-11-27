@@ -26,6 +26,7 @@ type Props = {
   homeContent?: ReactNode;
   /** Main window only, like Home: the Workspaces canvas (home/WorkspacesCanvas.tsx). */
   workspacesContent?: ReactNode;
+  dashboardContent?: ReactNode;
   chatContent: ReactNode;
   terminalContent: ReactNode;
   agentFlowContent: ReactNode;
@@ -58,6 +59,7 @@ type Props = {
 export function MainTabs({
   homeContent,
   workspacesContent,
+  dashboardContent,
   chatContent,
   terminalContent,
   agentFlowContent,
@@ -125,6 +127,9 @@ export function MainTabs({
           {workspacesContent}
         </div>
       )}
+      <div className="main-tab-panel" style={{ display: active === "dashboard" ? "flex" : "none" }}>
+        {dashboardContent}
+      </div>
       <div className="main-tab-panel" style={{ display: active === "chat" ? "flex" : "none" }}>
         {chatContent}
       </div>

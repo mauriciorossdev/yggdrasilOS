@@ -4,6 +4,7 @@ import { extname, join, relative, sep } from "node:path";
 import { app } from "electron";
 import { PLUGIN_API_DOCS } from "./pluginApiDocs.js";
 import { permissionsUsedIn } from "./pluginPermissions.js";
+import { isPublicHostName, parseWidgetSpec, type WidgetSpec } from "./widgetSpec.js";
 
 /**
  * A "complemento": a folder with manifest.json + HTML/JS/CSS, loaded in a
@@ -13,9 +14,10 @@ import { permissionsUsedIn } from "./pluginPermissions.js";
  * Complementos tab ("mobile" — rendered there via a project-scoped
  * fs.read of this same folder, see mobile/app/lib/plugins/; desktop code
  * never does anything with that value beyond carrying it through) — an
- * agent-authored manifest declares whichever it wants.
+ * agent-authored manifest declares whichever it wants. "widget" is a card on
+ * the Dashboard tab, configured by the `widget` block (global scope only).
  */
-export type PluginView = "tab" | "panel" | "mobile";
+export type PluginView = "tab" | "panel" | "mobile" | "widget";
 
 /**
  * "fs" and "fs:write" gate the plugin's own project-fs access (see
@@ -62,6 +64,8 @@ export type PluginManifest = {
   tools?: PluginToolDef[];
   /** One-line summary, edited from the Estudio's Ajustes tab. */
   description?: string;
+  /** Parsed `widget` block; present whenever views includes "widget". */
+  widget?: WidgetSpec;
 };
 
 export type PluginScope = "global" | "project";
@@ -104,7 +108,7 @@ function placeholderManifest(id: string): PluginManifest {
   return { id, name: id, version: "0.0.0", views: [] };
 }
 
-async function readManifest(dir: string): Promise<PluginManifest> {
+export async function readManifest(dir: string): Promise<PluginManifest> {
   const raw = await readFile(join(dir, "manifest.json"), "utf8");
   const parsed = JSON.parse(raw) as Partial<PluginManifest>;
   if (!parsed.id || typeof parsed.id !== "string" || !PLUGIN_ID_RE.test(parsed.id)) {
@@ -114,12 +118,16 @@ async function readManifest(dir: string): Promise<PluginManifest> {
     throw new Error('manifest.json: "name" ausente');
   }
   if (!Array.isArray(parsed.views) || parsed.views.length === 0) {
-    throw new Error('manifest.json: "views" ausente (usar ["tab"], ["panel"], ["mobile"] o combinación)');
+    throw new Error('manifest.json: "views" ausente (usar ["tab"], ["panel"], ["mobile"], ["widget"] o combinación)');
   }
   for (const v of parsed.views) {
-    if (v !== "tab" && v !== "panel" && v !== "mobile") throw new Error(`manifest.json: vista inválida "${String(v)}"`);
+    if (!isView(v)) throw new Error(`manifest.json: vista inválida "${String(v)}"`);
   }
+  const permissions = Array.isArray(parsed.permissions) ? parsed.permissions.filter((p) => typeof p === "string") : [];
+  // The raw `widget` block: configSchema becomes the validated `fields` list.
+  const widget = parsed.views.includes("widget") ? parseWidgetSpec(parsed.widget, permissions) : undefined;
   return {
+    widget,
     id: parsed.id,
     name: parsed.name,
     version: typeof parsed.version === "string" && parsed.version ? parsed.version : "0.0.0",
@@ -127,7 +135,7 @@ async function readManifest(dir: string): Promise<PluginManifest> {
     entry: typeof parsed.entry === "string" && parsed.entry ? parsed.entry : "index.html",
     views: parsed.views as PluginView[],
     defaultView: parsed.defaultView === "panel" ? "panel" : parsed.defaultView === "tab" ? "tab" : undefined,
-    permissions: Array.isArray(parsed.permissions) ? parsed.permissions.filter((p) => typeof p === "string") : [],
+    permissions,
     minHeight: typeof parsed.minHeight === "number" ? parsed.minHeight : undefined,
     status: parsed.status === "draft" ? "draft" : parsed.status === "published" ? "published" : undefined,
     description: typeof parsed.description === "string" && parsed.description ? parsed.description : undefined,
@@ -147,6 +155,10 @@ async function readManifest(dir: string): Promise<PluginManifest> {
         })
       : [],
   };
+}
+
+function isView(v: unknown): v is PluginView {
+  return v === "tab" || v === "panel" || v === "mobile" || v === "widget";
 }
 
 async function scanDir(scope: PluginScope, dir: string, projectId?: string): Promise<PluginRecord[]> {
@@ -330,6 +342,7 @@ export async function scaffoldPlugin(
   if (!spec.name || !spec.name.trim()) throw new Error('"name" es requerido');
 
   const scope: PluginScope = spec.scope === "global" ? "global" : "project";
+  if (scope === "project" && spec.views?.includes("widget")) throw new Error('un widget del Dashboard tiene que ser scope "global"');
   const dir = scope === "global" ? join(globalPluginsDir(), spec.id) : join(projectPluginsDir(projectPath), spec.id);
 
   const alreadyExists = await stat(dir)
@@ -412,7 +425,8 @@ export type PluginManifestPatch = {
   description?: string | null;
 };
 
-const PERMISSION_RE = /^(fs|fs:write|panes|gateway:[A-Za-z0-9_.-]{1,80})$/;
+const PERMISSION_RE = /^(fs|fs:write|panes|microphone|gateway:[A-Za-z0-9_.-]{1,80})$/;
+const isKnownPermission = (p: string): boolean => PERMISSION_RE.test(p) || (p.startsWith("net:") && isPublicHostName(p.slice(4)));
 
 /**
  * Applies an Ajustes edit to manifest.json. Works on the raw JSON so keys
@@ -445,7 +459,9 @@ export async function updatePluginManifest(
   if (patch.views !== undefined) {
     const views = [...new Set(patch.views)];
     if (views.length === 0) throw new Error("Elegí al menos una vista");
-    for (const v of views) if (v !== "tab" && v !== "panel" && v !== "mobile") throw new Error(`vista inválida "${String(v)}"`);
+    for (const v of views) if (!isView(v)) throw new Error(`vista inválida "${String(v)}"`);
+    // The dashboard is one for the whole app, so only global complementos can sit on it.
+    if (scope === "project" && views.includes("widget")) throw new Error("Solo un complemento global puede ser widget del Dashboard");
     // Mobile only ever lists the open project's own plugins.
     if (scope === "global" && views.includes("mobile")) throw new Error("Un complemento global no puede abrirse en mobile");
     raw.views = views;
@@ -453,7 +469,7 @@ export async function updatePluginManifest(
   }
   if (patch.permissions !== undefined) {
     const perms = [...new Set(patch.permissions)];
-    for (const p of perms) if (!PERMISSION_RE.test(p)) throw new Error(`permiso inválido "${p}"`);
+    for (const p of perms) if (!isKnownPermission(p)) throw new Error(`permiso inválido "${p}"`);
     raw.permissions = perms;
   }
   if (patch.description !== undefined) {
@@ -462,6 +478,10 @@ export async function updatePluginManifest(
     else delete raw.description;
   }
 
+  // Refuse an edit that would leave the widget block invalid (e.g. dropping the domain a secret goes to).
+  if (Array.isArray(raw.views) && raw.views.includes("widget")) {
+    parseWidgetSpec(raw.widget, Array.isArray(raw.permissions) ? raw.permissions.map(String) : []);
+  }
   await writeFile(join(dir, "manifest.json"), JSON.stringify(raw, null, 2), "utf8");
   const manifest = await readManifest(dir);
   return { key: `${scope}:${id}`, scope, manifest, dir, url: pluginUrl(scope, projectId, id) };

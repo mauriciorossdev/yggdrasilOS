@@ -8,7 +8,13 @@ import type { ConfigGetResult } from "../../types.js";
  * Desktop-local settings are merged in main; the gateway part goes through
  * config.patch so it hot-reloads and merges per provider/agent.
  */
-export function TransferSection() {
+type Props = {
+  /** Writes pending edits, which reloading after an import would lose. False stops the import. */
+  beforeImport: () => Promise<boolean>;
+  onImported: () => Promise<void>;
+};
+
+export function TransferSection({ beforeImport, onImported }: Props) {
   const { t } = useI18n();
   const { call } = useGateway();
   const [includeSecrets, setIncludeSecrets] = useState(false);
@@ -38,12 +44,18 @@ export function TransferSection() {
 
   const importSettings = () =>
     run(async () => {
+      if (!(await beforeImport())) return null;
       const res = await window.yggdrasil.settingsTransfer.importSettings();
       if (!res) return null;
       let gatewayKeys: string[] = [];
-      if (res.gateway && Object.keys(res.gateway).length > 0) {
-        await call("config.patch", res.gateway);
-        gatewayKeys = Object.keys(res.gateway);
+      try {
+        if (res.gateway && Object.keys(res.gateway).length > 0) {
+          await call("config.patch", res.gateway);
+          gatewayKeys = Object.keys(res.gateway);
+        }
+      } finally {
+        // The desktop half is already on disk, even if the gateway rejected its half.
+        await onImported();
       }
       const parts = [
         res.desktopKeys.length ? t("set.transfer.desktop", { keys: res.desktopKeys.join(", ") }) : null,

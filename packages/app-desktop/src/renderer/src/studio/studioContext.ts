@@ -26,7 +26,22 @@ export function studioTerminalContext(plugin: PluginRecord): string {
     `Estás editando el complemento "${plugin.manifest.name}" (${estado}) del Estudio de Yggdrasil. ` +
     `Sus archivos están en ${ubicacion}. Usá tus herramientas de archivo normales ahí. ` +
     `Esa misma carpeta tiene un README.md con la referencia completa de manifest.json y del API window.ygg — leelo antes de editar. ` +
-    `Los cambios se recargan solos en la vista previa — no hace falta ningún paso extra para verlos reflejados.`
+    `Los cambios se recargan solos en la vista previa — no hace falta ningún paso extra para verlos reflejados.` +
+    widgetContext(plugin)
+  );
+}
+
+/** For Dashboard widgets: the contract in short, since a README scaffolded earlier doesn't have it. */
+function widgetContext(plugin: PluginRecord): string {
+  if (!plugin.manifest.views?.includes("widget")) return "";
+  return (
+    ` Es un widget del Dashboard: manifest.json lleva "views" con "widget", permisos "net:<dominio>" y un bloque ` +
+    `"widget" { defaultSize: "s"|"m"|"l", refresh: { defaultSeconds, minSeconds }, configSchema: { type: "object", properties } } ` +
+    `(tipos: string, number, boolean, list con options, secret con domain y sendAs.header). La app dibuja el formulario. ` +
+    `const { widget } = await ygg.ready() da instanceId, config, size, preview y language. Para internet usá solo ` +
+    `await ygg.net.fetch(url, { auth: "campoSecreto" }) → { status, ok, body } (GET HTTPS; errores con code "not-granted" o ` +
+    `"no-secret": si widget.preview, mostrá datos de ejemplo). Volvé a cargar en ygg.on("refresh", fn), sin timers propios. ` +
+    `Un widget no tiene fs, panes ni gateway.`
   );
 }
 
@@ -96,7 +111,9 @@ export function studioChatContext(plugin: PluginRecord): string {
     `Sus archivos ya existen en ${ubicacion} — usá tu herramienta de escritura de archivos con esa ruta ` +
     `(relativa a la raíz del proyecto si el scope es "project", absoluta si es "global") para editarlos. ` +
     `No hay una herramienta de scaffold ni de reload acá: los archivos ya están creados, y los cambios en ` +
-    `disco se recargan solos en la vista previa. Cada escritura te va a pedir aprobación.\n\n---\n\n`
+    `disco se recargan solos en la vista previa. Cada escritura te va a pedir aprobación.` +
+    widgetContext(plugin) +
+    `\n\n---\n\n`
   );
 }
 

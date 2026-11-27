@@ -10,7 +10,7 @@ import type { PluginFileEntry, PluginRecord, PluginView } from "../types.js";
 import type { PluginErrorEntry } from "../plugins/pluginTypes.js";
 import { isCliVisible } from "../onboarding/harnessFilter.js";
 import { useOnboarding } from "../onboarding/store.js";
-import { useI18n } from "../i18n/index.js";
+import { useI18n, type MessageKey } from "../i18n/index.js";
 
 type AuthoringMode = "terminal" | "chat";
 type WorkspaceTab = "agent" | "files" | "settings";
@@ -33,7 +33,7 @@ const MIN_PANE = 320;
 /** .studio-divider width and .studio-workspace-body horizontal padding (styles.css). */
 const DIVIDER_W = 14;
 const BODY_PAD_X = 32;
-const VIEWS: PluginView[] = ["tab", "panel", "mobile"];
+const VIEWS: PluginView[] = ["tab", "panel", "mobile", "widget"];
 const RECENT_SHOWN = 4;
 
 function readPreviewWidth(): number | null {
@@ -350,7 +350,7 @@ export function StudioWorkspace({ plugin, projectPath, launch, onLaunchConsumed,
                 title={declared ? undefined : t("studio.preview.notDeclared")}
                 onClick={() => setView(v)}
               >
-                {v === "tab" ? t("studio.create.viewTab") : v === "panel" ? t("studio.create.viewPanel") : t("studio.create.viewMobile")}
+                {t(`studio.create.view${v[0].toUpperCase()}${v.slice(1)}` as MessageKey)}
               </button>
             );
           })}
@@ -427,7 +427,7 @@ export function StudioWorkspace({ plugin, projectPath, launch, onLaunchConsumed,
           className="studio-preview-col"
           style={effectivePreviewWidth !== null ? { width: effectivePreviewWidth, flex: "0 0 auto" } : undefined}
         >
-          <StudioPreview plugin={plugin} view={view} version={version} onStatusChange={onStatusChange} onAskFix={askFix} />
+          <StudioPreview key={plugin.key} plugin={plugin} view={view} version={version} onStatusChange={onStatusChange} onAskFix={askFix} />
         </div>
       </div>
       <footer className="studio-flow">

@@ -12,6 +12,7 @@ export function HarnessSection({ config, setConfig, harnesses }: Props) {
   return (
     <section className="settings-section">
       <h3>{t("set.harness.title")}</h3>
+      <p className="muted">{t("set.harness.help")}</p>
       <label>
         {t("set.harness.policy")}
         <select

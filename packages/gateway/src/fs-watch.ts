@@ -59,13 +59,14 @@ export async function startFsWatcher(root: string, events: GatewayContext["event
     timer = setTimeout(flush, DEBOUNCE_MS);
   };
 
-  // macOS only (untested on Windows, which keeps chokidar): one native recursive fs.watch() handle (FSEvents /
+  // macOS and Windows: one native recursive fs.watch() handle (FSEvents /
   // ReadDirectoryChangesW) for the whole tree. chokidar 5 has no native
   // backend and opens one fd PER FILE and per directory — a real project
   // (30k+ non-ignored files, e.g. a folder holding several monorepo
   // checkouts) blows through the process fd limit (EMFILE) even with
-  // node_modules/dist ignored.
-  if (process.platform === "darwin") {
+  // node_modules/dist ignored. On Windows that crawl also starved the libuv
+  // threadpool for 20-40s, so RPCs that read files (config.get) timed out.
+  if (process.platform === "darwin" || process.platform === "win32") {
     const known = new Set<string>();
     const native: NativeFSWatcher = nativeWatch(root, { recursive: true }, (eventType, filename) => {
       if (!filename) return;

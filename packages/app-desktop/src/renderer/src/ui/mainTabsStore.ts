@@ -9,6 +9,7 @@ import { t, type MessageKey } from "../i18n/index.js";
 export type BuiltinMainTab =
   | "home"
   | "workspaces"
+  | "dashboard"
   | "chat"
   | "terminal"
   | "agentFlow"
@@ -29,6 +30,7 @@ export type ExtraTabMeta = { id: MainTab; label: string; icon?: ReactNode; onClo
 export const MAIN_TAB_LABELS: Record<BuiltinMainTab, MessageKey> = {
   home: "chat.mainNav.tab_home",
   workspaces: "chat.mainNav.tab_workspaces",
+  dashboard: "chat.mainNav.tab_dashboard",
   chat: "chat.mainNav.tab_chat",
   terminal: "chat.mainNav.tab_terminal",
   agentFlow: "chat.mainNav.tab_agentFlow",

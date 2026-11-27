@@ -1,5 +1,5 @@
 import { useLayoutEffect, useRef, useState, type ReactNode } from "react";
-import type { PluginView } from "../types.js";
+import type { PluginView, WidgetSize } from "../types.js";
 import { useI18n } from "../i18n/index.js";
 
 const PHONE_W = 390;
@@ -15,7 +15,7 @@ const BEZEL = 16;
  * plugin iframe, a remount would re-run its scripts and duplicate its
  * console). Used by the live preview and by StudioNew's template samples.
  */
-export function StudioStage({ view, children }: { view: PluginView; children: ReactNode }) {
+export function StudioStage({ view, widgetSize = "m", children }: { view: PluginView; widgetSize?: WidgetSize; children: ReactNode }) {
   const { t } = useI18n();
   const hostRef = useRef<HTMLDivElement>(null);
   const [phoneScale, setPhoneScale] = useState(1);
@@ -55,7 +55,7 @@ export function StudioStage({ view, children }: { view: PluginView; children: Re
             className="studio-frame-shell"
             style={phone ? { width: outerW, height: outerH, transform: `scale(${phoneScale})` } : undefined}
           >
-            <div className="studio-preview-frame">{children}</div>
+            <div className={`studio-preview-frame${view === "widget" ? ` dash-preview-box dash-size-${widgetSize}` : ""}`}>{children}</div>
           </div>
         </div>
       </div>
