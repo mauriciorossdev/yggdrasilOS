@@ -1,6 +1,6 @@
 {
   "name": "@yggdrasil/app-desktop",
-  "version": "0.1.9",
+  "version": "0.1.10",
   "description": "Desktop ADE (Electron, macOS/Windows/Linux): terminals running agent CLIs, worktrees, Agent Flow, workflows, Studio, Dashboard and chat.",
   "license": "MIT",
   "private": true,
