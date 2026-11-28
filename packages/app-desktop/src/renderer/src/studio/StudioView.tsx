@@ -2,6 +2,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { usePlugins } from "../plugins/usePlugins.js";
 import { useProjects } from "../projects/useProjects.js";
 import { StudioNew } from "./StudioNew.js";
+import { useNewWidgetRequests } from "./newWidgetRequest.js";
 import { StudioWorkspace } from "./StudioWorkspace.js";
 import { pluginGlyph, type StudioTerminalHarness } from "./studioContext.js";
 import type { PluginRecord } from "../types.js";
@@ -94,6 +95,13 @@ export function StudioView({ onOpenFile }: Props) {
   const [railCollapsed, setRailCollapsed] = useState(readRailCollapsed);
   useStudioFocusMode();
 
+  const widgetRequests = useNewWidgetRequests();
+  // The request already answered, so coming back to the form later doesn't reapply it.
+  const [handledRequest, setHandledRequest] = useState(0);
+  useEffect(() => {
+    if (widgetRequests > handledRequest) setCreating(true);
+  }, [widgetRequests, handledRequest]);
+
   const byKey = useMemo(() => new Map(plugins.map((p) => [p.key, p])), [plugins]);
   const selected = selectedKey ? (byKey.get(selectedKey) ?? null) : null;
 
@@ -119,9 +127,14 @@ export function StudioView({ onOpenFile }: Props) {
     });
   };
 
+  const closeCreate = () => {
+    setCreating(false);
+    setHandledRequest(widgetRequests);
+  };
+
   const select = (key: string) => {
     setSelectedKey(key);
-    setCreating(false);
+    closeCreate();
     setAlive((prev) => [...prev.filter((k) => k !== key), key].slice(-MAX_ALIVE));
   };
 
@@ -237,7 +250,12 @@ export function StudioView({ onOpenFile }: Props) {
       </aside>
       <div className="studio-main">
         {creating && (
-          <StudioNew plugins={plugins} onCancel={() => setCreating(false)} onCreated={handleCreated} />
+          <StudioNew
+            plugins={plugins}
+            onCancel={closeCreate}
+            widgetRequest={widgetRequests > handledRequest ? widgetRequests : 0}
+            onCreated={handleCreated}
+          />
         )}
         {projectPath &&
           alive.map((key) => {

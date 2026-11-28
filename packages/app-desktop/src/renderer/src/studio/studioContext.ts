@@ -75,12 +75,15 @@ export function buildStudioTerminalLaunch(
  * StudioNew: what the user asked for, the chosen template's hint, and a
  * nudge to start editing right away (the scaffold is only a placeholder).
  */
-export function studioInitialPrompt(description: string, templateHint?: string): string {
+export function studioInitialPrompt(description: string, templateHint?: string, widget = false): string {
   const parts = [description.trim()];
   if (templateHint) parts.push(templateHint);
   parts.push(
     "Los archivos de arranque son solo un placeholder: reemplazalos para que el complemento haga esto. " +
-      "Si necesitás otro permiso o vista, decímelo para cambiarlo en Ajustes.",
+      // A widget declares its own domains and settings in the manifest, which the agent edits.
+      (widget
+        ? "Editá manifest.json para lo que el widget necesite (configSchema, permisos net:) y avisame qué agregaste."
+        : "Si necesitás otro permiso o vista, decímelo para cambiarlo en Ajustes."),
   );
   return parts.filter(Boolean).join("\n\n");
 }

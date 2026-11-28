@@ -532,6 +532,7 @@ export type ScaffoldPluginSpec = {
   defaultView?: PluginView;
   permissions?: PluginPermission[];
   description?: string;
+  widgetSize?: WidgetSize;
   status?: PluginStatus;
 };
 

@@ -63,6 +63,7 @@ export function StudioSettings({ plugin, lint, onSaved }: Props) {
   const saved = useMemo(() => draftOf(plugin), [plugin]);
   const [draft, setDraft] = useState<Draft>(saved);
   const [gatewayInput, setGatewayInput] = useState("");
+  const [domainInput, setDomainInput] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const dirty = !sameDraft(draft, saved);
@@ -80,6 +81,12 @@ export function StudioSettings({ plugin, lint, onSaved }: Props) {
     ...new Set([...draft.permissions.filter((p) => p.startsWith("gateway:")), ...[...missing].filter((p) => p.startsWith("gateway:"))]),
   ];
 
+  const netPerms = [
+    ...new Set([...draft.permissions.filter((p) => p.startsWith("net:")), ...[...missing].filter((p) => p.startsWith("net:"))]),
+  ];
+  // Shown where it can matter: a widget, or code or a manifest that already goes online.
+  const showNet = draft.views.includes("widget") || netPerms.length > 0 || missing.has("net");
+
   const toggle = <T,>(list: T[], item: T): T[] => (list.includes(item) ? list.filter((x) => x !== item) : [...list, item]);
   const setPerm = (perm: string, on: boolean) =>
     setDraft((d) => ({
@@ -91,6 +98,18 @@ export function StudioSettings({ plugin, lint, onSaved }: Props) {
     if (!method) return;
     setPerm(`gateway:${method}`, true);
     setGatewayInput("");
+  };
+
+  const addDomain = () => {
+    const host = domainInput
+      .trim()
+      .toLowerCase()
+      .replace(/^net:/, "")
+      .replace(/^https?:\/\//, "")
+      .split("/")[0];
+    if (!host) return;
+    setPerm(`net:${host}`, true);
+    setDomainInput("");
   };
 
   const save = async () => {
@@ -232,6 +251,54 @@ export function StudioSettings({ plugin, lint, onSaved }: Props) {
               ))}
             </span>
           </div>
+          {showNet && (
+            <div className="studio-perm">
+              <span className="studio-perm-spacer" />
+              <span>
+                <strong>{t("studio.perm.net")}</strong> <span className="mono muted studio-perm-id">net:*</span>
+                <br />
+                <span className="muted">{t("studio.perm.netHint")}</span>
+                <div className="studio-gw-chips">
+                  {netPerms.map((p) => {
+                    const declared = draft.permissions.includes(p);
+                    return (
+                      <span key={p} className={`studio-gw-chip mono${declared ? "" : " missing"}`}>
+                        {p.slice("net:".length)}
+                        {declared ? (
+                          <button type="button" aria-label={t("studio.perm.remove", { name: p })} onClick={() => setPerm(p, false)}>
+                            ×
+                          </button>
+                        ) : (
+                          <button type="button" onClick={() => setPerm(p, true)}>
+                            {t("studio.perm.add")}
+                          </button>
+                        )}
+                      </span>
+                    );
+                  })}
+                  <input
+                    className="mono studio-gw-input"
+                    value={domainInput}
+                    onChange={(e) => setDomainInput(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        addDomain();
+                      }
+                    }}
+                    onBlur={addDomain}
+                    placeholder={t("studio.perm.netPlaceholder")}
+                    aria-label={t("studio.perm.netPlaceholder")}
+                  />
+                </div>
+                {netPerms.filter((p) => !draft.permissions.includes(p)).map((p) => (
+                  <div key={p}>{usage(p)}</div>
+                ))}
+                {/* A call whose host can't be read from the code, with no domain declared at all. */}
+                {missing.has("net") && !draft.permissions.some((p) => p.startsWith("net:")) && <div>{usage("net")}</div>}
+              </span>
+            </div>
+          )}
         </div>
       </div>
       <div className="studio-set-row">

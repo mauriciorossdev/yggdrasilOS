@@ -2,7 +2,8 @@ import { useEffect, useState } from "react";
 import type { DashboardLayout, PluginRecord, WidgetInstance } from "../types.js";
 import { useI18n } from "../i18n/index.js";
 import { Button, Modal } from "../ui/index.js";
-import { setActiveTab, useActiveTab } from "../ui/mainTabsStore.js";
+import { useActiveTab } from "../ui/mainTabsStore.js";
+import { requestNewWidget } from "../studio/newWidgetRequest.js";
 import { catalogWidgets, moveInstance, newInstance } from "./dashboardLogic.js";
 import { WidgetCard } from "./WidgetCard.js";
 import { WidgetConfigDialog } from "./WidgetConfigDialog.js";
@@ -54,36 +55,34 @@ export function DashboardView({ plugins, version }: { plugins: PluginRecord[]; v
   };
 
   const configPlugin = config ? byKey.get(config.instance.pluginKey) : undefined;
-  const openStudio = (
-    <Button
-      variant="primary"
-      onClick={() => {
-        setPicking(false);
-        setActiveTab("studio");
-      }}
-    >
-      {t("dashboard.empty.openStudio")}
-    </Button>
-  );
-
-  const catalog = widgets.length === 0 ? (
+  const catalog = (
     <>
-      <p className="muted">{t("dashboard.catalog.none")}</p>
-      {openStudio}
+      {widgets.length === 0 ? (
+        <p className="muted">{t("dashboard.catalog.none")}</p>
+      ) : (
+        <ul className="dash-catalog">
+          {widgets.map((p) => (
+            <li key={p.key}>
+              <button type="button" className="dash-catalog-item" onClick={() => add(p)}>
+                <strong>
+                  {p.manifest.icon} {p.manifest.name}
+                </strong>
+                {p.manifest.description && <span className="muted">{p.manifest.description}</span>}
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+      <Button
+        variant={widgets.length === 0 ? "primary" : "secondary"}
+        onClick={() => {
+          setPicking(false);
+          requestNewWidget();
+        }}
+      >
+        {t("dashboard.catalog.describe")}
+      </Button>
     </>
-  ) : (
-    <ul className="dash-catalog">
-      {widgets.map((p) => (
-        <li key={p.key}>
-          <button type="button" className="dash-catalog-item" onClick={() => add(p)}>
-            <strong>
-              {p.manifest.icon} {p.manifest.name}
-            </strong>
-            {p.manifest.description && <span className="muted">{p.manifest.description}</span>}
-          </button>
-        </li>
-      ))}
-    </ul>
   );
 
   return (
