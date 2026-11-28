@@ -249,6 +249,7 @@ export {
   projectOwnProviders,
   mergeProviderSources,
   providerKeyEnvVar,
+  openAICompatKeyEnvVars,
   PROVIDER_FIELDS,
   type ProvidersMap,
   type ProviderField,

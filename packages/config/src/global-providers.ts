@@ -106,15 +106,36 @@ export function projectOwnProviders(projectRaw: unknown, defaults: ProvidersMap)
   return out;
 }
 
+/**
+ * Environment variables openai-compat may take its key from, for the endpoint it will be sent to.
+ * A vendor's variable only goes to that vendor (over https) or to a server on this machine, so a key
+ * never reaches a third party by surprise; YGGDRASIL_OPENAI_API_KEY is for whatever URL is set.
+ */
+export function openAICompatKeyEnvVars(baseUrl?: string): string[] {
+  const own = "YGGDRASIL_OPENAI_API_KEY";
+  let url: URL;
+  try {
+    url = new URL(baseUrl?.trim() || "https://api.openai.com/v1");
+  } catch {
+    return [own];
+  }
+  const host = url.hostname;
+  if (host === "localhost" || host === "[::1]" || /^127(\.\d+){3}$/.test(host)) return ["OLLAMA_API_KEY", "OPENAI_API_KEY", own];
+  const is = (domain: string) => url.protocol === "https:" && (host === domain || host.endsWith(`.${domain}`));
+  if (is("openai.com")) return ["OPENAI_API_KEY", own];
+  if (is("ollama.com")) return ["OLLAMA_API_KEY", own];
+  return [own];
+}
+
 /** Env var each provider falls back to for its key (same order as the provider packages). */
 const PROVIDER_KEY_ENV: Record<string, string[]> = {
   ollama: ["OLLAMA_API_KEY"],
-  "openai-compat": ["OLLAMA_API_KEY", "OPENAI_API_KEY"],
   anthropic: ["ANTHROPIC_API_KEY"],
 };
 
-export function providerKeyEnvVar(providerId: string, env: NodeJS.ProcessEnv = process.env): string | undefined {
-  return PROVIDER_KEY_ENV[providerId]?.find((name) => env[name]?.trim());
+export function providerKeyEnvVar(providerId: string, env: NodeJS.ProcessEnv = process.env, baseUrl?: string): string | undefined {
+  const names = providerId === "openai-compat" ? openAICompatKeyEnvVars(baseUrl) : PROVIDER_KEY_ENV[providerId];
+  return names?.find((name) => env[name]?.trim());
 }
 
 /** Effective providers (defaults < global < project, field by field) and where each field came from. */
@@ -144,7 +165,7 @@ export function mergeProviderSources(
         }
       }
     }
-    if (from.apiKey === undefined && providerKeyEnvVar(id, env)) from.apiKey = "env";
+    if (from.apiKey === undefined && providerKeyEnvVar(id, env, entry.baseUrl)) from.apiKey = "env";
     providers[id] = entry;
     sources[id] = from;
   }

@@ -1,8 +1,8 @@
-import { basename, dirname, isAbsolute, join, parse, relative, resolve, sep } from "node:path";
-import { cp, mkdir, readdir, readFile, rm, stat, unlink, writeFile } from "node:fs/promises";
+import { basename, dirname, isAbsolute, join, parse, relative, resolve } from "node:path";
+import { cp, mkdir, readdir, rm, stat } from "node:fs/promises";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
-import { homedir, tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { randomUUID } from "node:crypto";
 import { app, BrowserWindow, dialog, ipcMain, protocol, shell, type WebContents } from "electron";
 import { ensureGateway, type GatewayHandle } from "./gateway.js";
@@ -27,15 +27,6 @@ import {
 } from "./terminals.js";
 import { openGatewaysPath, registerOpenGateway, resetOpenGateways, unregisterOpenGateway } from "./openGateways.js";
 import { gatewayAuthForNewProject, notifyPhoneLinkChanged, registerPhoneLinkIpc, startPhoneLink, stopPhoneLink } from "./phoneLink.js";
-import { readAgentFlow, writeAgentFlow, type AgentFlow } from "./agentFlow.js";
-import { readAgentTeams, saveAgentTeam, deleteAgentTeam, renameAgentTeam, type AgentTeam } from "./agentTeams.js";
-import { readDocumentTabs, writeDocumentTabs, type DocumentTabsLayout } from "./documentTabs.js";
-import { importExternalPaths } from "./fileImport.js";
-import { resolveTerminalPath } from "./pathResolve.js";
-import { readClipboardFilePaths, writeClipboardFilePaths } from "./clipboardFiles.js";
-import { classifyPickedPaths } from "./pickedAttachments.js";
-import { copyPathFor, createDeckFile, createDocFile, createSheetFile, loadDeck, loadDoc, loadSheetSnapshot, saveDeck, saveDoc, saveSheetSnapshot, setSheetBaseline } from "./officeFiles.js";
-import { MAX_ASSET_BYTES, isImageName, sanitizeAssetName, uniqueAssetName } from "./noteAssets.js";
 import { startPaneControlServer, type CreatePaneSpec, type PaneControlHandle } from "./paneControlServer.js";
 import {
   createWorkspaceBroker,
@@ -46,14 +37,7 @@ import {
   type WorkspaceBroker,
   type WorkspaceZone,
 } from "./workspace.js";
-import { getDesktopAutomationAdapter, type PermissionKind } from "./automation/index.js";
-import {
-  desktopSettingsFilePath,
-  loadAutomationSettings,
-  saveAutomationSettings,
-  workflowStateDir,
-  type AutomationSettings,
-} from "./automationSettings.js";
+import { desktopSettingsFilePath, workflowStateDir } from "./automationSettings.js";
 import {
   seedDocumentsGuidance,
   trustYggdrasilMcpServer,
@@ -63,61 +47,14 @@ import {
   seedPluginsGuidance,
   seedWorkflowsGuidance,
 } from "./mcpConfig.js";
-import { indexPluginStorageOnWrite, reindexAllPluginStorage } from "./pluginStorageIndex.js";
+import { reindexAllPluginStorage } from "./pluginStorageIndex.js";
 import { closeMemoryDb } from "@yggdrasil/context-memory-db";
 import { getGithubAccount } from "@yggdrasil/tool-github";
 import { writeStatuslineConfig } from "./statuslineConfig.js";
-import { runScriptInSystemTerminal } from "./scriptRunner.js";
-import {
-  deleteModel,
-  downloadModel,
-  fileExists,
-  findBundledBinary as findBundledWhisperBinary,
-  isModelDownloaded,
-  listDownloadedModels,
-  WHISPER_MODELS,
-} from "./whisper.js";
-import { ensureWhisperServer, stopWhisperServer, transcribeViaServer } from "./whisperServer.js";
-import {
-  loadWhisperSettings,
-  saveWhisperSettings,
-  loadSttSettings,
-  saveSttSettings,
-  type WhisperSettings,
-  type SttSettings,
-} from "./whisperSettings.js";
-import { transcribeCloud } from "./sttCloud.js";
-import { readSettingsFile, updateSettingsFile } from "./settingsFile.js";
-import { buildExportMarkdown, deepMerge, parseImportMarkdown, withGlobalProviders } from "./settingsTransfer.js";
-import { loadTtsSettings, saveTtsSettings, type TtsSettings } from "./ttsSettings.js";
-import { deleteCustomRole, loadCustomRoles, saveCustomRole, type CustomRole } from "./roles.js";
-import {
-  deleteCustomFlowTemplate,
-  loadCustomFlowTemplates,
-  saveCustomFlowTemplate,
-  type CustomFlowTemplate,
-} from "./flowTemplates.js";
-import {
-  IDE_CATALOG,
-  detectInstalledIdes,
-  loadIdeSettings,
-  openProjectInIde,
-  saveIdeSettings,
-  type DetectedIde,
-  type IdeSettings,
-} from "./ideSettings.js";
+import { stopWhisperServer } from "./whisperServer.js";
+import { loadIdeSettings, openProjectInIde } from "./ideSettings.js";
 import { defaultThemeSettings, loadThemeSettings, saveThemeSettings, type ThemeSettings } from "./themeSettings.js";
-import { loadEditorSettings, saveEditorSettings, type EditorSettings } from "./editorSettings.js";
-import {
-  isCavemanInstalled,
-  readUserMcpServers,
-  loadClaudePaneSettings,
-  saveClaudePaneSettings,
-  setAttentionBridgeCommand,
-  attentionEnabled,
-  currentAttentionSettings,
-  type ClaudePaneSettings,
-} from "./claudePaneSettings.js";
+import { loadClaudePaneSettings, setAttentionBridgeCommand, attentionEnabled, currentAttentionSettings } from "./claudePaneSettings.js";
 import {
   disposeAttention,
   installAttention,
@@ -136,25 +73,8 @@ import {
 } from "./paneQueueHost.js";
 import { installLspIpc } from "./lsp/ipc.js";
 import { installDashboardIpc } from "./dashboardIpc.js";
-import { loadSyncSettings, saveSyncSettings, type SyncSettings } from "./syncSettings.js";
-import { resourceKeyFor, type ResourceRef } from "./sharedResources.js";
-import {
-  createInviteForResource,
-  createShareForResource,
-  createWebLinkForResource,
-  getResourceStatus,
-  listMembersForResource,
-  listMyShares as listMySyncShares,
-  pullResource,
-  pushResource,
-  pushResourceInBackground,
-  redeemInviteAndAttach,
-  refreshWebBundle,
-  resolveConflict as resolveSyncConflict,
-  revokeMemberForResource,
-} from "./syncEngine.js";
 import { notesAbsoluteDir, watchNotesDir } from "./notesWatcher.js";
-import { createBrowserTabView, scaleBrowserTabBounds, type BrowserTabBounds, type BrowserTabHandle } from "./browserTabView.js";
+import { createBrowserTabView, type BrowserTabHandle } from "./browserTabView.js";
 import { createBrowserCommentsHost, type CommentProvider } from "./browserCommentsHost.js";
 import { writeCaptureBundle } from "./browserCaptureStore.js";
 import { createCodeCommentsHost, type CodeCommentsHost } from "./codeCommentsHost.js";
@@ -174,42 +94,13 @@ import {
   setBrowserCommentsStatus,
   updateBrowserComment,
 } from "./browserCommentsStore.js";
-import { scanLocalPorts } from "./localPorts.js";
-import {
-  deletePlugin,
-  ensurePluginDirs,
-  globalPluginsDir,
-  lintPluginPermissions,
-  listPluginFiles,
-  projectPluginsDir,
-  scaffoldPlugin,
-  scanPlugins,
-  setPluginStatus,
-  updatePluginManifest,
-  watchPluginsDir,
-  type PluginManifestPatch,
-  type PluginScope,
-  type PluginStatus,
-  type ScaffoldPluginSpec,
-} from "./plugins.js";
+import { ensurePluginDirs, globalPluginsDir, projectPluginsDir, scaffoldPlugin, scanPlugins, watchPluginsDir } from "./plugins.js";
 import { forwardPluginFrameErrors, registerPluginProtocol } from "./pluginProtocol.js";
 import { registerFileProtocol } from "./fileProtocol.js";
-import { locateBlender, openInBlender } from "./blender.js";
-import { createProjectSkill, listSkills, SkillCreateError } from "./skills.js";
-import { pluginStorageDelete, pluginStorageGet, pluginStorageKeys, pluginStorageSet } from "./pluginStorage.js";
-import { readPluginTabs, writePluginTabs, type PluginTabsLayout } from "./pluginTabs.js";
 import { PLUGIN_API_DOCS } from "./pluginApiDocs.js";
 import { installCrashLogging, logCaughtError, logPath } from "./crashLogging.js";
 import { startSystemMonitor, stopSystemMonitor } from "./systemMonitor.js";
-import { detectClis, CLI_CATALOG } from "./cliDetect.js";
-import { detectOllama } from "./ollamaDetect.js";
-import {
-  hasExistingConfig,
-  loadOnboardingSettings,
-  saveOnboardingSettings,
-  shouldAutoOpenOnboarding,
-  type OnboardingSettings,
-} from "./onboardingSettings.js";
+import { loadOnboardingSettings } from "./onboardingSettings.js";
 import { advance, bootReady, failBoot, finishStage, initialBoot, openedSnapshot, resetForRetry, toWire, type BootSnapshot, type BootStageId } from "./bootState.js";
 import { resolveShellPathAsync } from "./resolveShellPath.js";
 import { installAboutMenu } from "./aboutPanel.js";
@@ -217,6 +108,14 @@ import { mt, resolveMainLanguage, setMainLanguage, type MainMessageKey } from ".
 import { GitCloneError, cloneGitRepo, parseGitUrl, validateCloneFolderName, type GitCloneErrorCode } from "./gitClone.js";
 import { installAutoUpdater } from "./autoUpdate.js";
 import { installUpdateCheck } from "./updateCheck.js";
+import { registerFilesIpc } from "./ipc/filesIpc.js";
+import { registerVoiceIpc } from "./ipc/voiceIpc.js";
+import { registerSyncIpc } from "./ipc/syncIpc.js";
+import { registerIdeIpc } from "./ipc/ideIpc.js";
+import { registerPreferencesIpc } from "./ipc/preferencesIpc.js";
+import { registerAgentsIpc } from "./ipc/agentsIpc.js";
+import { registerPluginsIpc } from "./ipc/pluginsIpc.js";
+import { registerBrowserIpc } from "./ipc/browserIpc.js";
 
 // Dev/testing escape hatch: run a second, isolated instance next to the installed app
 // (userData also scopes the single-instance lock below). Not set in normal use.
@@ -512,11 +411,6 @@ function loadRenderer(win: BrowserWindow): void {
 
 function resourcesDir(): string {
   return app.isPackaged ? process.resourcesPath : join(app.getAppPath(), "resources");
-}
-
-async function resolveInitialWhisperBinaryPath(current: string, backend: WhisperSettings["backend"]): Promise<string> {
-  if (current) return current;
-  return (await findBundledWhisperBinary(resourcesDir(), backend)) ?? "";
 }
 
 function yggdrasilShimPath(): string {
@@ -1147,125 +1041,6 @@ function registerIpc(): void {
     return process.platform === "darwin" ? win.isFullScreen() : win.isMaximized();
   });
 
-  // Browser tab (BrowserTabView.tsx) — a WebContentsView is a native layer
-  // Electron composites into the window, not a DOM node, so the renderer
-  // can only ever ask for it to navigate/reposition/show/hide, never render
-  // it directly. `navigate`/`show` lazily create the view (most projects
-  // never touch this tab); `hide`/`getUrl` read the existing entry directly
-  // instead, since there'd be nothing useful to lazily create just to hide.
-  ipcMain.handle("browserTab:navigate", async (_event, projectId: string, url: string) => {
-    await resolveBrowserTab(projectId)?.navigate(url);
-  });
-  // Address-bar navigation: URL-or-search, errors land in browserTab:state
-  // rather than rejecting here (agent-driven browser_open keeps the strict
-  // `navigate` above).
-  ipcMain.handle("browserTab:go", async (_event, projectId: string, input: string) => {
-    await resolveBrowserTab(projectId)?.go(input);
-  });
-  ipcMain.handle("browserTab:newTab", async (_event, projectId: string, input?: string) => {
-    return (await resolveBrowserTab(projectId)?.newTab(input)) ?? null;
-  });
-  ipcMain.handle("browserTab:closeTab", (_event, projectId: string, id: string) => {
-    projectWindows.get(projectId)?.browserTab?.closeTab(id);
-  });
-  ipcMain.handle("browserTab:activateTab", (_event, projectId: string, id: string) => {
-    projectWindows.get(projectId)?.browserTab?.activateTab(id);
-  });
-  ipcMain.handle("browserTab:toggleDevTools", (_event, projectId: string) => {
-    projectWindows.get(projectId)?.browserTab?.toggleDevTools();
-  });
-  ipcMain.handle("browserTab:zoom", (_event, projectId: string, direction: "in" | "out" | "reset") => {
-    projectWindows.get(projectId)?.browserTab?.zoom(direction);
-  });
-  ipcMain.handle("browserTab:showDownload", (_event, projectId: string, path: string) => {
-    projectWindows.get(projectId)?.browserTab?.showDownload(path);
-  });
-  // Which common dev-server ports are listening on this machine (the empty
-  // Browser tab offers them as one-click links). Not per project.
-  ipcMain.handle("browserTab:scanPorts", () => scanLocalPorts());
-  ipcMain.handle("browserTab:back", (_event, projectId: string) => {
-    projectWindows.get(projectId)?.browserTab?.back();
-  });
-  ipcMain.handle("browserTab:forward", (_event, projectId: string) => {
-    projectWindows.get(projectId)?.browserTab?.forward();
-  });
-  ipcMain.handle("browserTab:reload", (_event, projectId: string) => {
-    projectWindows.get(projectId)?.browserTab?.reload();
-  });
-  ipcMain.handle("browserTab:stop", (_event, projectId: string) => {
-    projectWindows.get(projectId)?.browserTab?.stop();
-  });
-  ipcMain.handle("browserTab:getState", (_event, projectId: string) => projectWindows.get(projectId)?.browserTab?.getState() ?? null);
-  ipcMain.handle("browserTab:setBounds", (event, projectId: string, bounds: BrowserTabBounds) => {
-    resolveBrowserTab(projectId)?.setBounds(scaleBrowserTabBounds(bounds, event.sender.getZoomFactor()));
-  });
-  ipcMain.handle("browserTab:show", (_event, projectId: string) => {
-    resolveBrowserTab(projectId)?.show();
-  });
-  ipcMain.handle("browserTab:hide", (_event, projectId: string) => {
-    projectWindows.get(projectId)?.browserTab?.hide();
-  });
-  // Still image of the active page, for the renderer to show in the viewport
-  // placeholder while the native view is temporarily hidden (a DOM flyout
-  // can't draw over a WebContentsView). null on any failure: the caller just
-  // falls back to hiding the view without a placeholder.
-  ipcMain.handle("browserTab:snapshot", async (_event, projectId: string) => {
-    try {
-      const shot = await projectWindows.get(projectId)?.browserTab?.screenshot();
-      return shot ? { base64: shot.base64, mimeType: shot.mimeType } : null;
-    } catch {
-      return null;
-    }
-  });
-  ipcMain.handle("browserTab:getUrl", (_event, projectId: string) => projectWindows.get(projectId)?.browserTab?.getUrl() ?? "");
-  // Blocks until the user clicks something in the loaded page (or Escape /
-  // timeout) — see browserTabView.ts's startPick and
-  // browserTabPickerPreload.ts's overlay. Same method backs both the
-  // renderer's own "Pick element" button and paneControlServer.ts's
-  // agent-callable /browser/pick.
-  ipcMain.handle("browserTab:startPick", async (_event, projectId: string, timeoutMs?: number) => {
-    return (await resolveBrowserTab(projectId)?.startPick(timeoutMs)) ?? null;
-  });
-
-  // Toolbar 💬 toggle → the active page's comment mode (the page's own overlay
-  // handles the clicking); providers feed the in-page "New agent" popover.
-  ipcMain.handle("browserTab:comments:setMode", (_event, projectId: string, on: boolean) => {
-    projectWindows.get(projectId)?.browserTab?.setCommentMode(Boolean(on));
-  });
-  ipcMain.handle("browserTab:comments:setPaneTitles", (_event, projectId: string, titles: Record<string, string>) => {
-    const clean: Record<string, string> = {};
-    for (const [id, title] of Object.entries(titles ?? {})) if (typeof title === "string") clean[id] = title;
-    commentPaneTitles.set(projectId, clean);
-  });
-  ipcMain.handle("browserTab:comments:setProviders", (_event, projectId: string, providers: CommentProvider[]) => {
-    commentProviders.set(
-      projectId,
-      (Array.isArray(providers) ? providers : []).map((p) => ({
-        id: String(p.id),
-        label: String(p.label),
-        command: String(p.command),
-      })),
-    );
-  });
-
-  // Review comments on code: diffs and the file editor (codeCommentsHost.ts).
-  ipcMain.handle("codeComments:locate", (_e, projectId: string, target: string) => codeCommentsHostFor(projectId).locate(String(target)));
-  ipcMain.handle("codeComments:list", (_e, projectId: string, root: string) => codeCommentsHostFor(projectId).list(root));
-  ipcMain.handle("codeComments:add", (_e, projectId: string, root: string, input: unknown) => codeCommentsHostFor(projectId).add(root, input));
-  ipcMain.handle("codeComments:update", (_e, projectId: string, root: string, id: string, text: string) =>
-    codeCommentsHostFor(projectId).update(root, id, text),
-  );
-  ipcMain.handle("codeComments:remove", (_e, projectId: string, root: string, id: string) => codeCommentsHostFor(projectId).remove(root, id));
-  ipcMain.handle("codeComments:clearDone", (_e, projectId: string, root: string) => codeCommentsHostFor(projectId).clearDone(root));
-  ipcMain.handle("codeComments:setStatus", (_e, projectId: string, ids: string[], status: "idle" | "sent" | "done") =>
-    codeCommentsHostFor(projectId).setStatus(Array.isArray(ids) ? ids : [], status),
-  );
-  ipcMain.handle("codeComments:dropRoot", (_e, projectId: string, path: string) => codeCommentsHostFor(projectId).dropRoot(path));
-  ipcMain.handle("codeComments:targets", (_e, projectId: string) => codeCommentsHostFor(projectId).targets());
-  ipcMain.handle("codeComments:send", (_e, projectId: string, req: Parameters<CodeCommentsHost["send"]>[0]) =>
-    codeCommentsHostFor(projectId).send(req),
-  );
-
   ipcMain.handle("projects:list", () => listProjects());
 
   ipcMain.handle("projects:openExisting", async () => {
@@ -1397,135 +1172,6 @@ function registerIpc(): void {
 
   ipcMain.handle("statusline:get", (_event, projectId: string) => projectWindows.get(projectId)?.paneControl.getRateLimits());
 
-  ipcMain.handle(
-    "scripts:runInTerminal",
-    (_event, params: { cwd: string; packageManager: string; scriptName: string }) =>
-      runScriptInSystemTerminal(params.cwd, params.packageManager, params.scriptName),
-  );
-
-  ipcMain.handle("agentFlow:get", async (_event, projectId: string) => {
-    const project = await getProject(projectId);
-    if (!project) return null;
-    return readAgentFlow(project.path);
-  });
-
-  ipcMain.handle("agentFlow:save", async (_event, projectId: string, flow: AgentFlow) => {
-    const project = await getProject(projectId);
-    if (!project) throw new Error("Unknown project");
-    await writeAgentFlow(project.path, flow);
-  });
-
-  ipcMain.handle("agentTeams:list", async (_event, projectId: string) => {
-    const project = await getProject(projectId);
-    if (!project) return [];
-    return readAgentTeams(project.path);
-  });
-
-  ipcMain.handle("agentTeams:save", async (_event, projectId: string, team: AgentTeam) => {
-    const project = await getProject(projectId);
-    if (!project) throw new Error("Unknown project");
-    return saveAgentTeam(project.path, team);
-  });
-
-  ipcMain.handle("agentTeams:delete", async (_event, projectId: string, id: string) => {
-    const project = await getProject(projectId);
-    if (!project) throw new Error("Unknown project");
-    return deleteAgentTeam(project.path, id);
-  });
-
-  ipcMain.handle("agentTeams:rename", async (_event, projectId: string, id: string, name: string) => {
-    const project = await getProject(projectId);
-    if (!project) throw new Error("Unknown project");
-    return renameAgentTeam(project.path, id, name);
-  });
-
-  ipcMain.handle("documents:getLayout", (_event, projectId: string) => readDocumentTabs(projectId));
-
-  ipcMain.handle("documents:saveLayout", (_event, projectId: string, layout: DocumentTabsLayout) =>
-    writeDocumentTabs(projectId, layout),
-  );
-
-  ipcMain.handle("plugins:list", async (_event, projectId: string) => {
-    const project = await getProject(projectId);
-    if (!project) return [];
-    return scanPlugins(projectId, project.path);
-  });
-
-  // Manual "Recargar" — rescans immediately (a plugins:changed watcher event
-  // already does this on its own; this is for when the user doesn't want to
-  // wait out the debounce, or the fs.watch backend missed something).
-  ipcMain.handle("plugins:reload", async (_event, projectId: string) => {
-    const project = await getProject(projectId);
-    const records = project ? await scanPlugins(projectId, project.path) : [];
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send("plugins:changed", { scope: "all" });
-    }
-    return records;
-  });
-
-  ipcMain.handle("plugins:storageGet", (_event, projectId: string, scope: PluginScope, id: string, key: string) =>
-    pluginStorageGet(scope, id, projectId, key),
-  );
-
-  ipcMain.handle(
-    "plugins:storageSet",
-    async (_event, projectId: string, scope: PluginScope, id: string, key: string, value: unknown) => {
-      await pluginStorageSet(scope, id, projectId, key, value);
-      // A no-op if this key isn't shared (pushResource just returns "Not
-      // shared" and pushResourceInBackground swallows it) — see
-      // syncEngine.ts. Fire-and-forget so a save never waits on the network.
-      pushResourceInBackground(resourceKeyFor({ resourceType: "plugin-storage-key", projectId, scope, pluginId: id, storageKey: key }));
-      // Same fire-and-forget posture — keeps plugin_data_search fresh
-      // without making a plugin's own save wait on a sqlite write.
-      const project = await getProject(projectId);
-      if (project) indexPluginStorageOnWrite(project.path, scope, id, key, value);
-    },
-  );
-
-  ipcMain.handle(
-    "plugins:storageDelete",
-    async (_event, projectId: string, scope: PluginScope, id: string, key: string) => {
-      await pluginStorageDelete(scope, id, projectId, key);
-      const project = await getProject(projectId);
-      if (project) indexPluginStorageOnWrite(project.path, scope, id, key, undefined);
-    },
-  );
-
-  ipcMain.handle("plugins:storageKeys", (_event, projectId: string, scope: PluginScope, id: string) =>
-    pluginStorageKeys(scope, id, projectId),
-  );
-
-  // ygg.fs.write/mkdir (a "fs:write"-permission plugin) — deliberately its
-  // own IPC instead of proxying through the gateway's fs.write/fs.mkdir RPC:
-  // those always pop the ApprovalBar, even from this app's own loopback
-  // connection (see ChatView.tsx's floating approval-bar-overlay comment),
-  // which would mean an approval prompt on every single plugin save. Same
-  // resolve/relative root-confinement guard as files:openExternal above.
-  // The gateway's own fs.watch still sees the write and emits fs.changed
-  // (FileTree, DocumentsView, and a "fs" plugin's own listener all pick it
-  // up the normal way) — this only bypasses the RPC's approval gate, not the
-  // workspace root confinement or the change notification.
-  ipcMain.handle("plugins:fsWrite", async (_event, projectId: string, relativePath: string, content: string) => {
-    const project = await getProject(projectId);
-    if (!project) throw new Error("Unknown project");
-    const resolvedRoot = resolve(project.path);
-    const target = resolve(resolvedRoot, relativePath);
-    const rel = relative(resolvedRoot, target);
-    if (rel.startsWith("..") || isAbsolute(rel)) throw new Error("relativePath escapes the project root");
-    await mkdir(dirname(target), { recursive: true });
-    await writeFile(target, content, "utf8");
-  });
-
-  ipcMain.handle("plugins:fsMkdir", async (_event, projectId: string, relativePath: string) => {
-    const project = await getProject(projectId);
-    if (!project) throw new Error("Unknown project");
-    const resolvedRoot = resolve(project.path);
-    const target = resolve(resolvedRoot, relativePath);
-    const rel = relative(resolvedRoot, target);
-    if (rel.startsWith("..") || isAbsolute(rel)) throw new Error("relativePath escapes the project root");
-    await mkdir(target, { recursive: true });
-  });
-
   ipcMain.handle("panes:list", async (_event, projectId: string) => {
     const paneControl = projectWindows.get(projectId)?.paneControl;
     return paneControl ? (await paneControl.listPanes()).panes : [];
@@ -1546,21 +1192,6 @@ function registerIpc(): void {
     },
   );
 
-  ipcMain.handle("plugins:getLayout", (_event, projectId: string) => readPluginTabs(projectId));
-
-  ipcMain.handle("plugins:saveLayout", (_event, projectId: string, layout: PluginTabsLayout) =>
-    writePluginTabs(projectId, layout),
-  );
-
-  // PluginsSection's "Mostrar carpeta" — `dir` always comes from a
-  // PluginRecord this same process handed the renderer via plugins:list, so
-  // there's no untrusted-path concern here (unlike files:openExternal above,
-  // whose relativePath is confined against the project root because it's
-  // reachable from arbitrary chat/tool input).
-  ipcMain.handle("plugins:reveal", (_event, dir: string) => {
-    shell.showItemInFolder(dir);
-  });
-
   // Reply half of the editors:request pair built in openProject() above: the renderer's open spreadsheet /
   // document / presentation answers an agent's tool call. Only the window that was asked may answer.
   ipcMain.handle("editors:reply", (event, callId: string, ok: boolean, payload: unknown) => {
@@ -1570,404 +1201,6 @@ function registerIpc(): void {
     if (ok) pending.resolve(payload);
     else pending.reject(new Error(typeof payload === "string" ? payload : "editor operation failed"));
   });
-
-  // Reply half of the callTool request/response pair built in openProject()
-  // above — PluginToolRuntime.tsx (renderer) calls this once it has (or
-  // fails to get) a result from the plugin's own headless iframe.
-  ipcMain.handle("plugins:toolCallResult", (_event, callId: string, ok: boolean, resultOrError: unknown) => {
-    const pending = pendingPluginToolCalls.get(callId);
-    if (!pending) return; // late or duplicate reply — nothing waiting on it anymore
-    pendingPluginToolCalls.delete(callId);
-    if (ok) pending.resolve(resultOrError);
-    else pending.reject(new Error(typeof resultOrError === "string" ? resultOrError : "tool call failed"));
-  });
-
-  // Studio's own scaffold entry point — direct, no HTTP/MCP hop (unlike the
-  // scaffold_plugin MCP tool, only reachable from a claude CLI pane). status
-  // defaults to "draft" HERE, not inside scaffoldPlugin itself, so the
-  // existing MCP tool's own default (undefined/published) stays untouched.
-  ipcMain.handle("plugins:scaffold", async (_event, projectId: string, spec: ScaffoldPluginSpec) => {
-    const project = await getProject(projectId);
-    if (!project) throw new Error("Unknown project");
-    const record = await scaffoldPlugin({ ...spec, status: spec.status ?? "draft" }, projectId, project.path);
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send("plugins:changed", { scope: "all" });
-    }
-    return record;
-  });
-
-  ipcMain.handle(
-    "plugins:setStatus",
-    async (_event, projectId: string, scope: PluginScope, id: string, status: PluginStatus) => {
-      const project = await getProject(projectId);
-      if (!project) throw new Error("Unknown project");
-      const record = await setPluginStatus(scope, id, projectId, project.path, status);
-      for (const win of BrowserWindow.getAllWindows()) {
-        if (!win.isDestroyed()) win.webContents.send("plugins:changed", { scope: "all" });
-      }
-      return record;
-    },
-  );
-
-  ipcMain.handle(
-    "plugins:updateManifest",
-    async (_event, projectId: string, scope: PluginScope, id: string, patch: PluginManifestPatch) => {
-      const project = await getProject(projectId);
-      if (!project) throw new Error("Unknown project");
-      const record = await updatePluginManifest(scope, id, projectId, project.path, patch);
-      for (const win of BrowserWindow.getAllWindows()) {
-        if (!win.isDestroyed()) win.webContents.send("plugins:changed", { scope: "all" });
-      }
-      return record;
-    },
-  );
-
-  ipcMain.handle("plugins:listFiles", async (_event, projectId: string, scope: PluginScope, id: string) => {
-    const project = await getProject(projectId);
-    if (!project) throw new Error("Unknown project");
-    return listPluginFiles(scope, id, project.path);
-  });
-
-  ipcMain.handle("plugins:lintPermissions", async (_event, projectId: string, scope: PluginScope, id: string) => {
-    const project = await getProject(projectId);
-    if (!project) throw new Error("Unknown project");
-    return lintPluginPermissions(scope, id, project.path);
-  });
-
-  ipcMain.handle("plugins:delete", async (_event, projectId: string, scope: PluginScope, id: string) => {
-    const project = await getProject(projectId);
-    if (!project) throw new Error("Unknown project");
-    await deletePlugin(scope, id, project.path);
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send("plugins:changed", { scope: "all" });
-    }
-  });
-
-  ipcMain.handle(
-    "files:importExternal",
-    async (_event, projectId: string, destRelativePath: string, sourcePaths: string[]) => {
-      const project = await getProject(projectId);
-      if (!project) throw new Error("Unknown project");
-      return importExternalPaths(project.path, destRelativePath, sourcePaths);
-    },
-  );
-
-  ipcMain.handle("clipboard:readFilePaths", () => readClipboardFilePaths());
-
-  // Absolute path of a project-relative one, confined to the project root: what
-  // "send to terminal" writes into a pane and what "copy file" puts on the clipboard.
-  const resolveInProject = async (projectId: string, relativePath: string): Promise<string> => {
-    const project = await getProject(projectId);
-    if (!project) throw new Error("Unknown project");
-    const root = resolve(project.path);
-    const target = resolve(root, relativePath);
-    const rel = relative(root, target);
-    if (rel === ".." || rel.startsWith(`..${sep}`) || isAbsolute(rel)) throw new Error("relativePath escapes the project root");
-    return target;
-  };
-
-  ipcMain.handle("files:absolutePath", (_event, projectId: string, relativePath: string) =>
-    resolveInProject(projectId, relativePath),
-  );
-
-  // In-app spreadsheet editor (workspace/SheetEditor.tsx): .xlsx ⇄ the editor's snapshot, confined to the project.
-  ipcMain.handle("office:sheetLoad", async (_event, projectId: string, relativePath: string) =>
-    loadSheetSnapshot(await resolveInProject(projectId, relativePath), basename(relativePath)),
-  );
-  ipcMain.handle("office:sheetSave", async (_event, projectId: string, relativePath: string, snapshot: unknown) =>
-    saveSheetSnapshot(await resolveInProject(projectId, relativePath), snapshot as Parameters<typeof saveSheetSnapshot>[1]),
-  );
-  ipcMain.handle("office:sheetBaseline", async (_event, projectId: string, relativePath: string, snapshot: unknown) =>
-    setSheetBaseline(await resolveInProject(projectId, relativePath), snapshot as Parameters<typeof saveSheetSnapshot>[1]),
-  );
-  // "Save a copy" for a file the editor can't round-trip without loss: returns the copy's project-relative path.
-  ipcMain.handle("office:sheetSaveCopy", async (_event, projectId: string, relativePath: string, snapshot: unknown) => {
-    const copy = await copyPathFor(await resolveInProject(projectId, relativePath));
-    await saveSheetSnapshot(copy, snapshot as Parameters<typeof saveSheetSnapshot>[1]);
-    const project = await getProject(projectId);
-    return relative(resolve(project!.path), copy);
-  });
-  // Word documents (workspace/DocEditor.tsx).
-  ipcMain.handle("office:docLoad", async (_event, projectId: string, relativePath: string) =>
-    loadDoc(await resolveInProject(projectId, relativePath)),
-  );
-  ipcMain.handle("office:docSave", async (_event, projectId: string, relativePath: string, model: unknown) =>
-    saveDoc(await resolveInProject(projectId, relativePath), model as Parameters<typeof saveDoc>[1]),
-  );
-  ipcMain.handle("office:docSaveCopy", async (_event, projectId: string, relativePath: string, model: unknown) => {
-    const copy = await copyPathFor(await resolveInProject(projectId, relativePath));
-    await saveDoc(copy, model as Parameters<typeof saveDoc>[1]);
-    const project = await getProject(projectId);
-    return relative(resolve(project!.path), copy);
-  });
-  ipcMain.handle("office:docCreate", async (_event, projectId: string, relativePath: string, model: unknown) =>
-    createDocFile(await resolveInProject(projectId, relativePath), model as Parameters<typeof createDocFile>[1]),
-  );
-  // PowerPoint presentations (workspace/DeckEditor.tsx).
-  ipcMain.handle("office:deckLoad", async (_event, projectId: string, relativePath: string) =>
-    loadDeck(await resolveInProject(projectId, relativePath)),
-  );
-  ipcMain.handle("office:deckSave", async (_event, projectId: string, relativePath: string, deck: unknown) =>
-    saveDeck(await resolveInProject(projectId, relativePath), deck as Parameters<typeof saveDeck>[1]),
-  );
-  ipcMain.handle("office:deckSaveCopy", async (_event, projectId: string, relativePath: string, deck: unknown) => {
-    const copy = await copyPathFor(await resolveInProject(projectId, relativePath));
-    await saveDeck(copy, deck as Parameters<typeof saveDeck>[1]);
-    const project = await getProject(projectId);
-    return relative(resolve(project!.path), copy);
-  });
-  ipcMain.handle("office:deckCreate", async (_event, projectId: string, relativePath: string, deck: unknown) =>
-    createDeckFile(await resolveInProject(projectId, relativePath), deck as Parameters<typeof createDeckFile>[1]),
-  );
-  ipcMain.handle(
-    "office:sheetCreate",
-    async (_event, projectId: string, relativePath: string, rows?: Array<Array<string | number | boolean | null>>) =>
-      createSheetFile(await resolveInProject(projectId, relativePath), rows ?? []),
-  );
-
-  // An image pasted, dropped or picked into a note: stored in an `assets` folder next to the note, under a safe
-  // name that doesn't collide with what is already there. Returns the address to write in the markdown
-  // (`assets/name.png`, relative to the note).
-  ipcMain.handle(
-    "files:saveAsset",
-    async (_event, projectId: string, noteRelativePath: string, fileName: string, data: Uint8Array) => {
-      const name = sanitizeAssetName(fileName);
-      if (!isImageName(name)) throw new Error("Solo se pueden guardar imágenes (png, jpg, gif, webp, svg, bmp, avif).");
-      if (data.byteLength > MAX_ASSET_BYTES) throw new Error("La imagen pesa más de 25 MB.");
-      const noteDir = noteRelativePath.includes("/") ? noteRelativePath.slice(0, noteRelativePath.lastIndexOf("/")) : "";
-      const assetsDir = await resolveInProject(projectId, noteDir ? `${noteDir}/assets` : "assets");
-      await mkdir(assetsDir, { recursive: true });
-      const unique = uniqueAssetName(name, await readdir(assetsDir));
-      await writeFile(resolve(assetsDir, unique), Buffer.from(data));
-      return { src: `assets/${unique}` };
-    },
-  );
-
-  ipcMain.handle("clipboard:writeFilePaths", async (_event, projectId: string, relativePaths: string[]) => {
-    const absolute = await Promise.all(relativePaths.map((p) => resolveInProject(projectId, p)));
-    return writeClipboardFilePaths(absolute);
-  });
-
-  // The chat's "attach" button: a native picker that opens on the project. Attachments are
-  // project-relative (the gateway reads them from there), so anything chosen outside it
-  // is reported back instead of being silently dropped.
-  ipcMain.handle("files:pickToAttach", async (_event, projectId: string) => {
-    const project = await getProject(projectId);
-    if (!project) throw new Error("Unknown project");
-    const root = resolve(project.path);
-    const result = await dialog.showOpenDialog({
-      defaultPath: root,
-      properties: ["openFile", "openDirectory", "multiSelections"],
-    });
-    if (result.canceled) return { attachments: [], rejected: [] };
-    return classifyPickedPaths(root, result.filePaths, async (path) => {
-      const info = await stat(path).catch(() => null);
-      return info ? (info.isDirectory() ? "directory" : "file") : null;
-    });
-  });
-
-  // The reliable way to import files: a real OS picker always hands back
-  // genuine absolute paths, no matter what quirks a given file has on the
-  // clipboard (see clipboardFiles.ts's file-ID-URL doc comment) or whether
-  // it's convenient to drag right now.
-  ipcMain.handle("files:pickToImport", async () => {
-    const result = await dialog.showOpenDialog({
-      properties: ["openFile", "openDirectory", "multiSelections", "treatPackageAsDirectory"],
-    });
-    return result.canceled ? [] : result.filePaths;
-  });
-
-  // For a file type FileViewer.tsx can't render inline (a .docx, a video,
-  // etc.) — hands off to the OS's own default app instead of just failing.
-  ipcMain.handle("files:openExternal", async (_event, projectId: string, relativePath: string) => {
-    const project = await getProject(projectId);
-    if (!project) throw new Error("Unknown project");
-    const resolvedRoot = resolve(project.path);
-    const target = resolve(resolvedRoot, relativePath);
-    const rel = relative(resolvedRoot, target);
-    if (rel.startsWith("..") || isAbsolute(rel)) throw new Error("relativePath escapes the project root");
-    const err = await shell.openPath(target);
-    if (err) throw new Error(err);
-  });
-
-  ipcMain.handle("whisper:getSettings", async (): Promise<WhisperSettings> => {
-    const settings = await loadWhisperSettings(app.getPath("userData"));
-    settings.binaryPath = await resolveInitialWhisperBinaryPath(settings.binaryPath, settings.backend);
-    return settings;
-  });
-
-  // Used by the Settings CPU/GPU toggle to look up the matching bundled
-  // build's path (if present) without saving — the renderer decides whether
-  // to adopt it into binaryPath.
-  ipcMain.handle("whisper:findBundledBinary", async (_event, backend: WhisperSettings["backend"]) =>
-    findBundledWhisperBinary(resourcesDir(), backend),
-  );
-
-  ipcMain.handle("whisper:saveSettings", async (_event, settings: WhisperSettings) => {
-    await saveWhisperSettings(app.getPath("userData"), settings);
-  });
-
-  ipcMain.handle("whisper:pickBinary", async () => {
-    const result = await dialog.showOpenDialog({
-      title: mt("whisper.pickBinary"),
-      properties: ["openFile"],
-    });
-    if (result.canceled || result.filePaths.length === 0) return null;
-    return result.filePaths[0]!;
-  });
-
-  ipcMain.handle("whisper:listModels", () => WHISPER_MODELS);
-
-  ipcMain.handle("whisper:listDownloaded", async (_event, modelsDir: string) => listDownloadedModels(modelsDir));
-
-  ipcMain.handle("whisper:isDownloaded", async (_event, modelsDir: string, name: string) =>
-    isModelDownloaded(modelsDir, name),
-  );
-
-  ipcMain.handle("whisper:download", async (event, modelsDir: string, name: string) => {
-    await downloadModel(modelsDir, name, (fraction) => {
-      event.sender.send("whisper:downloadProgress", { name, fraction });
-    });
-  });
-
-  ipcMain.handle("whisper:deleteModel", async (_event, modelsDir: string, name: string) => {
-    await deleteModel(modelsDir, name);
-  });
-
-  ipcMain.handle(
-    "whisper:transcribe",
-    async (_event, audioBytes: ArrayBuffer, settings: WhisperSettings): Promise<string> => {
-      if (!(await fileExists(settings.binaryPath))) {
-        throw new Error(`whisper-server binary not found at "${settings.binaryPath}". Set it in Settings → STT.`);
-      }
-      const modelPath = join(settings.modelsDir, `ggml-${settings.model}.bin`);
-      if (!(await fileExists(modelPath))) {
-        throw new Error(`Whisper model not found at "${modelPath}". Download it in Settings → STT.`);
-      }
-
-      const tempDir = join(tmpdir(), "yggdrasil-desktop");
-      await mkdir(tempDir, { recursive: true });
-      const wavPath = join(tempDir, `${randomUUID()}.wav`);
-      await writeFile(wavPath, Buffer.from(audioBytes));
-      try {
-        const server = await ensureWhisperServer(settings.binaryPath, modelPath);
-        return await transcribeViaServer(server.port, wavPath, settings.language);
-      } finally {
-        void unlink(wavPath).catch(() => {});
-      }
-    },
-  );
-
-  ipcMain.handle("stt:getSettings", async (): Promise<SttSettings> => loadSttSettings(app.getPath("userData")));
-
-  ipcMain.handle("stt:saveSettings", async (_event, settings: SttSettings) => {
-    await saveSttSettings(app.getPath("userData"), settings);
-  });
-
-  ipcMain.handle(
-    "stt:transcribeCloud",
-    async (_event, audioBytes: ArrayBuffer, settings: SttSettings["cloud"]): Promise<string> =>
-      transcribeCloud(Buffer.from(audioBytes), settings),
-  );
-
-  ipcMain.handle("tts:getSettings", async (): Promise<TtsSettings> => loadTtsSettings(app.getPath("userData")));
-
-  ipcMain.handle("tts:saveSettings", async (_event, settings: TtsSettings) => {
-    await saveTtsSettings(app.getPath("userData"), settings);
-  });
-
-  ipcMain.handle(
-    "settings:export",
-    async (_event, workspaceRoot: string | null, includeSecrets: boolean): Promise<{ path: string } | null> => {
-      const result = await dialog.showSaveDialog({
-        title: mt("settings.exportTitle"),
-        defaultPath: "yggdrasil-settings.md",
-        filters: [{ name: "Markdown", extensions: ["md"] }],
-      });
-      if (result.canceled || !result.filePath) return null;
-      const desktop = await readSettingsFile(app.getPath("userData"));
-      let gateway: Record<string, unknown> | null = null;
-      if (workspaceRoot) {
-        try {
-          gateway = JSON.parse(await readFile(join(workspaceRoot, "yggdrasil.config.json"), "utf8")) as Record<string, unknown>;
-        } catch {
-          gateway = null;
-        }
-        let globalProviders: Record<string, unknown> | null = null;
-        try {
-          globalProviders = JSON.parse(await readFile(join(homedir(), ".yggdrasil", "providers.json"), "utf8")) as Record<string, unknown>;
-        } catch {
-          globalProviders = null;
-        }
-        gateway = withGlobalProviders(gateway, globalProviders);
-      }
-      await writeFile(
-        result.filePath,
-        buildExportMarkdown({ desktop, gateway, includeSecrets: Boolean(includeSecrets), exportedAt: new Date() }),
-        { encoding: "utf8", mode: 0o600 },
-      );
-      return { path: result.filePath };
-    },
-  );
-
-  // Desktop settings are merged here; the gateway part is returned for the
-  // renderer to apply through config.patch (hot reload, per-id merge).
-  ipcMain.handle(
-    "settings:import",
-    async (): Promise<{
-      path: string;
-      desktopKeys: string[];
-      gateway: Record<string, unknown> | null;
-      warnings: string[];
-    } | null> => {
-      const result = await dialog.showOpenDialog({
-        title: mt("settings.importTitle"),
-        properties: ["openFile"],
-        filters: [{ name: "Markdown", extensions: ["md"] }],
-      });
-      if (result.canceled || !result.filePaths[0]) return null;
-      const path = result.filePaths[0];
-      const parsed = parseImportMarkdown(await readFile(path, "utf8"));
-      const incoming = parsed.desktop;
-      if (incoming) await updateSettingsFile(app.getPath("userData"), (existing) => deepMerge(existing, incoming));
-      return { path, desktopKeys: incoming ? Object.keys(incoming) : [], gateway: parsed.gateway, warnings: parsed.warnings };
-    },
-  );
-
-  ipcMain.handle("roles:listCustom", async (): Promise<CustomRole[]> => loadCustomRoles(app.getPath("userData")));
-
-  ipcMain.handle(
-    "roles:saveCustom",
-    async (_event, role: { label: string; summary?: string; systemPrompt: string }): Promise<CustomRole[]> =>
-      saveCustomRole(app.getPath("userData"), role),
-  );
-
-  ipcMain.handle(
-    "roles:deleteCustom",
-    async (_event, id: string): Promise<CustomRole[]> => deleteCustomRole(app.getPath("userData"), id),
-  );
-
-  ipcMain.handle(
-    "flowTemplates:listCustom",
-    async (): Promise<CustomFlowTemplate[]> => loadCustomFlowTemplates(app.getPath("userData")),
-  );
-
-  ipcMain.handle(
-    "flowTemplates:saveCustom",
-    async (
-      _event,
-      template: { label: string; summary?: string; prompt: string },
-    ): Promise<CustomFlowTemplate[]> => saveCustomFlowTemplate(app.getPath("userData"), template),
-  );
-
-  ipcMain.handle(
-    "flowTemplates:deleteCustom",
-    async (_event, id: string): Promise<CustomFlowTemplate[]> => deleteCustomFlowTemplate(app.getPath("userData"), id),
-  );
-
-  ipcMain.handle("ide:listCatalog", () => IDE_CATALOG.map(({ id, label }) => ({ id, label })));
-
-  ipcMain.handle("ide:detectInstalled", async (): Promise<DetectedIde[]> => detectInstalledIdes());
 
   // Theme: persisted in desktop-settings.json and broadcast to every window,
   // same shape as projects:setColor.
@@ -1993,26 +1226,6 @@ function registerIpc(): void {
       return undefined;
     },
   });
-
-  // Code editor preferences: same persist-and-broadcast shape as the theme.
-  ipcMain.handle("editorSettings:get", () => loadEditorSettings(app.getPath("userData")));
-  ipcMain.handle("editorSettings:set", async (_event, settings: EditorSettings) => {
-    const saved = await saveEditorSettings(app.getPath("userData"), settings);
-    for (const win of BrowserWindow.getAllWindows()) {
-      if (!win.isDestroyed()) win.webContents.send("editorSettings:changed", saved);
-    }
-    return saved;
-  });
-
-  // Settings -> Agent CLIs -> Claude Code: applies to claude panes opened after saving.
-  ipcMain.handle("claudePaneSettings:get", async () => ({
-    settings: await loadClaudePaneSettings(app.getPath("userData")),
-    cavemanInstalled: isCavemanInstalled(),
-    userMcpServers: readUserMcpServers(),
-  }));
-  ipcMain.handle("claudePaneSettings:set", (_event, settings: ClaudePaneSettings) =>
-    saveClaudePaneSettings(app.getPath("userData"), settings),
-  );
 
   // Cross-project workspace: Settings -> Workspace reads/edits links and trust,
   // and the permission prompt answers come back through workspace:answer.
@@ -2049,198 +1262,14 @@ function registerIpc(): void {
       requireWorkspaceBroker().saveZone(zone, positions ?? {}),
   );
   ipcMain.handle("workspace:deleteZone", (_event, id: string) => requireWorkspaceBroker().deleteZone(String(id)));
-
-  ipcMain.handle("onboarding:getState", async () => {
-    const userData = app.getPath("userData");
-    const settings = await loadOnboardingSettings(userData);
-    return { settings, autoOpen: shouldAutoOpenOnboarding(settings, await hasExistingConfig(userData)) };
-  });
-  ipcMain.handle("onboarding:save", async (_event, settings: OnboardingSettings) => {
-    const saved = await saveOnboardingSettings(app.getPath("userData"), settings);
-    // Native dialogs and the app menu follow the UI language; rebuild the menu so it switches live.
-    setMainLanguage(resolveMainLanguage(saved.language, app.getLocale()));
-    installAboutMenu();
-    return saved;
-  });
-  ipcMain.handle("onboarding:detectClis", () => detectClis());
-  ipcMain.handle("onboarding:detectOllama", () => detectOllama());
-  // Only the install links the wizard itself shows — not an open-any-URL channel.
-  ipcMain.handle("onboarding:openExternal", async (_event, url: string) => {
-    const allowed = new Set<string | undefined>([...CLI_CATALOG.map((c) => c.installUrl), "https://ollama.com/download"]);
-    if (allowed.has(url)) await shell.openExternal(url);
-  });
-
-  ipcMain.handle("ide:getSettings", async (): Promise<IdeSettings> => loadIdeSettings(app.getPath("userData")));
-
-  ipcMain.handle("ide:saveSettings", async (_event, settings: IdeSettings) => {
-    await saveIdeSettings(app.getPath("userData"), settings);
-  });
-
-  // Package bundles (.app on macOS) are directories but should still be
-  // pickable as a single "file" here — showOpenDialog's default (not
-  // treating them as navigable directories) already does the right thing.
-  ipcMain.handle("ide:pickCustomPath", async () => {
-    const result = await dialog.showOpenDialog({ title: mt("ide.pickCustom"), properties: ["openFile"] });
-    return result.canceled || result.filePaths.length === 0 ? null : result.filePaths[0]!;
-  });
-
-  ipcMain.handle("ide:openProject", async (_event, projectId: string) => {
-    const project = await getProject(projectId);
-    if (!project) return { opened: false, error: "Project not found." };
-    const settings = await loadIdeSettings(app.getPath("userData"));
-    return openProjectInIde(project.path, settings);
-  });
-
-  ipcMain.handle("ide:openPath", async (_event, projectId: string, relativePath: string) => {
-    const project = await getProject(projectId);
-    if (!project) return { opened: false, error: "Project not found." };
-    const settings = await loadIdeSettings(app.getPath("userData"));
-    return openProjectInIde(join(project.path, relativePath), settings);
-  });
-
-  // "Show in file explorer": folders open themselves, files open their
-  // containing folder with the file pre-selected. Confined to the project root.
-  ipcMain.handle("ide:revealPath", async (_event, projectId: string, relativePath: string, isDir: boolean) => {
-    const project = await getProject(projectId);
-    if (!project) return { opened: false, error: "Project not found." };
-    const root = resolve(project.path);
-    const target = resolve(root, relativePath);
-    const rel = relative(root, target);
-    if (rel.startsWith("..") || isAbsolute(rel)) return { opened: false, error: "Path is outside the project." };
-    if (isDir) {
-      const err = await shell.openPath(target);
-      return err ? { opened: false, error: err } : { opened: true };
-    }
-    shell.showItemInFolder(target);
-    return { opened: true };
-  });
-
-  // Terminal path links (renderer terminal/pathLinkProvider.ts). Paths come
-  // from untrusted terminal output, so this only stats them, and anything
-  // outside the project is only ever *revealed* (selected in Finder/Explorer),
-  // never opened — opening could run a script or an .app an agent printed.
-  ipcMain.handle("paths:resolve", async (_event, projectId: string, raw: string, cwd: string | null) => {
-    if (typeof raw !== "string" || raw.length > 4096) return null;
-    const project = await getProject(projectId);
-    return resolveTerminalPath(raw, typeof cwd === "string" && isAbsolute(cwd) ? cwd : null, project?.path ?? null);
-  });
-
-  ipcMain.handle("paths:reveal", async (_event, abs: string) => {
-    if (typeof abs !== "string" || !isAbsolute(abs)) return { opened: false, error: "Not an absolute path." };
-    const info = await stat(abs).catch(() => null);
-    if (!info) return { opened: false, error: "Path not found." };
-    shell.showItemInFolder(resolve(abs));
-    return { opened: true };
-  });
-
-  ipcMain.handle("ide:openInBlender", async (_event, projectId: string, relativePath: string) => {
-    const project = await getProject(projectId);
-    if (!project) return { opened: false, error: "Project not found." };
-    const root = resolve(project.path);
-    const target = resolve(root, relativePath);
-    const rel = relative(root, target);
-    if (rel.startsWith("..") || isAbsolute(rel)) return { opened: false, error: "Path is outside the project." };
-    const settings = await loadIdeSettings(app.getPath("userData"));
-    return openInBlender(target, settings);
-  });
-
-  ipcMain.handle("ide:detectBlender", async () => {
-    const settings = await loadIdeSettings(app.getPath("userData"));
-    return locateBlender(settings);
-  });
-
-  // Skills registry (Settings → Skills). open/reveal only act on a path that
-  // listSkills itself returns, so the renderer can't point them at arbitrary files.
-  ipcMain.handle("skills:list", async (_event, projectId: string) => {
-    const project = await getProject(projectId);
-    if (!project) return [];
-    return listSkills(project.path, homedir());
-  });
-
-  ipcMain.handle("skills:open", async (_event, projectId: string, skillPath: string, reveal: boolean) => {
-    const project = await getProject(projectId);
-    if (!project) return { opened: false, error: "Project not found." };
-    const known = (await listSkills(project.path, homedir())).some((s) => s.path === skillPath);
-    if (!known) return { opened: false, error: "Unknown skill." };
-    if (reveal) {
-      shell.showItemInFolder(skillPath);
-      return { opened: true };
-    }
-    const err = await shell.openPath(skillPath);
-    return err ? { opened: false, error: err } : { opened: true };
-  });
-
-  ipcMain.handle("skills:create", async (_event, projectId: string, name: string, description: string) => {
-    const project = await getProject(projectId);
-    if (!project) return { ok: false as const, error: "Project not found." };
-    try {
-      const { path } = await createProjectSkill(project.path, String(name ?? "").trim(), String(description ?? ""));
-      return { ok: true as const, path };
-    } catch (err) {
-      if (err instanceof SkillCreateError) return { ok: false as const, error: err.message };
-      throw err;
-    }
-  });
-
-  // Automation settings (workflows-design.md §6.4/§8.2) — permission status
-  // reads straight from the same adapter paneControlServer's /desktop/*
-  // routes use (getDesktopAutomationAdapter is a stateless singleton), no
-  // loopback HTTP hop needed since this IS the Electron main process.
-  ipcMain.handle("automation:getPermissions", async () => getDesktopAutomationAdapter().getPermissions());
-  ipcMain.handle("automation:requestPermission", async (_event, kind: PermissionKind) => {
-    await getDesktopAutomationAdapter().requestPermission(kind);
-  });
-  ipcMain.handle("automation:getSettings", async (): Promise<AutomationSettings> => loadAutomationSettings(app.getPath("userData")));
-  ipcMain.handle("automation:saveSettings", async (_event, settings: AutomationSettings) => {
-    await saveAutomationSettings(app.getPath("userData"), settings);
-  });
-
-  ipcMain.handle("sync:getSettings", async (): Promise<SyncSettings> => loadSyncSettings(app.getPath("userData")));
-
-  ipcMain.handle("sync:saveSettings", async (_event, settings: SyncSettings) => {
-    await saveSyncSettings(app.getPath("userData"), settings);
-  });
-
-  ipcMain.handle("sync:createShare", (_event, ref: ResourceRef) => {
-    const { resourceType, ...local } = ref;
-    return createShareForResource(resourceType, resourceKeyFor(ref), local);
-  });
-
-  ipcMain.handle(
-    "sync:createInvite",
-    (_event, ref: ResourceRef, role: "edit" | "view", expiresInHours?: number) =>
-      createInviteForResource(resourceKeyFor(ref), role, expiresInHours),
-  );
-
-  ipcMain.handle("sync:redeemInvite", (_event, code: string, memberName: string, ref: ResourceRef) => {
-    const { resourceType: _resourceType, ...local } = ref;
-    return redeemInviteAndAttach(code, memberName, local);
-  });
-
-  ipcMain.handle("sync:listMyShares", () => listMySyncShares());
-
-  ipcMain.handle("sync:getResourceStatus", (_event, ref: ResourceRef) => getResourceStatus(resourceKeyFor(ref)));
-
-  ipcMain.handle("sync:push", (_event, ref: ResourceRef) => pushResource(resourceKeyFor(ref)));
-
-  ipcMain.handle("sync:pull", (_event, ref: ResourceRef) => pullResource(resourceKeyFor(ref)));
-
-  ipcMain.handle(
-    "sync:resolveConflict",
-    (_event, ref: ResourceRef, choice: "keep-mine" | "take-theirs") => resolveSyncConflict(resourceKeyFor(ref), choice),
-  );
-
-  ipcMain.handle("sync:createWebLink", (_event, ref: ResourceRef, email: string, role: "edit" | "view") =>
-    createWebLinkForResource(resourceKeyFor(ref), email, role),
-  );
-
-  ipcMain.handle("sync:listMembers", (_event, ref: ResourceRef) => listMembersForResource(resourceKeyFor(ref)));
-
-  ipcMain.handle("sync:revokeMember", (_event, ref: ResourceRef, memberKeyHash: string) =>
-    revokeMemberForResource(resourceKeyFor(ref), memberKeyHash),
-  );
-
-  ipcMain.handle("sync:refreshWebBundle", (_event, ref: ResourceRef) => refreshWebBundle(resourceKeyFor(ref)));
+  registerFilesIpc();
+  registerVoiceIpc({ resourcesDir });
+  registerSyncIpc();
+  registerIdeIpc();
+  registerPreferencesIpc();
+  registerAgentsIpc();
+  registerPluginsIpc({ pendingPluginToolCalls });
+  registerBrowserIpc({ resolveBrowserTab, projectWindows, commentPaneTitles, commentProviders, codeCommentsHostFor });
 }
   ipcMain.handle("dialog:openDirectory", async () => {
     const result = await dialog.showOpenDialog({ properties: ["openDirectory"] });

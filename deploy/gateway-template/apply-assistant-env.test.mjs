@@ -61,6 +61,13 @@ test("a missing API key or Ollama host is warned about", () => {
   assert.ok(noKey.warnings.some((w) => w.includes("ANTHROPIC_API_KEY")));
 });
 
+test("the key warning follows the endpoint: a vendor's variable doesn't count elsewhere", () => {
+  const warned = (env) => applyAssistantEnv(template, { ASSISTANT_PROVIDER: "openai-compat", ...env }).warnings.join(" ");
+  assert.match(warned({ OLLAMA_API_KEY: "k" }), /set OPENAI_API_KEY/);
+  assert.equal(warned({ ASSISTANT_BASE_URL: "https://ollama.com/v1", OLLAMA_API_KEY: "k" }), "");
+  assert.match(warned({ ASSISTANT_BASE_URL: "https://openrouter.ai/api/v1", OPENAI_API_KEY: "k" }), /set YGGDRASIL_OPENAI_API_KEY/);
+});
+
 const script = fileURLToPath(new URL("./apply-assistant-env.mjs", import.meta.url));
 const run = (file, env) => spawnSync(process.execPath, [script, file], { env: { PATH: process.env.PATH, ...env }, encoding: "utf8" });
 

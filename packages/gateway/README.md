@@ -50,13 +50,23 @@ package `packages/cli`'s `run`/`gateway`/`tui` commands actually start.
   `{config, workspaceRoot, events: createEventBus(), logger, sessionStore}`.
 - `registerCoreMethod(name, handler)` — how the built-in methods themselves are registered; also usable to
   add first-class methods without going through the plugin system.
-- Built-in methods registered by `registerBuiltinMethods()` (not directly exported, but this is the
-  authoritative list of what the gateway can do): `health`, `plugins.list`, `agents.list`,
-  `harnesses.list`, `providers.list`, `channels.status`, `channels.start`, `channels.stop`,
-  `sessions.list`, `sessions.get`, `sessions.patch`, `sessions.reset`, `sessions.compact`,
-  `tools.approve`, `tools.list`, `chat.send`, `turns.recent`, `chat.subscribe`, `config.get`, `config.patch`.
+- Built-in methods are registered by `registerBuiltinMethods()`. `methods.ts` keeps the ones that share its
+  connection, device and approval state; each other group lives in its own file and receives what it needs as
+  arguments:
+
+  | File | Methods |
+  |---|---|
+  | `methods.ts` | `health`, `plugins.list`, `channels.*`, `sessions.*`, `tools.*`, `device.*`, `devices.trust.*`, `chat.*`, `turns.recent` |
+  | `project-methods.ts` | `projects.*`, `workspace.info` |
+  | `terminal-methods.ts` | `terminals.*` |
+  | `agents-methods.ts` | `agents.*`, `skills.commands`, `harnesses.list`, `providers.list`, `automation.author` |
+  | `phone-methods.ts` | `desktops.*`, `push.*`, `documents.upload`/`list`/`delete`, `tts.synthesize` |
+  | `fs-methods.ts` | `fs.*`, `documents.index`, `git.status`, `git.diff` |
+  | `config-methods.ts` | `config.*`, `providers.scope`, `auth.apiKeys.*` |
+  | `git-methods.ts` | the rest of `git.*` (Repository tab) |
+
 - `createGatewayApprovalHandler(events)` — builds a `ToolApprovalHandler` that emits
-  `tool.approval.requested` and waits (60s timeout, default-deny) for a matching `tools.approve` RPC call
+  `tool.approval.requested` and waits (10 min timeout, default-deny) for a matching `tools.approve` RPC call
   to emit `tool.approval.resolved` and resolve the promise. This is how a UI client answers a
   "do you want to allow this destructive tool call?" prompt over the wire.
 - Type: `GatewayContext`, `GatewayMethodHandler`.
@@ -72,7 +82,7 @@ the `turns.recent` RPC method).
 
 - **`@yggdrasil/config`** — `YggdrasilConfig` type throughout; `isGatewayAuthRequired`, `resolveGatewayApiKey`,
   `validateApiKey` (auth.ts); `mergeConfig`, `readConfigFile`, `writeConfigFile`, `sanitizeConfigForClient`,
-  `validateConfigPatch` (methods.ts, for `config.get`/`config.patch`); `buildSessionKey` (methods.ts, `chat.send`).
+  `validateConfigPatch` (config-methods.ts, for `config.get`/`config.patch`); `buildSessionKey` (methods.ts, `chat.send`).
 - **`@yggdrasil/kernel`** — `getRegistry` (plugin-registered gateway methods), `listChannels`, `listHarnesses`,
   `listPlugins`, `listProviders`, `createConsoleLogger`, `createEventBus`.
 - **`@yggdrasil/pipeline`** — `ingestInboundMessage`, `runChannelTurn` (channel-manager.ts and methods.ts —

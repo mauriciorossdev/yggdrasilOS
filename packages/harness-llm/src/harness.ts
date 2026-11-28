@@ -54,7 +54,7 @@ export function createLlmHarness(options?: { config?: YggdrasilConfig }): AgentH
         const apiKey = await provider.resolveApiKey?.({ config: providerCfg });
         if (!apiKey && params.provider === OPENAI_COMPAT_PROVIDER_ID) {
           return {
-            text: "LLM unavailable: set OLLAMA_API_KEY, OPENAI_API_KEY, or providers.openai-compat.apiKey",
+            text: "LLM unavailable: no API key for this endpoint (set providers.openai-compat.apiKey, or OPENAI_API_KEY for OpenAI, OLLAMA_API_KEY for ollama.com)",
             classification: "fallback",
           };
         }

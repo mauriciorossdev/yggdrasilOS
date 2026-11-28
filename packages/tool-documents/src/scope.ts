@@ -5,7 +5,7 @@ const NOTES_ROOT = "notes";
 /**
  * Resolves a caller-supplied relative path against <workspaceRoot>/notes,
  * rejecting any absolute path or ../ escape — mirrors
- * packages/gateway/src/methods.ts's resolveWithinRoot exactly, just with the
+ * packages/gateway/src/fs-methods.ts's resolveWithinRoot exactly, just with the
  * root fixed to the notes/ subfolder (the Documents feature's backing
  * folder) instead of the whole project. Unlike tool-system's filesystem
  * tools (list_directory/read_file/write_file), which never consult

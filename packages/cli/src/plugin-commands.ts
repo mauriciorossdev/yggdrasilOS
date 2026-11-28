@@ -100,7 +100,7 @@ For Yggdrasil tool details, call \`docs.get("<tool-name>\`) — e.g.:
   console.log(`Created ${join(workspaceRoot, "prompts")}/agent.md`);
   console.log(`Created ${join(workspaceRoot, "prompts")}/capabilities.md`);
   console.log("\nNext steps:");
-  console.log("  export OLLAMA_API_KEY=...   # or OPENAI_API_KEY");
+  console.log("  export OPENAI_API_KEY=...   # the default endpoint is OpenAI");
   console.log("  yggdrasil plugin install @yggdrasil/tool-weather");
   console.log("  yggdrasil tui");
 }

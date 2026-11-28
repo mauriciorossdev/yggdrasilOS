@@ -34,9 +34,8 @@ npm install -g @yggdrasil/cli@beta
 mkdir mi-agente && cd mi-agente
 yggdrasil init
 
-# Configurar API key (elegir una)
+# Configurar API key (el endpoint por defecto es OpenAI; ver provider-config.md)
 export OPENAI_API_KEY=sk-...
-export OLLAMA_API_KEY=...
 
 # Arrancar TUI
 yggdrasil tui

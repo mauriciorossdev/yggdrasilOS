@@ -17,7 +17,7 @@ export function ApprovalBar({ approval, onRespond }: Props) {
 
   // deviceId is only ever set for a connection that isn't the desktop's own
   // loopback one (see requireFsApproval/deviceIdByConnectionId in
-  // gateway/methods.ts) — i.e. exactly the case this checkbox exists for.
+  // the gateway's fs-methods.ts) — i.e. exactly the case this checkbox exists for.
   // destructive calls (fs.delete, etc.) never get a trust bypass on the
   // gateway side regardless, so offering the checkbox there would lie.
   const canTrustDevice = !!approval.deviceId && approval.riskLevel !== "destructive";

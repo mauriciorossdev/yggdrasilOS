@@ -39,7 +39,7 @@ O usa solo la variable de entorno `TELEGRAM_BOT_TOKEN` (sin poner el token en el
 
 ```bash
 pnpm build
-export OLLAMA_API_KEY=...   # si usas LLM
+export OPENAI_API_KEY=...   # si usas LLM (con el endpoint por defecto)
 node packages/cli/dist/index.js run
 ```
 

@@ -178,7 +178,7 @@ export type FsDeleteParams = { relativePath: string };
 
 export type FsMutationResult = { ok: true; path: string };
 
-// Mirrors gateway/src/methods.ts's git.status/git.diff result shapes.
+// Mirrors gateway/src/fs-methods.ts's git.status/git.diff result shapes.
 export type GitFileStatus = "modified" | "added" | "deleted" | "renamed" | "untracked" | "unmerged";
 export type GitFileEntry = { path: string; status: GitFileStatus };
 export type GitStatusResult = { isRepo: boolean; branch?: string; files: GitFileEntry[] };

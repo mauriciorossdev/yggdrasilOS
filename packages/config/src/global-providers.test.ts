@@ -116,3 +116,12 @@ describe("project config file", () => {
     expect(providerSources["openai-compat"]).toMatchObject({ baseUrl: "global", defaultModel: "project" });
   });
 });
+
+describe("openai-compat key source", () => {
+  it("only reports a variable that the endpoint would actually receive", () => {
+    const env = { OLLAMA_API_KEY: "x" };
+    const source = (baseUrl: string) => mergeProviderSources({}, { "openai-compat": { baseUrl } }, {}, env).sources["openai-compat"]!.apiKey;
+    expect(source("https://api.openai.com/v1")).toBeUndefined();
+    expect(source("https://ollama.com/v1")).toBe("env");
+  });
+});
