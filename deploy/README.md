@@ -175,7 +175,7 @@ Por defecto el asistente usa Anthropic con Claude Haiku. Para cambiar el proveed
 
 | Variable | Valores | Clave que usa |
 |---|---|---|
-| `ASSISTANT_PROVIDER` | `anthropic` (por defecto), `openai-compat` (OpenAI y servidores compatibles, como Ollama Cloud) u `ollama` | `ANTHROPIC_API_KEY`, `OPENAI_API_KEY` u `OLLAMA_API_KEY` |
+| `ASSISTANT_PROVIDER` | `anthropic` (por defecto), `openai-compat` (OpenAI y servidores compatibles, como Ollama Cloud) u `ollama` | `ANTHROPIC_API_KEY`; con `openai-compat`: `OPENAI_API_KEY` (OpenAI), `OLLAMA_API_KEY` (ollama.com) o `YGGDRASIL_OPENAI_API_KEY` (otra dirección) |
 | `ASSISTANT_MODEL` | El id del modelo, por ejemplo `claude-sonnet-4-5` o `gpt-4o-mini`. Si cambias de proveedor sin indicarlo, se usa el de ese proveedor (obligatorio con `ollama`) | |
 | `ASSISTANT_BASE_URL` | Opcional: la dirección del servidor, por ejemplo `https://ollama.com/v1` para Ollama Cloud con `openai-compat`, o la de tu servidor de Ollama | |
 

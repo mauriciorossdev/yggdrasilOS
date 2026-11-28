@@ -98,7 +98,7 @@ Compaction: envía 45+ mensajes en TUI o vía `chat.send` repetido; verifica que
 Tool persistence:
 
 ```bash
-export OLLAMA_API_KEY=...
+export OPENAI_API_KEY=...   # endpoint por defecto; ver provider-config.md
 node packages/cli/dist/index.js tui
 # > usa my-tool_echo con message "hola"
 # Luego sessions.get → historial con tool_calls + tool

@@ -77,7 +77,7 @@ nothing else parses `yggdrasil.config.json` directly.
 Almost every runtime package, since `YggdrasilConfig` is the parameter type threaded through the whole
 system: `packages/kernel` (`lifecycle.ts`, `plugin-loader.ts` — reads `plugins.*`), `packages/pipeline`
 (`turn-kernel.ts` — `resolveAgent`, `resolveProviderConfig`), `packages/gateway` (`server.ts`,
-`methods.ts`, `channel-manager.ts`, `auth.ts` — `isGatewayAuthRequired`, `resolveGatewayApiKey`,
+`methods.ts`, `config-methods.ts`, `channel-manager.ts`, `auth.ts` — `isGatewayAuthRequired`, `resolveGatewayApiKey`,
 `validateApiKey`, `mergeConfig`, `readConfigFile`/`writeConfigFile`, `sanitizeConfigForClient`,
 `validateConfigPatch`, `buildSessionKey`), `packages/harness-llm` and `packages/provider-ollama`/
 `provider-openai-compat` (`resolveProviderConfig` to get `baseUrl`/`apiKey`), `packages/harness-runtime`

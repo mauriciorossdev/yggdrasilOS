@@ -1,4 +1,4 @@
-import { resolveProviderConfig, type YggdrasilConfig } from "@yggdrasil/config";
+import { openAICompatKeyEnvVars, resolveProviderConfig, type YggdrasilConfig } from "@yggdrasil/config";
 import {
   definePlugin,
   type ChatCompleteParams,
@@ -26,13 +26,10 @@ export type OpenAICompatResolvedConfig = {
   contextWindow?: number;
 };
 
-function resolveApiKeyFromEnv(): string | undefined {
-  return (
-    process.env.OLLAMA_API_KEY?.trim() ||
-    process.env.OPENAI_API_KEY?.trim() ||
-    process.env.YGGDRASIL_OPENAI_API_KEY?.trim() ||
-    undefined
-  );
+function resolveApiKeyFromEnv(baseUrl: string | undefined): string | undefined {
+  return openAICompatKeyEnvVars(baseUrl)
+    .map((name) => process.env[name]?.trim())
+    .find(Boolean);
 }
 
 export function resolveOpenAICompatConfig(
@@ -72,13 +69,13 @@ export function createOpenAICompatProvider(options?: {
 
     async resolveApiKey(ctx) {
       const cfg = resolveOpenAICompatConfig(options?.globalConfig, ctx);
-      return cfg.apiKey ?? resolveApiKeyFromEnv();
+      return cfg.apiKey ?? resolveApiKeyFromEnv(cfg.baseUrl);
     },
 
     async chatComplete(ctx, params: ChatCompleteParams): Promise<ChatCompleteResult> {
       const cfg = resolveOpenAICompatConfig(options?.globalConfig, ctx);
       const baseUrl = cfg.baseUrl ?? "https://api.openai.com/v1";
-      const apiKey = cfg.apiKey ?? resolveApiKeyFromEnv();
+      const apiKey = cfg.apiKey ?? resolveApiKeyFromEnv(cfg.baseUrl);
 
       return clientChatComplete({ baseUrl, apiKey }, params);
     },
@@ -86,7 +83,7 @@ export function createOpenAICompatProvider(options?: {
     async chatCompleteStream(ctx, params, onEvent) {
       const cfg = resolveOpenAICompatConfig(options?.globalConfig, ctx);
       const baseUrl = cfg.baseUrl ?? "https://api.openai.com/v1";
-      const apiKey = cfg.apiKey ?? resolveApiKeyFromEnv();
+      const apiKey = cfg.apiKey ?? resolveApiKeyFromEnv(cfg.baseUrl);
 
       return clientChatCompleteStream({ baseUrl, apiKey }, params, onEvent);
     },

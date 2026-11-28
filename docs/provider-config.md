@@ -4,7 +4,7 @@ Yggdrasil ships three providers:
 
 | Provider id | For | API key variables |
 |---|---|---|
-| `openai-compat` | Any OpenAI-compatible endpoint: OpenAI, Ollama Cloud, Ollama's `/v1` and others | `OLLAMA_API_KEY`, `OPENAI_API_KEY`, `YGGDRASIL_OPENAI_API_KEY` |
+| `openai-compat` | Any OpenAI-compatible endpoint: OpenAI, Ollama Cloud, Ollama's `/v1` and others | Depends on the `baseUrl`, see [API key](#api-key) |
 | `ollama` | Ollama's native API | `OLLAMA_API_KEY` |
 | `anthropic` | Anthropic's API | `ANTHROPIC_API_KEY`, `YGGDRASIL_ANTHROPIC_API_KEY` |
 
@@ -61,9 +61,20 @@ The `baseUrl` carries no key. Set it as an environment variable:
 
 ```bash
 export OLLAMA_API_KEY=your_key       # Ollama Cloud
-export OPENAI_API_KEY=sk-...         # OpenAI and compatible services
+export OPENAI_API_KEY=sk-...         # OpenAI
 export ANTHROPIC_API_KEY=sk-ant-...  # Anthropic
 ```
+
+For `openai-compat`, a vendor's variable is only sent to that vendor, so a key never reaches a third party by surprise:
+
+| `baseUrl` | Variables read |
+|---|---|
+| `api.openai.com` (the default) | `OPENAI_API_KEY`, `YGGDRASIL_OPENAI_API_KEY` |
+| `ollama.com` | `OLLAMA_API_KEY`, `YGGDRASIL_OPENAI_API_KEY` |
+| A server on this machine (`localhost`) | `OLLAMA_API_KEY`, `OPENAI_API_KEY`, `YGGDRASIL_OPENAI_API_KEY` |
+| Anything else (OpenRouter, a proxy, a LAN server) | `YGGDRASIL_OPENAI_API_KEY` |
+
+A key set in the config file or in Settings is always used, whatever the URL.
 
 You can also put it in the config file (do not commit it):
 

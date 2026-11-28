@@ -29,7 +29,7 @@ node packages/cli/dist/index.js gateway   # headless gateway
 node packages/cli/dist/index.js run       # gateway and all enabled channels
 ```
 
-Set an API key first, for example `export OLLAMA_API_KEY=...` ([provider configuration](./provider-config.md)).
+Set an API key first, for example `export OPENAI_API_KEY=...` for the default endpoint ([provider configuration](./provider-config.md)).
 
 ## Workspace root
 

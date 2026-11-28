@@ -1,6 +1,6 @@
 /**
  * Bridges into THIS project's pane-control server (app-desktop's
- * main/paneControlServer.ts), same pattern as packages/gateway/src/methods.ts's
+ * main/paneControlServer.ts), same pattern as packages/gateway/src/terminal-methods.ts's
  * terminals.* methods — it lives in Electron's main process, not this gateway
  * subprocess, and its URL+token are handed across via env at spawn time (see
  * app-desktop's main/gateway.ts). Unavailable outside the desktop app (e.g. a

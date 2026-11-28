@@ -22,7 +22,7 @@ export function getWorkspaceRootOrThrow(methodName: string): string {
 }
 
 // Reads straight off disk (not the kernel's possibly-stale in-memory config)
-// — same freshness reasoning as gateway/methods.ts's auth.apiKeys.list.
+// — same freshness reasoning as gateway/config-methods.ts's auth.apiKeys.list.
 export async function getGoogleAccount(workspaceRoot: string): Promise<GoogleAccount | null> {
   const { config } = await readConfigFile(workspaceRoot);
   const raw = config.connectors?.google?.accounts?.default as Partial<GoogleAccount> | undefined;
@@ -36,7 +36,7 @@ export async function getGoogleAccount(workspaceRoot: string): Promise<GoogleAcc
 
 // Hand-merged rather than routed through config.patch's validateConfigPatch
 // pipeline — same reasoning as agents.create/update/delete and
-// auth.apiKeys.revoke in gateway/methods.ts: connectors isn't one of
+// auth.apiKeys.revoke in the gateway: connectors isn't one of
 // mergeConfig's explicitly deep-merged keys, so writing just
 // {connectors:{google:{accounts:{default}}}} without spreading the existing
 // connectors object first would silently drop every other configured

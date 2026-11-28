@@ -144,6 +144,10 @@ function parseChatResponse(body: OpenAIChatResponse, model: string): ChatComplet
   };
 }
 
+const MISSING_KEY =
+  "OpenAI-compatible provider: API key not configured for this endpoint (set providers.openai-compat.apiKey, " +
+  "or OPENAI_API_KEY for OpenAI, OLLAMA_API_KEY for ollama.com, YGGDRASIL_OPENAI_API_KEY for any other)";
+
 export async function chatComplete(
   options: OpenAICompatClientOptions,
   params: ChatCompleteParams,
@@ -154,7 +158,7 @@ export async function chatComplete(
 
   if (!apiKey) {
     throw new Error(
-      "OpenAI-compatible provider: API key not configured (set OPENAI_API_KEY or providers.openai-compat.apiKey)",
+      MISSING_KEY,
     );
   }
 
@@ -188,7 +192,7 @@ export async function chatCompleteStream(
 
   if (!apiKey) {
     throw new Error(
-      "OpenAI-compatible provider: API key not configured (set OPENAI_API_KEY or providers.openai-compat.apiKey)",
+      MISSING_KEY,
     );
   }
 

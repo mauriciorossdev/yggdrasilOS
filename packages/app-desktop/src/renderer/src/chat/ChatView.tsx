@@ -683,7 +683,7 @@ export function ChatView() {
             onActiveTabChange={setActiveMainTab}
           />
           {/* fs.write/fs.delete/etc. always require approval, even from this
-              app's own loopback connection (deliberate — see methods.ts) — but
+              app's own loopback connection (deliberate — see fs-methods.ts) — but
               ApprovalBar above only renders inside the Chat tab's own hidden
               panel, so a Documents/Terminal/Agent-Flow-triggered approval
               (e.g. saving a file in FileContentPanel) had nowhere visible to

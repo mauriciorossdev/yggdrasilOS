@@ -6,16 +6,33 @@
 //   ASSISTANT_MODEL     model id; defaults per provider below
 //   ASSISTANT_BASE_URL  optional endpoint (OpenAI-compatible server, Ollama host)
 //
-// The provider's API key keeps coming from its own variable
-// (ANTHROPIC_API_KEY, OPENAI_API_KEY / OLLAMA_API_KEY). Run by
+// The provider's API key keeps coming from its own variable (ANTHROPIC_API_KEY;
+// for openai-compat it depends on the endpoint, see openAICompatKeyVars). Run by
 // docker-entrypoint.sh on the config it just synced; exits non-zero on a bad
 // value so a typo fails the deploy instead of answering "echo".
 import { readFileSync, writeFileSync } from "node:fs";
 import { pathToFileURL } from "node:url";
 
+/** Mirrors openAICompatKeyEnvVars in @yggdrasil/config: a vendor's key only goes to that vendor. */
+function openAICompatKeyVars(baseUrl) {
+  const own = "YGGDRASIL_OPENAI_API_KEY";
+  let url;
+  try {
+    url = new URL(baseUrl || "https://api.openai.com/v1");
+  } catch {
+    return [own];
+  }
+  const host = url.hostname;
+  if (host === "localhost" || host === "[::1]" || /^127(\.\d+){3}$/.test(host)) return ["OLLAMA_API_KEY", "OPENAI_API_KEY", own];
+  const is = (domain) => url.protocol === "https:" && (host === domain || host.endsWith(`.${domain}`));
+  if (is("openai.com")) return ["OPENAI_API_KEY", own];
+  if (is("ollama.com")) return ["OLLAMA_API_KEY", own];
+  return [own];
+}
+
 export const ASSISTANT_PROVIDERS = {
   anthropic: { defaultModel: "claude-haiku-4-5-20251001", keyVars: ["ANTHROPIC_API_KEY", "YGGDRASIL_ANTHROPIC_API_KEY"] },
-  "openai-compat": { defaultModel: "gpt-4o-mini", keyVars: ["OPENAI_API_KEY", "OLLAMA_API_KEY", "YGGDRASIL_OPENAI_API_KEY"] },
+  "openai-compat": { defaultModel: "gpt-4o-mini", keyVars: openAICompatKeyVars },
   ollama: { defaultModel: undefined, keyVars: [] },
 };
 
@@ -47,8 +64,10 @@ export function applyAssistantEnv(config, env) {
   if (providerId === "ollama" && !baseUrl) {
     warnings.push("ASSISTANT_PROVIDER=ollama without ASSISTANT_BASE_URL: it will look for Ollama on 127.0.0.1:11434 inside the container.");
   }
-  if (spec.keyVars.length > 0 && !spec.keyVars.some((name) => clean(env[name]))) {
-    warnings.push(`No API key for ${providerId}: set ${spec.keyVars[0]}.`);
+  const endpoint = baseUrl || config.providers?.[providerId]?.baseUrl;
+  const keyVars = typeof spec.keyVars === "function" ? spec.keyVars(endpoint) : spec.keyVars;
+  if (keyVars.length > 0 && !keyVars.some((name) => clean(env[name]))) {
+    warnings.push(`No API key for ${providerId}: set ${keyVars[0]}.`);
   }
 
   const next = structuredClone(config);
