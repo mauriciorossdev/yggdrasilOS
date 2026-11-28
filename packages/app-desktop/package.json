@@ -1,10 +1,10 @@
 {
   "name": "@yggdrasil/app-desktop",
   "version": "0.1.9",
+  "description": "Desktop ADE (Electron, macOS/Windows/Linux): terminals running agent CLIs, worktrees, Agent Flow, workflows, Studio, Dashboard and chat.",
   "license": "MIT",
   "private": true,
   "type": "module",
-  "description": "Desktop client (Windows/Mac/Linux) for the Yggdrasil gateway \u2014 agent picker, multi-session chat, tool-call approvals.",
   "author": {
     "name": "Mauricio Ross",
     "email": "mauriciorossdev@users.noreply.github.com"

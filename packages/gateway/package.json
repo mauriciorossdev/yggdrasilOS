@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/gateway",
   "version": "0.1.0-beta.1",
+  "description": "HTTP and WebSocket RPC server that every channel and client talks to.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

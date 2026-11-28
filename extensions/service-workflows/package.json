@@ -1,8 +1,8 @@
 {
   "name": "@yggdrasil/service-workflows",
   "version": "0.1.0-beta.1",
+  "description": "Runs workflows: the `workflows.*` gateway methods, scheduler and a file store over `@yggdrasil/workflows`.",
   "license": "MIT",
-  "description": "Workflow automation engine plugin — gateway methods (workflows.*) over @yggdrasil/workflows's pure executor, with a filesystem store for definitions and runs. See notes/automation/workflows-design.md.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

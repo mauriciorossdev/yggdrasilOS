@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/sdk",
   "version": "0.1.0-beta.1",
+  "description": "The plugin contract: types for harnesses, channels, providers, tools and manifests.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/skills-sdk",
   "version": "0.1.0",
+  "description": "Contract for skills: prompt, tools and context bundled as a plugin.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -17,5 +18,7 @@
   "devDependencies": {
     "typescript": "^7.0.2"
   },
-  "files": ["dist"]
+  "files": [
+    "dist"
+  ]
 }

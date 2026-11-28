@@ -47,12 +47,11 @@ export async function saveWhisperSettings(userDataDir: string, settings: Whisper
 
 // --- STT: local (whisper, above) vs cloud dispatcher ---------------------
 //
-// Cloud providers speak the OpenAI /audio/transcriptions multipart shape —
-// Groq and OpenAI itself both do, and "custom" covers any self-hosted server
-// that mimics it (e.g. faster-whisper-server) — one implementation
-// (sttCloud.ts) serves all three, just with a different baseUrl/model.
+// OpenAI and "custom" speak the OpenAI /audio/transcriptions multipart shape
+// ("custom" covers any self-hosted server that mimics it, e.g.
+// faster-whisper-server); Replicate and agy have their own paths. See sttCloud.ts.
 
-export type SttCloudProvider = "groq" | "openai" | "custom" | "replicate" | "replicate-whisper" | "agy";
+export type SttCloudProvider = "openai" | "custom" | "replicate" | "replicate-whisper" | "agy";
 
 export type SttCloudSettings = {
   provider: SttCloudProvider;
@@ -69,7 +68,6 @@ export type SttSettings = {
 };
 
 export const STT_CLOUD_PRESETS: Record<SttCloudProvider, { baseUrl: string; model: string }> = {
-  groq: { baseUrl: "https://api.groq.com/openai/v1", model: "whisper-large-v3-turbo" },
   openai: { baseUrl: "https://api.openai.com/v1", model: "whisper-1" },
   replicate: { baseUrl: "https://api.replicate.com/v1", model: "google/gemini-3-pro" },
   "replicate-whisper": { baseUrl: "https://api.replicate.com/v1", model: "openai/whisper" },
@@ -78,7 +76,7 @@ export const STT_CLOUD_PRESETS: Record<SttCloudProvider, { baseUrl: string; mode
 };
 
 export function defaultSttSettings(): SttSettings {
-  return { source: "cloud", cloud: { provider: "groq", ...STT_CLOUD_PRESETS.groq, apiKey: "" } };
+  return { source: "cloud", cloud: { provider: "openai", ...STT_CLOUD_PRESETS.openai, apiKey: "" } };
 }
 
 /** Nested under a "stt" key — same avatar-settings.json file, same write queue, see saveWhisperSettings's comment. */
@@ -86,7 +84,11 @@ export async function loadSttSettings(userDataDir: string): Promise<SttSettings>
   const defaults = defaultSttSettings();
   const raw = await readSettingsFile(userDataDir);
   const stored = (raw as { stt?: Partial<SttSettings> }).stt;
-  return { ...defaults, ...stored, cloud: { ...defaults.cloud, ...(stored?.cloud ?? {}) } };
+  // A provider no longer offered is dropped whole: its URL and key belong to that
+  // service, and the form would show it under another provider's name.
+  const provider = stored?.cloud?.provider;
+  const known = provider === undefined || Object.hasOwn(STT_CLOUD_PRESETS, provider);
+  return { ...defaults, ...stored, cloud: { ...defaults.cloud, ...(known ? stored?.cloud : {}) } };
 }
 
 export async function saveSttSettings(userDataDir: string, settings: SttSettings): Promise<void> {

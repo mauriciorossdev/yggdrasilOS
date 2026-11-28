@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/skill-adapter",
   "version": "0.1.0",
+  "description": "Loads skills written as `SKILL.md` files or command TOML.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
@@ -15,5 +16,7 @@
   "devDependencies": {
     "typescript": "^7.0.2"
   },
-  "files": ["dist"]
+  "files": [
+    "dist"
+  ]
 }

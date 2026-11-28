@@ -84,15 +84,6 @@ importers:
         specifier: workspace:*
         version: link:../../packages/sdk
 
-  extensions/my-tool:
-    dependencies:
-      '@yggdrasil/sdk':
-        specifier: workspace:*
-        version: link:../../packages/sdk
-      '@yggdrasil/tools-sdk':
-        specifier: workspace:*
-        version: link:../../packages/tools-sdk
-
   extensions/service-cron:
     dependencies:
       '@yggdrasil/config':

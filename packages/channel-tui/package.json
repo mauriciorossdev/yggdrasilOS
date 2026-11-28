@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/channel-tui",
   "version": "0.1.0-beta.1",
+  "description": "Minimal readline channel running inside the gateway process (legacy terminal mode).",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

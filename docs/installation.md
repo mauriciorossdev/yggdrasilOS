@@ -1,91 +1,63 @@
-# Instalación desde npm
+# Installation
 
-Guía para usar Yggdrasil **sin clonar el monorepo**.
+## Desktop app
 
-## Requisitos
+Download the installer for your system from the
+[releases page](https://github.com/mauriciorossdev/yggdrasilOS/releases/latest). The notes of each release explain how
+to open it while the installers are not code signed.
 
-- Node.js **≥ 22**
-- `pnpm` o `npm`
+## From source (CLI, gateway and desktop)
 
-## Proyecto nuevo
+The packages are not published to npm yet, so everything runs from the repository.
 
-```bash
-mkdir my-agent && cd my-agent
-pnpm init
-pnpm add @yggdrasil/cli
-npx yggdrasil init
-```
-
-`yggdrasil init` crea:
-
-- `yggdrasil.config.json` — agente, gateway, canales
-- `extensions/` — plugins locales (opcional)
-
-## Instalar un plugin
+Requirements: Node.js **22 or later** and pnpm.
 
 ```bash
-npx yggdrasil plugin install @yggdrasil/tool-weather
-```
-
-Esto ejecuta `pnpm add` / `npm install` y añade el id del plugin a `plugins.installed` en tu config.
-
-## Arrancar
-
-```bash
-export OLLAMA_API_KEY=...   # o OPENAI_API_KEY
-npx yggdrasil tui
-# o headless:
-npx yggdrasil gateway
-```
-
-## CLI global
-
-```bash
-npm install -g @yggdrasil/cli
-yggdrasil init
-yggdrasil plugin install @yggdrasil/tool-weather
-yggdrasil run
-```
-
-## Workspace root
-
-El CLI resuelve el directorio del proyecto así:
-
-1. Variable de entorno `YGGDRASIL_WORKSPACE`
-2. Carpeta que contiene `yggdrasil.config.json` (busca hacia arriba desde `cwd`)
-3. `cwd` actual
-
-Ejecuta los comandos desde tu proyecto o define `YGGDRASIL_WORKSPACE=/ruta/al/proyecto`.
-
-## Comandos `plugin`
-
-| Comando | Descripción |
-|---------|-------------|
-| `yggdrasil plugin list` | Plugins en `plugins.installed` y su estado |
-| `yggdrasil plugin install <pkg>` | Instala paquete npm y habilita en config |
-| `yggdrasil plugin enable <id>` | Quita el id de `plugins.disabled` |
-| `yggdrasil plugin disable <id>` | Añade el id a `plugins.disabled` |
-| `yggdrasil plugin create <name> --kind tool` | Scaffold en `extensions/` |
-
-## Discovery
-
-Por defecto `plugins.discoverNodeModules` está activo: cualquier paquete bajo `node_modules/@yggdrasil/*` con `yggdrasil.plugin.json` se carga al arrancar.
-
-Plugins en `extensions/` del monorepo o del proyecto también se descubren si existen.
-
-## Desarrollo en el monorepo
-
-```bash
-git clone <repo>
-cd yggdrasil
+git clone https://github.com/mauriciorossdev/yggdrasilOS.git
+cd yggdrasilOS
 pnpm install
 pnpm build
 pnpm test
-node packages/cli/dist/index.js tui
 ```
 
-## Ver también
+Then start what you need:
 
-- [Configuración del provider](./provider-config.md)
-- [Crear plugins](./creating-plugins.md)
-- [Publicación (mantenedores)](./publishing.md)
+```bash
+pnpm desktop                              # desktop app
+node packages/cli/dist/index.js tui       # gateway and terminal client
+node packages/cli/dist/index.js gateway   # headless gateway
+node packages/cli/dist/index.js run       # gateway and all enabled channels
+```
+
+Set an API key first, for example `export OLLAMA_API_KEY=...` ([provider configuration](./provider-config.md)).
+
+## Workspace root
+
+The CLI finds the project folder like this:
+
+1. The `YGGDRASIL_WORKSPACE` environment variable.
+2. The folder with `yggdrasil.config.json`, searching upwards from the current one.
+3. The current folder.
+
+`node packages/cli/dist/index.js init` creates a `yggdrasil.config.json` with an agent, the gateway and channels.
+
+## Plugins
+
+Plugins are discovered at startup from `packages/` and `extensions/` in the workspace, the folders in
+`plugins.load.paths`, and `node_modules/@yggdrasil/*` (unless `plugins.discoverNodeModules` is off).
+
+| Command | What it does |
+|---|---|
+| `plugin list` | Installed plugins and their state |
+| `plugin install <package>` | Installs an npm package and enables it |
+| `plugin enable <id>` | Removes the id from `plugins.disabled` |
+| `plugin disable <id>` | Adds the id to `plugins.disabled` |
+| `plugin create <name> --kind tool` | Scaffolds a plugin in `extensions/` |
+
+Run them as `node packages/cli/dist/index.js <command>`.
+
+## See also
+
+- [Provider configuration](./provider-config.md)
+- [Creating plugins](./creating-plugins.md)
+- [Publishing (maintainers)](./publishing.md)

@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/tool-destructive-demo",
   "version": "0.1.0",
+  "description": "Example tool that requires approval.",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -14,5 +15,7 @@
     "@yggdrasil/sdk": "workspace:*",
     "@yggdrasil/tools-sdk": "workspace:*"
   },
-  "files": ["dist"]
+  "files": [
+    "dist"
+  ]
 }

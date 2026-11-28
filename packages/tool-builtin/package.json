@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/tool-builtin",
   "version": "0.1.0-beta.1",
+  "description": "Tools that are always registered: date and time, and echo.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

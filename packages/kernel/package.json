@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/kernel",
   "version": "0.1.0-beta.1",
+  "description": "Process-wide plugin registry, discovery and lifecycle.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

@@ -77,4 +77,3 @@ ollama pull llava
 
 - [browser-tool.md](./browser-tool.md) — `browser_screenshot` genera imágenes analizables con este tool
 - Plugin: `extensions/tool-image/`
-- Roadmap: `docs/plans/TL-06-image.md`

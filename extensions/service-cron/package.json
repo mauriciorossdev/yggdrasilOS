@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/service-cron",
   "version": "0.1.0-beta.1",
+  "description": "Sends messages into the pipeline on cron schedules.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

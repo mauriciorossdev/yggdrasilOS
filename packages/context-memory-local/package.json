@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/context-memory-local",
   "version": "0.1.0-beta.1",
+  "description": "Context provider for Markdown memory notes on disk.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

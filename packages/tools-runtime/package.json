@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/tools-runtime",
   "version": "0.1.0-beta.1",
+  "description": "Builds the tool list for a turn and executes tool calls.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/channel-slack",
   "version": "0.1.0",
+  "description": "Slack bot channel.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

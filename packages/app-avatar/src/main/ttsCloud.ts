@@ -58,9 +58,8 @@ async function synthesizeMinimax(text: string, settings: TtsCloudSettings): Prom
 }
 
 /**
- * OpenAI's /audio/speech shape — Groq implements it verbatim (model/input/
- * voice/response_format JSON in, raw binary audio bytes out, not wrapped in
- * JSON), and "custom" is any self-hosted server that mimics it.
+ * OpenAI's /audio/speech shape (model/input/voice/response_format JSON in, raw
+ * binary audio bytes out, not wrapped in JSON), used by "custom" servers.
  */
 async function synthesizeOpenAiCompatible(text: string, settings: TtsCloudSettings): Promise<TtsCloudResult> {
   const res = await fetch(`${settings.baseUrl.replace(/\/$/, "")}/audio/speech`, {

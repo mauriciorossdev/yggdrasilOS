@@ -49,7 +49,6 @@ Pre-PR checklist: `pnpm build` → `pnpm test` → `pnpm test:live` (with key).
 | `extensions/tool-datetime` | tool | `local_datetime` | Returns current date/time with optional IANA timezone |
 | `extensions/tool-destructive-demo` | tool | `delete_file` | Demo of destructive tool + approval flow |
 | `extensions/echo-channel` | channel | `echo` | Loopback channel for testing |
-| `extensions/my-tool` | tool | `my-tool_echo` | Scaffold example |
 | `extensions/channel-telegram` | channel | `telegram` | Telegram bot via long-polling; needs `botToken` in config or `TELEGRAM_BOT_TOKEN` env |
 | `extensions/channel-discord` | channel | `discord` | Discord bot via discord.js v14; needs `botToken` in config or `DISCORD_BOT_TOKEN` env; requires **MESSAGE CONTENT INTENT** in Discord Developer Portal |
 | `extensions/tool-browser` | tool + service | `browser_navigate`, `browser_screenshot`, `browser_click`, `browser_fill`, `browser_extract` | Playwright headless Chromium; run `pnpm exec playwright install chromium` after first install |

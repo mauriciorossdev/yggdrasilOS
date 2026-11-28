@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach } from "vitest";
-import myToolPlugin from "../../extensions/my-tool/src/index.ts";
+import myToolPlugin from "../helpers/example-tool-plugin.ts";
 import {
   createTestPlatform,
   createStreamProviderPlugin,

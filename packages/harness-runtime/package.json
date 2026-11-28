@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/harness-runtime",
   "version": "0.1.0-beta.1",
+  "description": "Chooses the harness for a turn and ships the fallback echo harness.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

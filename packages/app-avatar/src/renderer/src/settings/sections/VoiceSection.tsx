@@ -12,7 +12,6 @@ type Props = {
 // since main/renderer don't share modules across the Electron process boundary.
 const TTS_CLOUD_PRESETS: Record<TtsCloudProvider, { baseUrl: string; model: string }> = {
   minimax: { baseUrl: "https://api.minimax.io/v1", model: "speech-2.8-turbo" },
-  groq: { baseUrl: "https://api.groq.com/openai/v1", model: "canopylabs/orpheus-v1-english" },
   replicate: { baseUrl: "https://api.replicate.com/v1", model: "minimax/speech-2.8-turbo" },
   custom: { baseUrl: "", model: "" },
 };
@@ -123,7 +122,6 @@ export function VoiceSection({ settings, setSettings, ttsSettings, setTtsSetting
               onChange={(e) => switchCloudProvider(e.target.value as TtsCloudProvider)}
             >
               <option value="minimax">MiniMax</option>
-              <option value="groq">Groq</option>
               <option value="replicate">Replicate</option>
               <option value="custom">Custom (OpenAI-compatible)</option>
             </select>
@@ -152,7 +150,7 @@ export function VoiceSection({ settings, setSettings, ttsSettings, setTtsSetting
               type="text"
               value={ttsSettings.cloud.voiceId}
               onChange={(e) => setTtsSettings({ ...ttsSettings, cloud: { ...ttsSettings.cloud, voiceId: e.target.value } })}
-              placeholder="MiniMax e.g. English_radiant_girl · Groq e.g. troy — see the provider's voice list"
+              placeholder="MiniMax e.g. English_radiant_girl — see the provider's voice list"
             />
           </label>
           <label>

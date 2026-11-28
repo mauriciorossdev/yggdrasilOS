@@ -55,7 +55,7 @@ const EXTENSIONS = [
   "tool-image",
   "tool-search",
   "tool-shell",
-  // Excluded: echo-channel (dev only), my-tool (scaffold template), tool-destructive-demo (dev only)
+  // Excluded: echo-channel (dev only), tool-destructive-demo (dev only)
 ];
 
 const root = new URL("..", import.meta.url).pathname;

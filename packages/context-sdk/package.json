@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/context-sdk",
   "version": "0.1.0-beta.1",
+  "description": "Types for context providers.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

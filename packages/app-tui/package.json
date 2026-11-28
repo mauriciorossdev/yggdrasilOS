@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/app-tui",
   "version": "0.1.0-beta.1",
+  "description": "Terminal client (React + Ink) that talks to a running gateway over WebSocket; what `yggdrasil tui` launches.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

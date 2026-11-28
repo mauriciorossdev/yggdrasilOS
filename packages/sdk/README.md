@@ -85,7 +85,7 @@ and `packages/harness-llm` (`AgentHarness`, `HarnessAttemptParams/Result`), `pac
 the `context-*` packages (`ContextProvider` types), every channel package (`channel-tui`, `channel-http`,
 `extensions/channel-telegram`, `extensions/echo-channel` — `ChannelPlugin`, `NormalizedInboundMessage`,
 `defineChannelEntry`), every provider package (`provider-ollama`, `provider-openai-compat` — `ProviderPlugin`,
-`ChatMessage`), every tool extension (`extensions/tool-datetime`, `extensions/my-tool`,
+`ChatMessage`), every tool extension (`extensions/tool-datetime`,
 `extensions/tool-destructive-demo`, `packages/tool-system`, `packages/tool-weather` — `definePlugin`,
 tool registration types), and `packages/cli` (`ToolApprovalHandler`, plugin scaffolding in `plugin-commands.ts`).
 `@yggdrasil/config` lists `@yggdrasil/sdk` as a dependency in its `package.json` but does not currently

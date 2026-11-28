@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/tool-fs",
   "version": "0.1.0-beta.1",
+  "description": "File system tools with risk levels.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

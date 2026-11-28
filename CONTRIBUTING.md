@@ -33,6 +33,17 @@ plugin (`yggdrasil create-plugin`).
 - Never commit secrets, local paths, API keys or personal data. `.mcp.json`, `google-services.json` and `.env*` are
   git-ignored for that reason.
 
+## Versions
+
+Versions are per package and are not kept in step:
+
+- The **desktop app** version (`packages/app-desktop/package.json`) is the one users see; releases are tagged
+  `app-desktop-vX.Y.Z`.
+- Other packages are not published to npm yet. Their version is a placeholder until the first publication
+  (see `docs/publishing.md`).
+
+Adding a package: give its `package.json` a `description` and run `pnpm package-map`.
+
 ## Reporting bugs and security issues
 
 Bugs and feature ideas: open a GitHub issue. Security problems: see [SECURITY.md](SECURITY.md) — please do not file

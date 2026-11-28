@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/tool-datetime",
   "version": "0.1.0-beta.1",
+  "description": "Example date and time tool.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

@@ -96,4 +96,3 @@ El HTML se convierte automáticamente a texto plano (scripts/styles eliminados, 
 - [browser-tool.md](./browser-tool.md) — para páginas que requieren JS
 - [search-tool.md](./search-tool.md) — para descubrir URLs antes de fetchear
 - Plugin: `extensions/tool-fetch/`
-- Roadmap: `docs/plans/TL-05-fetch.md`

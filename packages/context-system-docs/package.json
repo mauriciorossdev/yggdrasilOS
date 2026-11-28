@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/context-system-docs",
   "version": "0.0.1",
+  "description": "Ships the platform guides and serves them through the `docs.list` and `docs.get` methods.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

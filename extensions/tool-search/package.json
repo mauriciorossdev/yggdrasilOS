@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/tool-search",
   "version": "0.1.0-beta.1",
+  "description": "Web search through Brave Search or SearXNG.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
