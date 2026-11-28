@@ -522,12 +522,3 @@ export function openProblem(from: Element, problem: ProjectProblem): void {
   pendingReveals.set(problem.uri, { lineNumber: problem.startLineNumber, column: problem.startColumn });
   requestOpenFile(from, problem.path);
 }
-
-export type LspStatus = {
-  trusted: boolean;
-  servers: Array<{ id: string; languages: string[]; status: "available" | "missing" | "needsTrust" | "notApplicable" | "running"; installHint?: string; error?: string }>;
-};
-
-export function fetchLspStatus(): Promise<LspStatus> {
-  return window.yggdrasil.lsp.status() as Promise<LspStatus>;
-}

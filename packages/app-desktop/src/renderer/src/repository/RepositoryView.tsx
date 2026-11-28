@@ -5,7 +5,7 @@ import { ChangesPanel } from "./ChangesPanel.js";
 import { ChangeViewToggle } from "./ChangeList.js";
 import { useChangeViewMode } from "./useChangeViewMode.js";
 import { CommitLog } from "./CommitLog.js";
-import { DiffViewer } from "./DiffViewer.js";
+import { DiffViewer } from "../files/LazyEditors.js";
 import { readDiffLayout, writeDiffLayout } from "./diffLayout.js";
 import { RepoSelector } from "./RepoSelector.js";
 import { splitPath } from "./format.js";

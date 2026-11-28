@@ -1,6 +1,6 @@
 import { useEffect, useState } from "react";
 import { updateEditorPrefs, useEditorPrefs } from "../../files/editorPrefs.js";
-import { fetchLspStatus, type LspStatus } from "../../files/lsp/service.js";
+import { fetchLspStatus, type LspStatus } from "../../files/lsp/status.js";
 import { useI18n, type MessageKey } from "../../i18n/index.js";
 
 const TAB_SIZES = [2, 4, 8];

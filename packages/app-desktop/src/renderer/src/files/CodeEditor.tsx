@@ -5,7 +5,12 @@ import { YGG_MONACO_THEME, ensureYggTheme } from "./monacoSetup.js";
 import { languageFromPath } from "./languageFromPath.js";
 import { ensureImageHover } from "./monacoImageHover.js";
 import { useEditorPrefs } from "./editorPrefs.js";
-import { attachLspGateway, modelPathFor, revealPending } from "./lsp/service.js";
+import { attachLspGateway, modelPathFor, releaseModel, revealPending } from "./lsp/service.js";
+import { contentToSave } from "./contentToSave.js";
+import { registerEditorBridge } from "./editorBridge.js";
+
+// Views outside the editor chunk reach Monaco through this (see editorBridge.ts).
+registerEditorBridge({ releaseModel, contentToSave });
 
 type Props = {
   path: string;

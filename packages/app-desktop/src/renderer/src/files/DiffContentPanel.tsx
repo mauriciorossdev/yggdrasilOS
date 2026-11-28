@@ -3,7 +3,7 @@ import { useRepoLocation } from "../review/useRepoLocation.js";
 import { useEffect, useRef, useState, type CSSProperties, type ReactNode } from "react";
 import { DocumentTextIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
-import { DiffViewer } from "../repository/DiffViewer.js";
+import { DiffViewer } from "./LazyEditors.js";
 import { readDiffLayout, writeDiffLayout, type DiffLayout } from "../repository/diffLayout.js";
 import type { DiffContent } from "../repository/types.js";
 import { useI18n } from "../i18n/index.js";
