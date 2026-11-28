@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/git-worktrees",
   "version": "0.1.0-beta.1",
+  "description": "The rules for creating git worktrees, shared by the gateway and the desktop app.",
   "license": "MIT",
   "private": true,
   "type": "module",

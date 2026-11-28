@@ -2,7 +2,7 @@
   "name": "@yggdrasil/workflows",
   "version": "0.1.0",
   "license": "MIT",
-  "description": "Pure workflow engine for Yggdrasil automations: types, validation, canonical hashing, expressions and the DAG executor — no I/O, no gateway dependency. See notes/automation/workflows-design.md.",
+  "description": "Pure workflow engine for Yggdrasil automations: types, validation, canonical hashing, expressions and the DAG executor — no I/O, no gateway dependency.",
   "type": "module",
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

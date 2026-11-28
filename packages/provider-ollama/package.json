@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/provider-ollama",
   "version": "0.1.0-beta.1",
+  "description": "Provider for Ollama's native chat API.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/channel-http",
   "version": "0.1.0-beta.1",
+  "description": "Channel plugin with one inbound HTTP webhook, answering as JSON or as server-sent events.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

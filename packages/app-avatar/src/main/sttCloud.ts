@@ -162,9 +162,8 @@ async function transcribeReplicateWhisper(wav: Buffer, settings: SttCloudSetting
 }
 
 /**
- * OpenAI's /audio/transcriptions multipart shape — Groq and OpenAI itself
- * both implement it verbatim, and "custom" is any self-hosted server that
- * mimics it, so one implementation covers those three providers.
+ * OpenAI's /audio/transcriptions multipart shape — "custom" is any self-hosted
+ * server that mimics it, so one implementation covers both.
  */
 export async function transcribeCloud(wav: Buffer, settings: SttCloudSettings): Promise<string> {
   if (settings.provider === "agy") return transcribeAgy(wav, settings);

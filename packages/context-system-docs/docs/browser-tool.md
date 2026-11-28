@@ -115,4 +115,3 @@ Al detener el gateway, se cierran todos los browsers (`browser-pool-cleanup` ser
 
 - [creating-plugins.md](./creating-plugins.md)
 - Plugin: `extensions/tool-browser/`
-- Roadmap: `docs/plans/TL-01-browser.md`

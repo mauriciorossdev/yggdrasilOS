@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/app-voice",
   "version": "0.1.0-beta.1",
+  "description": "Local web server for realtime voice conversations with a gateway agent.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

@@ -105,4 +105,3 @@ La política de aprobación se configura en `harness.toolApproval` (default: `"d
 
 - [browser-tool.md](./browser-tool.md)
 - Plugin: `extensions/tool-fs/`
-- Roadmap: `docs/plans/TL-02-fs.md`

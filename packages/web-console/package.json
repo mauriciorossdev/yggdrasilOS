@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/web-console",
   "version": "0.5.0",
+  "description": "Browser console served by every gateway at `/ui`.",
   "license": "MIT",
   "private": true,
   "type": "module",

@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/context-prompt-files",
   "version": "0.1.0-beta.1",
+  "description": "Context provider that loads Markdown prompt files from configured folders.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

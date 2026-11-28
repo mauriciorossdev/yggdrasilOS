@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/echo-channel",
   "version": "0.1.0",
+  "description": "Minimal example channel.",
   "private": true,
   "license": "MIT",
   "type": "module",
@@ -14,5 +15,7 @@
     "@yggdrasil/config": "workspace:*",
     "@yggdrasil/sdk": "workspace:*"
   },
-  "files": ["dist"]
+  "files": [
+    "dist"
+  ]
 }

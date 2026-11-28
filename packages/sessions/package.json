@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/sessions",
   "version": "0.1.0-beta.1",
+  "description": "Conversation history on disk, with compaction and token budgets.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

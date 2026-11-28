@@ -90,4 +90,3 @@ El service arranca con el gateway (`yggdrasil run`). Para cada job habilitado, r
 ## Ver también
 
 - Plugin: `extensions/service-cron/`
-- Roadmap: `docs/plans/TL-07-cron.md`

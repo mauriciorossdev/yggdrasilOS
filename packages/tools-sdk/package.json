@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/tools-sdk",
   "version": "0.1.0-beta.1",
+  "description": "Types and the `defineTool` helper for tools.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

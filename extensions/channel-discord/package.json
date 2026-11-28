@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/channel-discord",
   "version": "0.1.0-beta.1",
+  "description": "Discord bot channel.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

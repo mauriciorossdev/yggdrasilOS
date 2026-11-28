@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/context-project",
   "version": "0.1.0-beta.1",
+  "description": "Context provider summarizing the project: git state, language and package manager.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

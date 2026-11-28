@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/tool-shell",
   "version": "0.0.1",
+  "description": "Shell command tool running through the sandbox runtime.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

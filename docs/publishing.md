@@ -42,7 +42,7 @@ El workflow `.github/workflows/publish.yml` solo se lanza a mano, desde **Action
 
 **Secret requerido:** `NPM_TOKEN` con permiso de publish para la org `@yggdrasil`.
 
-Los paquetes de ejemplo (`my-tool`, `echo-channel`, `tool-destructive-demo`) son `"private": true` y no se publican.
+Los paquetes de ejemplo (`echo-channel`, `tool-destructive-demo`) son `"private": true` y no se publican.
 
 ## Notas
 

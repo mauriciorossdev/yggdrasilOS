@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/harness-llm",
   "version": "0.1.0-beta.1",
+  "description": "The LLM harness: calls the provider and runs the tool loop.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

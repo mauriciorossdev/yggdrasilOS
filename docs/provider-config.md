@@ -1,14 +1,22 @@
-# Configuración del provider LLM
+# LLM provider configuration
 
-Yggdrasil usa el provider `openai-compat`, compatible con OpenAI, Ollama Cloud, Ollama local, Groq y otros endpoints similares.
+Yggdrasil ships three providers:
 
-## Cambiar el `baseUrl`
+| Provider id | For | API key variables |
+|---|---|---|
+| `openai-compat` | Any OpenAI-compatible endpoint: OpenAI, Ollama Cloud, Ollama's `/v1` and others | `OLLAMA_API_KEY`, `OPENAI_API_KEY`, `YGGDRASIL_OPENAI_API_KEY` |
+| `ollama` | Ollama's native API | `OLLAMA_API_KEY` |
+| `anthropic` | Anthropic's API | `ANTHROPIC_API_KEY`, `YGGDRASIL_ANTHROPIC_API_KEY` |
 
-Edita `yggdrasil.config.json` en la raíz del proyecto.
+In the desktop app you can set providers up in Settings. The rest of this page is about `yggdrasil.config.json`.
 
-### Opción 1 — `providers` (recomendada)
+## Changing the `baseUrl`
 
-Cambio permanente del backend:
+Edit `yggdrasil.config.json` at the workspace root.
+
+### Option 1: `providers` (recommended)
+
+A permanent change of backend:
 
 ```json
 {
@@ -24,9 +32,9 @@ Cambio permanente del backend:
 }
 ```
 
-### Opción 2 — `pluginConfig` (override local)
+### Option 2: `pluginConfig` (local override)
 
-Útil para probar otro endpoint sin modificar la config principal. **Tiene prioridad** sobre `providers`.
+To try another endpoint without touching the main settings. It **takes priority** over `providers`.
 
 ```json
 {
@@ -39,47 +47,35 @@ Cambio permanente del backend:
 }
 ```
 
-## URLs habituales
+## Common URLs
 
-| Destino       | `baseUrl`                      |
-|---------------|--------------------------------|
-| Ollama Cloud  | `https://ollama.com/v1`        |
-| Ollama local  | `http://localhost:11434/v1`    |
-| OpenAI        | `https://api.openai.com/v1`    |
-| Groq          | `https://api.groq.com/openai/v1` |
+| Target | `baseUrl` |
+|---|---|
+| Ollama Cloud | `https://ollama.com/v1` |
+| Local Ollama | `http://localhost:11434/v1` |
+| OpenAI | `https://api.openai.com/v1` |
 
 ## API key
 
-El `baseUrl` no incluye la clave. Configúrala por variable de entorno:
+The `baseUrl` carries no key. Set it as an environment variable:
 
 ```bash
-# Ollama Cloud
-export OLLAMA_API_KEY=tu_clave
-
-# OpenAI u otros compatibles
-export OPENAI_API_KEY=sk-...
+export OLLAMA_API_KEY=your_key       # Ollama Cloud
+export OPENAI_API_KEY=sk-...         # OpenAI and compatible services
+export ANTHROPIC_API_KEY=sk-ant-...  # Anthropic
 ```
 
-También puedes ponerla en config (evita commitearla al repo):
+You can also put it in the config file (do not commit it):
 
 ```json
 "providers": {
   "openai-compat": {
-    "apiKey": "tu_clave"
+    "apiKey": "your_key"
   }
 }
 ```
 
-## Prioridad de configuración
-
-De menor a mayor (gana lo último):
-
-1. Defaults del código
-2. `providers.openai-compat.*`
-3. `pluginConfig.openai-compat.*`
-4. Variables de entorno (solo para API key)
-
-## Aplicar cambios
+## Applying changes
 
 ```bash
 pnpm build

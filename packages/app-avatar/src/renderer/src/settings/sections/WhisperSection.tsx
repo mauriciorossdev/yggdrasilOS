@@ -11,7 +11,6 @@ type Props = {
 // Mirrors main/whisperSettings.ts's STT_CLOUD_PRESETS — kept in sync manually
 // since main/renderer don't share modules across the Electron process boundary.
 const STT_CLOUD_PRESETS: Record<SttCloudProvider, { baseUrl: string; model: string }> = {
-  groq: { baseUrl: "https://api.groq.com/openai/v1", model: "whisper-large-v3-turbo" },
   openai: { baseUrl: "https://api.openai.com/v1", model: "whisper-1" },
   replicate: { baseUrl: "https://api.replicate.com/v1", model: "google/gemini-3-pro" },
   "replicate-whisper": { baseUrl: "https://api.replicate.com/v1", model: "openai/whisper" },
@@ -135,7 +134,6 @@ export function WhisperSection({ settings, setSettings, sttSettings, setSttSetti
               value={sttSettings.cloud.provider}
               onChange={(e) => switchCloudProvider(e.target.value as SttCloudProvider)}
             >
-              <option value="groq">Groq</option>
               <option value="replicate">Replicate (Gemini)</option>
               <option value="replicate-whisper">Replicate (Whisper)</option>
               <option value="agy">Antigravity CLI (agy)</option>
@@ -158,7 +156,7 @@ export function WhisperSection({ settings, setSettings, sttSettings, setSttSetti
               type="text"
               value={sttSettings.cloud.model}
               onChange={(e) => setSttSettings({ ...sttSettings, cloud: { ...sttSettings.cloud, model: e.target.value } })}
-              placeholder="whisper-large-v3-turbo"
+              placeholder="whisper-1"
             />
           </label>
           <label>

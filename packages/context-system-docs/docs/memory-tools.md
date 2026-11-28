@@ -108,4 +108,3 @@ El agente las recibe como contexto de sistema — no necesita llamar `memory_lis
 
 - [sessions.md](./sessions.md) — historial de conversación vs memoria de largo plazo
 - Plugin: `packages/context-memory-db/`
-- Roadmap: `docs/plans/TL-08-memory-tools.md`

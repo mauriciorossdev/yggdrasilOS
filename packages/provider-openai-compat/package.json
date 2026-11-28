@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/provider-openai-compat",
   "version": "0.1.0-beta.1",
+  "description": "Provider for any OpenAI-compatible chat completions API.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

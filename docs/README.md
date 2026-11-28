@@ -1,30 +1,47 @@
-# Documentación
+# Documentation
 
-- [Roadmap de iteraciones](./roadmap-iteraciones.md) — fases completadas y pendientes (4–8+)
-- [Plan Iteración 4](./plans/yggdrasil-iteracion-4.plan.md) — memoria, sesiones, compaction
-- [Plan Iteración 5](./plans/yggdrasil-iteracion-5.plan.md) — Telegram, auth, SSE HTTP
-- [Plan Iteración 6](./plans/yggdrasil-iteracion-6.plan.md) — npm, plugin install, tool-weather
-- [Plan Iteración 8](./plans/yggdrasil-iteracion-8.plan.md) — Web Console
-- [Servidor de enlace propio](../deploy/README.md) — conecta la app del teléfono desde cualquier red
-- [Web Console](./web-console.md) — dashboard en browser
-- [Protocolo del Gateway](./gateway-protocol.md) — contrato WS RPC para clientes externos (apps móviles, scripts)
-- [Instalación npm](./installation.md) — CLI global, `plugin install`, workspace root
-- [Publicación npm](./publishing.md) — mantenedores
-- [Sesiones y memoria](./sessions.md) — compaction, `sessions.patch`, `tools.list`, historial con tools
-- [Telegram channel](./telegram-channel.md) — conectar bot de Telegram
-- [Discord channel](./discord-channel.md) — conectar bot de Discord (discord.js v14)
-- [Browser tool](./browser-tool.md) — automatización web con Playwright headless
-- [File System tool](./fs-tool.md) — read/write/list/delete/move con risk levels
-- [Web Search tool](./search-tool.md) — Brave Search API o SearXNG self-hosted
-- [HTTP Fetch tool](./fetch-tool.md) — fetch nativo Node, sin browser, para APIs y HTML estático
-- [Image Input tool](./image-tool.md) — visión multimodal: cargar imágenes locales o remotas
-- [Cron Scheduler](./cron-service.md) — disparar mensajes al pipeline según expresiones cron
-- [Memory tools](./memory-tools.md) — CRUD explícito de memoria de largo plazo (memory_add/list/search/update/remove)
-- [Shell tool](./shell-tool.md) — shell_exec con sandbox (env filtrado, timeout, allowedRoot)
-- [API Keys Gateway](./api-keys.md) — múltiples keys con nombre y expiración para testers
-- [TLS Gateway](./tls-gateway.md) — HTTPS/WSS para acceso remoto seguro
-- [Publicar beta en npm](./beta-publish.md) — guía paso a paso para publicar y compartir con testers
-- [TUI](./tui.md) — terminal UI (app-tui React/Ink + channel-tui readline)
-- [Testing](./testing.md) — capas unit/integration/e2e, Ollama Cloud live
-- [Configuración del provider LLM](./provider-config.md) — `baseUrl`, API keys, Ollama Cloud/local, OpenAI
-- [Crear plugins](./creating-plugins.md) — `create-plugin`, tools, discovery
+Guides marked **(es)** are still in Spanish.
+
+## Start here
+
+- [Installation](./installation.md)
+- [Architecture](../ARCHITECTURE.md)
+- [Roadmap](./roadmap.md)
+- [Provider configuration](./provider-config.md)
+- [Creating plugins](./creating-plugins.md)
+- [Testing](./testing.md) (es)
+
+## Gateway and clients
+
+- [Gateway protocol](./gateway-protocol.md) (es): the WebSocket RPC contract for external clients
+- [Web console](./web-console.md) (es)
+- [Terminal UI](./tui.md) (es)
+- [API keys](./api-keys.md) (es)
+- [TLS](./tls-gateway.md) (es)
+- [Self-hosted link server](../deploy/README.md): connect the phone app from any network
+- [Sessions and memory](./sessions.md) (es)
+- [Context assembly](./context-assembly.md)
+
+## Channels
+
+- [Slack](./slack-channel.md) (es)
+- [Discord](./discord-channel.md) (es)
+- [Telegram](./telegram-channel.md) (es)
+
+## Tools
+
+- [Shell](./shell-tool.md) (es)
+- [File system](./fs-tool.md) (es)
+- [Browser](./browser-tool.md) (es)
+- [Web search](./search-tool.md) (es)
+- [HTTP fetch](./fetch-tool.md) (es)
+- [Image input](./image-tool.md) (es)
+- [Cron scheduler](./cron-service.md) (es)
+- [Memory tools](./memory-tools.md) (es)
+- [Skills](./skills.md) (es)
+- [Advanced agent](./advanced-agent.md)
+
+## Maintainers
+
+- [Known issues](./known-issues.md)
+- [Publishing to npm](./publishing.md) (es) and [beta releases](./beta-publish.md) (es); nothing is published yet

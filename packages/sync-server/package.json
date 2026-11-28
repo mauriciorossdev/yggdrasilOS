@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/sync-server",
   "version": "0.1.0",
+  "description": "Small self-hosted service to share notes or plugin data among a few trusted people.",
   "license": "MIT",
   "private": true,
   "type": "module",

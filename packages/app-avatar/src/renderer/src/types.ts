@@ -102,7 +102,7 @@ export type WhisperSettings = {
 };
 
 // Mirrors main/whisperSettings.ts's STT cloud dispatcher.
-export type SttCloudProvider = "groq" | "openai" | "custom" | "replicate" | "replicate-whisper" | "agy";
+export type SttCloudProvider = "openai" | "custom" | "replicate" | "replicate-whisper" | "agy";
 
 export type SttCloudSettings = {
   provider: SttCloudProvider;
@@ -130,7 +130,7 @@ export type PiperSettings = {
 };
 
 // Mirrors main/piperSettings.ts's TTS cloud dispatcher.
-export type TtsCloudProvider = "minimax" | "groq" | "custom" | "replicate";
+export type TtsCloudProvider = "minimax" | "custom" | "replicate";
 
 export type TtsCloudSettings = {
   provider: TtsCloudProvider;

@@ -98,4 +98,3 @@ Busca en la web y retorna lista de resultados (título, URL, descripción).
 
 - [browser-tool.md](./browser-tool.md) — navegar URLs de los resultados
 - Plugin: `extensions/tool-search/`
-- Roadmap: `docs/plans/TL-04-search.md`

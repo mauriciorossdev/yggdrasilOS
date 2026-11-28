@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/sandbox-runtime",
   "version": "0.0.1",
+  "description": "Runs a command as a subprocess with timeout, output limit, filtered environment and allowed root.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

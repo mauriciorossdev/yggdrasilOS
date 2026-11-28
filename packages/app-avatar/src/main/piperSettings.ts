@@ -36,12 +36,11 @@ export async function savePiperSettings(userDataDir: string, settings: PiperSett
 // Two request shapes, see ttsCloud.ts:
 //  - "minimax": its own bespoke t2a_v2 JSON shape (audio comes back hex-
 //    encoded inside the JSON body).
-//  - "groq" and "custom": OpenAI's /audio/speech shape (model/input/voice/
-//    response_format JSON in, raw binary audio bytes out) — Groq implements
-//    it verbatim, and "custom" is any self-hosted server that mimics it,
-//    same "one shape, two providers" pattern already used for STT.
+//  - "custom": OpenAI's /audio/speech shape (model/input/voice/response_format
+//    JSON in, raw binary audio bytes out), for any self-hosted server that
+//    mimics it.
 
-export type TtsCloudProvider = "minimax" | "groq" | "custom" | "replicate";
+export type TtsCloudProvider = "minimax" | "custom" | "replicate";
 
 export type TtsCloudSettings = {
   provider: TtsCloudProvider;
@@ -60,7 +59,6 @@ export type TtsSettings = {
 
 export const TTS_CLOUD_PRESETS: Record<TtsCloudProvider, { baseUrl: string; model: string }> = {
   minimax: { baseUrl: "https://api.minimax.io/v1", model: "speech-2.8-turbo" },
-  groq: { baseUrl: "https://api.groq.com/openai/v1", model: "canopylabs/orpheus-v1-english" },
   replicate: { baseUrl: "https://api.replicate.com/v1", model: "minimax/speech-2.8-turbo" },
   custom: { baseUrl: "", model: "" },
 };
@@ -74,7 +72,10 @@ export async function loadTtsSettings(userDataDir: string): Promise<TtsSettings>
   const defaults = defaultTtsSettings();
   const raw = await readSettingsFile(userDataDir);
   const stored = (raw as { tts?: Partial<TtsSettings> }).tts;
-  return { ...defaults, ...stored, cloud: { ...defaults.cloud, ...(stored?.cloud ?? {}) } };
+  // A provider no longer offered is dropped whole, as in loadSttSettings.
+  const provider = stored?.cloud?.provider;
+  const known = provider === undefined || Object.hasOwn(TTS_CLOUD_PRESETS, provider);
+  return { ...defaults, ...stored, cloud: { ...defaults.cloud, ...(known ? stored?.cloud : {}) } };
 }
 
 export async function saveTtsSettings(userDataDir: string, settings: TtsSettings): Promise<void> {

@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/tool-fetch",
   "version": "0.1.0-beta.1",
+  "description": "HTTP fetch tool with content extraction.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

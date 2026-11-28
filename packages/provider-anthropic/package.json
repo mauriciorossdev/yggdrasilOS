@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/provider-anthropic",
   "version": "0.1.0-beta.1",
+  "description": "Provider for Anthropic's API.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",

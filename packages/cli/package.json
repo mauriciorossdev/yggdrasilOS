@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/cli",
   "version": "0.1.0-beta.1",
+  "description": "The `yggdrasil` command: boots the kernel and gateway, launches the TUI, manages and scaffolds plugins.",
   "license": "MIT",
   "type": "module",
   "bin": {

@@ -1,6 +1,7 @@
 {
   "name": "@yggdrasil/tool-image",
   "version": "0.1.0-beta.1",
+  "description": "Loads local or remote images for multimodal models.",
   "license": "MIT",
   "type": "module",
   "main": "./dist/index.js",
