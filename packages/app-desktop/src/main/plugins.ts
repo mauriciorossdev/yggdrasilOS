@@ -3,8 +3,9 @@ import { watch as watchFsSync, type FSWatcher } from "node:fs";
 import { extname, join, relative, sep } from "node:path";
 import { app } from "electron";
 import { PLUGIN_API_DOCS } from "./pluginApiDocs.js";
-import { permissionsUsedIn } from "./pluginPermissions.js";
-import { isPublicHostName, parseWidgetSpec, type WidgetSpec } from "./widgetSpec.js";
+import { netUsesIn, permissionsUsedIn } from "./pluginPermissions.js";
+import { isPublicHostName, parseWidgetSpec, WIDGET_SIZES, type WidgetSize, type WidgetSpec } from "./widgetSpec.js";
+import { STARTER_WIDGET_JS, STARTER_WIDGET_STYLES, starterWidgetBlock } from "./widgetStarter.js";
 
 /**
  * A "complemento": a folder with manifest.json + HTML/JS/CSS, loaded in a
@@ -278,6 +279,8 @@ export type ScaffoldPluginSpec = {
   permissions?: PluginPermission[];
   /** Free-form — dropped into the scaffolded README's opening line, purely descriptive. */
   description?: string;
+  /** `widget` view only: the size a new instance starts with. */
+  widgetSize?: WidgetSize;
   /** Undefined (the MCP scaffold_plugin tool's default) means published, same as ever — only Studio's own IPC handler passes "draft" explicitly here. */
   status?: PluginStatus;
 };
@@ -352,37 +355,47 @@ export async function scaffoldPlugin(
 
   await mkdir(dir, { recursive: true });
 
+  const views: PluginView[] = spec.views && spec.views.length > 0 ? spec.views : ["tab"];
+  // A pure widget starts with files made for a card, and no example tool: a tool would keep a hidden copy of it running.
+  const widgetOnly = views.length === 1 && views[0] === "widget";
+  const widgetBlock = views.includes("widget")
+    ? starterWidgetBlock(WIDGET_SIZES.includes(spec.widgetSize as WidgetSize) ? (spec.widgetSize as WidgetSize) : "m")
+    : undefined;
+
   const manifest: PluginManifest = {
     id: spec.id,
     name: spec.name.trim(),
     version: "0.1.0",
     icon: spec.icon,
     entry: "index.html",
-    views: spec.views && spec.views.length > 0 ? spec.views : ["tab"],
+    views,
     defaultView: spec.defaultView,
     permissions: spec.permissions ?? [],
     status: spec.status,
     description: spec.description?.trim() || undefined,
-    tools: [
-      {
-        name: "ping",
-        description: "Responde pong — ejemplo de tool registrada, reemplazala o ampliala según lo que haga el complemento.",
-        inputSchema: { type: "object", properties: {}, required: [] },
-      },
-    ],
+    tools: widgetOnly
+      ? []
+      : [
+          {
+            name: "ping",
+            description: "Responde pong — ejemplo de tool registrada, reemplazala o ampliala según lo que haga el complemento.",
+            inputSchema: { type: "object", properties: {}, required: [] },
+          },
+        ],
   };
 
-  await writeFile(join(dir, "manifest.json"), JSON.stringify(manifest, null, 2), "utf8");
+  // The manifest on disk holds the raw widget block (configSchema); readManifest turns it into fields.
+  await writeFile(join(dir, "manifest.json"), JSON.stringify({ ...manifest, widget: widgetBlock }, null, 2), "utf8");
   await writeFile(join(dir, "index.html"), starterIndexHtml(manifest.name), "utf8");
-  await writeFile(join(dir, "app.js"), starterAppJs(spec.id), "utf8");
-  await writeFile(join(dir, "styles.css"), STARTER_STYLES_CSS, "utf8");
+  await writeFile(join(dir, "app.js"), widgetOnly ? STARTER_WIDGET_JS : starterAppJs(spec.id), "utf8");
+  await writeFile(join(dir, "styles.css"), widgetOnly ? STARTER_WIDGET_STYLES : STARTER_STYLES_CSS, "utf8");
   await writeFile(
     join(dir, "README.md"),
     `# ${manifest.name}\n\n${spec.description ? `${spec.description}\n\n` : ""}${PLUGIN_API_DOCS}`,
     "utf8",
   );
 
-  return { key: `${scope}:${spec.id}`, scope, manifest, dir, url: pluginUrl(scope, projectId, spec.id) };
+  return { key: `${scope}:${spec.id}`, scope, manifest: await readManifest(dir), dir, url: pluginUrl(scope, projectId, spec.id) };
 }
 
 /** Flips a plugin's draft/published status by rewriting its manifest.json — the Studio "Publicar" action. watchPluginsDir's own hot-reload already picks up the rewrite (any file change re-scans), this just also returns the fresh record so the caller can broadcast plugins:changed for immediate feedback ahead of the watcher's debounce. */
@@ -540,12 +553,16 @@ export async function lintPluginPermissions(scope: PluginScope, id: string, proj
   for (const f of files) {
     if (!LINT_EXTS.has(extname(f.path).toLowerCase()) || f.size > MAX_LINT_BYTES) continue;
     const text = await readFile(join(root, f.path), "utf8").catch(() => "");
-    text.split("\n").forEach((line, i) => {
-      for (const permission of permissionsUsedIn(line)) {
-        if (!first.has(permission)) first.set(permission, { permission, file: f.path, line: i + 1 });
-      }
-    });
+    const found = [
+      ...text.split("\n").flatMap((line, i) => permissionsUsedIn(line).map((permission) => ({ permission, line: i + 1 }))),
+      ...netUsesIn(text),
+    ];
+    for (const { permission, line } of found) {
+      if (!first.has(permission)) first.set(permission, { permission, file: f.path, line });
+    }
   }
   const uses = [...first.values()];
-  return { uses, missing: uses.map((u) => u.permission).filter((p) => !declared.has(p)) };
+  // "net" = goes online but the host couldn't be read from the code: any declared domain satisfies it.
+  const anyDomain = [...declared].some((p) => p.startsWith("net:"));
+  return { uses, missing: uses.map((u) => u.permission).filter((p) => (p === "net" ? !anyDomain : !declared.has(p))) };
 }

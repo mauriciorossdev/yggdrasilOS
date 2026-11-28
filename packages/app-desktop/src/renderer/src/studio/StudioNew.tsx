@@ -1,7 +1,9 @@
-import { useMemo, useState } from "react";
-import type { PluginPermission, PluginRecord, PluginScope, PluginView } from "../types.js";
+import { useEffect, useMemo, useState } from "react";
+import type { PluginPermission, PluginRecord, PluginScope, PluginView, WidgetSize } from "../types.js";
+import { Button } from "../ui/index.js";
+import { SIZES } from "../dashboard/WidgetConfigDialog.js";
 import { StudioStage } from "./StudioStage.js";
-import { STUDIO_TEMPLATES, slugify, suggestName, uniqueId, type StudioTemplate } from "./studioTemplates.js";
+import { isWidgetTemplate, STUDIO_TEMPLATES, WIDGET_TEMPLATES, slugify, suggestName, uniqueId, type StudioTemplate } from "./studioTemplates.js";
 import { studioInitialPrompt, type StudioTerminalHarness } from "./studioContext.js";
 import { isCliVisible } from "../onboarding/harnessFilter.js";
 import { useOnboarding } from "../onboarding/store.js";
@@ -10,6 +12,8 @@ import { useI18n, type MessageKey } from "../i18n/index.js";
 type Props = {
   plugins: PluginRecord[];
   onCancel: () => void;
+  /** Non-zero and new each time the Dashboard asks for a widget (newWidgetRequest.ts). */
+  widgetRequest?: number;
   /** The draft exists on disk; the workspace opens with `initialPrompt` as the agent's first message. */
   onCreated: (record: PluginRecord, launch: { initialPrompt: string; harness: StudioTerminalHarness }) => void;
 };
@@ -34,17 +38,19 @@ const EMPTY_SAMPLE = `<style>body{margin:0;display:flex;align-items:center;justi
  * the description) and shown as editable chips; everything stays editable
  * later in Ajustes. Replaces the old field-by-field StudioCreateForm.
  */
-export function StudioNew({ plugins, onCancel, onCreated }: Props) {
+export function StudioNew({ plugins, onCancel, widgetRequest = 0, onCreated }: Props) {
   const { t } = useI18n();
   const { settings: onboardingSettings } = useOnboarding();
   const [description, setDescription] = useState("");
   const [template, setTemplate] = useState<StudioTemplate | null>(null);
   const [name, setName] = useState("");
   const [nameTouched, setNameTouched] = useState(false);
-  const [scope, setScope] = useState<PluginScope>("project");
+  // What the person picked; a widget overrides it without forgetting it.
+  const [chosenScope, setScope] = useState<PluginScope>("project");
   const [views, setViews] = useState<PluginView[]>(["tab"]);
   const [permissions, setPermissions] = useState<PluginPermission[]>([]);
   const [previewView, setPreviewView] = useState<PluginView>("tab");
+  const [size, setSize] = useState<WidgetSize>("m");
   const [harness, setHarness] = useState<StudioTerminalHarness>(
     isCliVisible("claude", onboardingSettings) || !isCliVisible("antigravity", onboardingSettings) ? "claude" : "agy",
   );
@@ -54,17 +60,39 @@ export function StudioNew({ plugins, onCancel, onCreated }: Props) {
   const templateName = template ? t(template.nameKey) : "";
   const effectiveName = nameTouched ? name : suggestName(description) || templateName;
 
+  // The dashboard is one for the whole app, so a widget is always global.
+  const isWidget = views.includes("widget");
+  const scope: PluginScope = isWidget ? "global" : chosenScope;
+
+  const applyTemplate = (tpl: StudioTemplate) => {
+    setTemplate(tpl);
+    const widget = isWidgetTemplate(tpl);
+    setViews(chosenScope === "global" || widget ? tpl.views.filter((v) => v !== "mobile") : tpl.views);
+    setPermissions(tpl.permissions);
+    setPreviewView(tpl.views[0] ?? "tab");
+  };
+
   const pickTemplate = (tpl: StudioTemplate) => {
-    const next = template?.id === tpl.id ? null : tpl;
-    setTemplate(next);
-    if (next) {
-      setViews(scope === "global" ? next.views.filter((v) => v !== "mobile") : next.views);
-      setPermissions(next.permissions);
-      setPreviewView(next.views[0] ?? "tab");
+    if (template?.id !== tpl.id) return applyTemplate(tpl);
+    setTemplate(null);
+    if (isWidgetTemplate(tpl)) {
+      setViews(["tab"]);
+      setPreviewView("tab");
     }
   };
 
-  const toggleView = (v: PluginView) => setViews((prev) => (prev.includes(v) ? prev.filter((x) => x !== v) : [...prev, v]));
+  // Asked from the Dashboard: preselect a widget, keeping whatever was already typed.
+  useEffect(() => {
+    if (widgetRequest > 0 && !isWidgetTemplate(template)) applyTemplate(WIDGET_TEMPLATES[0]);
+    // Once per request.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [widgetRequest]);
+
+  const toggleView = (v: PluginView) => {
+    const adding = !views.includes(v);
+    setViews((prev) => (adding ? [...prev.filter((x) => !(v === "widget" && x === "mobile")), v] : prev.filter((x) => x !== v)));
+    if (v === "widget") setPreviewView(adding ? "widget" : "tab");
+  };
   const removePermission = (p: PluginPermission) => setPermissions((prev) => prev.filter((x) => x !== p));
 
   const takenIds = useMemo(
@@ -92,10 +120,11 @@ export function StudioNew({ plugins, onCancel, onCreated }: Props) {
         scope,
         views: finalViews,
         permissions,
+        widgetSize: finalViews.includes("widget") ? size : undefined,
         description: description.trim() || (template ? t(template.descKey) : undefined),
       });
       onCreated(record, {
-        initialPrompt: studioInitialPrompt(description.trim() || t(template!.descKey), template?.agentHint),
+        initialPrompt: studioInitialPrompt(description.trim() || t(template!.descKey), template?.agentHint, finalViews.includes("widget")),
         harness,
       });
     } catch (err) {
@@ -151,7 +180,7 @@ export function StudioNew({ plugins, onCancel, onCreated }: Props) {
         <div className="studio-new-section">
           <span className="muted studio-new-label">{t("studio.new.templates")}</span>
           <div className="studio-templates">
-            {STUDIO_TEMPLATES.map((tpl) => (
+            {[...WIDGET_TEMPLATES, ...STUDIO_TEMPLATES].map((tpl) => (
               <button
                 key={tpl.id}
                 type="button"
@@ -183,6 +212,8 @@ export function StudioNew({ plugins, onCancel, onCreated }: Props) {
               type="button"
               className={`studio-chip-btn${scope === "project" ? " on" : ""}`}
               aria-pressed={scope === "project"}
+              disabled={isWidget}
+              title={isWidget ? t("dashboard.preview.globalOnly") : undefined}
               onClick={() => setScope("project")}
             >
               {t("studio.create.scopeProject")}
@@ -199,7 +230,7 @@ export function StudioNew({ plugins, onCancel, onCreated }: Props) {
               {t("studio.create.scopeGlobal")}
             </button>
             <span className="studio-chip-sep" aria-hidden="true" />
-            {(["tab", "panel", "mobile"] as PluginView[]).map((v) => {
+            {(["tab", "panel", "mobile", "widget"] as PluginView[]).map((v) => {
               const blocked = v === "mobile" && scope === "global";
               return (
                 <button
@@ -234,23 +265,33 @@ export function StudioNew({ plugins, onCancel, onCreated }: Props) {
             {template ? t("studio.new.sampleOf", { name: t(template.nameKey) }) : t("studio.new.sample")}
           </span>
           <span className="studio-spacer" />
-          <div className="studio-seg" role="tablist" aria-label={t("studio.preview.as")}>
-            {(["tab", "panel", "mobile"] as PluginView[]).map((v) => (
-              <button
-                key={v}
-                type="button"
-                role="tab"
-                aria-selected={previewView === v}
-                className={previewView === v ? "active" : ""}
-                onClick={() => setPreviewView(v)}
-              >
-                {t(VIEW_LABELS[v])}
-              </button>
-            ))}
-          </div>
+          {previewView === "widget" ? (
+            <div className="dash-sizes" role="group" aria-label={t("dashboard.config.size")}>
+              {SIZES.map((s) => (
+                <Button key={s} size="sm" variant={size === s ? "primary" : "secondary"} aria-pressed={size === s} onClick={() => setSize(s)}>
+                  {s.toUpperCase()}
+                </Button>
+              ))}
+            </div>
+          ) : (
+            <div className="studio-seg" role="tablist" aria-label={t("studio.preview.as")}>
+              {(["tab", "panel", "mobile"] as PluginView[]).map((v) => (
+                <button
+                  key={v}
+                  type="button"
+                  role="tab"
+                  aria-selected={previewView === v}
+                  className={previewView === v ? "active" : ""}
+                  onClick={() => setPreviewView(v)}
+                >
+                  {t(VIEW_LABELS[v])}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
         <div className="studio-new-stage">
-          <StudioStage view={previewView}>
+          <StudioStage view={previewView} widgetSize={size}>
             {/* Static illustration only. No allow-scripts, so nothing in it can run;
                 allow-same-origin is required anyway — with a fully empty sandbox
                 Chromium renders this srcdoc blank inside the app window. */}

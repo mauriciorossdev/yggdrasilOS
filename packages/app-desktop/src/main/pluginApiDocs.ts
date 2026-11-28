@@ -125,6 +125,8 @@ load();
 - \`net:<dominio>\`: dominio exacto, sin comodines. Solo GET por HTTPS, sin direcciones privadas, máx 1 MB.
 - La app guarda la última respuesta por instancia y la reutiliza dentro del intervalo elegido.
 - \`secret\`: lo escribe la persona en el formulario; el widget nunca lo lee. La app lo agrega al header.
+- Espacio del widget en el Dashboard: alto ~155 px en S y M y 370 px en L; ancho variable, desde unos
+  240 px en S. Lo que no entra se corta: diseña para ese alto o deja scroll.
 - \`widget\` es \`undefined\` si el mismo complemento está abierto como pestaña o panel (ahí no hay \`ygg.net\`).
 - Un widget no tiene \`fs\`, \`panes\`, \`gateway.call\`, \`mic\`, \`openFile\` ni \`openTab\`. Sí \`storage\`, \`app.notify\` y
   \`ygg.app.openLink(url)\` (https, solo como respuesta a un clic dentro del widget).
@@ -145,6 +147,7 @@ ygg.tools.register("crear_tarea", async (params) => {
 });
 \`\`\`
 
+- Excepción: un complemento que es **solo widget** nace sin tools (una tool mantendría una copia oculta corriendo).
 - Cada complemento nuevo nace con una tool de ejemplo ya registrada y funcionando (\`ping\`) — no
   hace falta agregar la primera a mano, solo reemplazarla o sumar más según lo que haga el
   complemento (ej. \`crear_tarea\` en un Kanban).

@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { STUDIO_TEMPLATES, slugify, suggestName, uniqueId } from "./studioTemplates.js";
+import { isWidgetTemplate, STUDIO_TEMPLATES, WIDGET_TEMPLATES, slugify, suggestName, uniqueId } from "./studioTemplates.js";
 
 describe("suggestName", () => {
   it("drops leading articles and keeps three words, capitalized", () => {
@@ -10,6 +10,12 @@ describe("suggestName", () => {
   it("never ends on a connector word", () => {
     expect(suggestName("Un contador simple con boton para sumar")).toBe("Contador simple");
     expect(suggestName("a board for the team")).toBe("Board");
+  });
+
+  it("names a widget after what it shows", () => {
+    expect(suggestName("Un widget con los repos destacados de GitHub")).toBe("Repos destacados");
+    expect(suggestName("widget de clima")).toBe("Clima");
+    expect(suggestName("widget")).toBe("Widget");
   });
 
   it("ignores punctuation and emoji", () => {
@@ -47,5 +53,16 @@ describe("STUDIO_TEMPLATES", () => {
     expect(STUDIO_TEMPLATES).toHaveLength(6);
     expect(new Set(STUDIO_TEMPLATES.map((t) => t.id)).size).toBe(6);
     for (const t of STUDIO_TEMPLATES) expect(t.views.length).toBeGreaterThan(0);
+  });
+});
+
+describe("WIDGET_TEMPLATES", () => {
+  it("offers list, number and chart, all widget-only and distinct from the others", () => {
+    expect(WIDGET_TEMPLATES.map((t) => t.id)).toEqual(["widgetList", "widgetNumber", "widgetChart"]);
+    for (const t of WIDGET_TEMPLATES) {
+      expect(t.views).toEqual(["widget"]);
+      expect(isWidgetTemplate(t)).toBe(true);
+    }
+    for (const t of STUDIO_TEMPLATES) expect(isWidgetTemplate(t)).toBe(false);
   });
 });

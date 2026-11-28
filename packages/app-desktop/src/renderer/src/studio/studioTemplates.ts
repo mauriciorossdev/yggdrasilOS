@@ -104,6 +104,50 @@ export const STUDIO_TEMPLATES: StudioTemplate[] = [
   },
 ];
 
+const WIDGET_HINT =
+  "Es un widget del Dashboard: reemplazá los archivos de arranque, dibujalo para los tamaños S, M y L y completá el bloque \"widget\" de manifest.json " +
+  "(configSchema con lo que la persona deba elegir). Si consulta internet, agregá vos mismo el permiso \"net:<dominio>\" en manifest.json y usá ygg.net.fetch; " +
+  "con widget.preview y sin permiso o clave, mostrá datos de ejemplo.";
+
+const widgetTemplate = (id: string, nameKey: MessageKey, descKey: MessageKey, shape: string, sample: string): StudioTemplate => ({
+  id,
+  nameKey,
+  descKey,
+  views: ["widget"],
+  permissions: [],
+  agentHint: `Plantilla: Widget · ${shape} ${WIDGET_HINT}`,
+  sampleHtml: `${SAMPLE_BASE}<style>body{padding:8px 14px;background:#151413}.item{border-top:1px solid #3a3835;padding:3px 0}</style>${sample}`,
+});
+
+/** Starting points for a Dashboard card; they force global scope and the widget view. */
+export const WIDGET_TEMPLATES: StudioTemplate[] = [
+  widgetTemplate(
+    "widgetList",
+    "studio.tpl.widgetList",
+    "studio.tpl.widgetListDesc",
+    "lista. Pocos elementos, cada uno con un título y un dato secundario.",
+    `<div class="item">1 · Primer elemento<div class="muted">detalle</div></div><div class="item">2 · Segundo elemento<div class="muted">detalle</div></div><div class="item">3 · Tercer elemento<div class="muted">detalle</div></div>`,
+  ),
+  widgetTemplate(
+    "widgetNumber",
+    "studio.tpl.widgetNumber",
+    "studio.tpl.widgetNumberDesc",
+    "cifra. Un número grande, su etiqueta y cuánto cambió.",
+    `<div style="text-align:center;padding-top:20px"><p style="font-size:44px;margin:0">1.248</p><p class="muted" style="margin:4px 0">visitas hoy</p><span class="pill">+12% vs. ayer</span></div>`,
+  ),
+  widgetTemplate(
+    "widgetChart",
+    "studio.tpl.widgetChart",
+    "studio.tpl.widgetChartDesc",
+    "gráfico. Una serie en barras o líneas dibujada con SVG, sin librerías, con su último valor.",
+    `<p class="muted" style="margin:0 0 8px">Últimos 7 días</p><div style="display:flex;align-items:flex-end;gap:6px;height:100px">${[40, 65, 50, 80, 60, 90, 75]
+      .map((h) => `<div style="flex:1;height:${h}%;background:#d97757;border-radius:3px 3px 0 0"></div>`)
+      .join("")}</div>`,
+  ),
+];
+
+export const isWidgetTemplate = (template: StudioTemplate | null): boolean => !!template?.views.includes("widget");
+
 const LEADING_ARTICLES = new Set(["un", "una", "unos", "unas", "el", "la", "los", "las", "a", "an", "the"]);
 const TRAILING_CONNECTORS = new Set([
   "con", "de", "del", "para", "por", "y", "o", "en", "a", "al", "que", "el", "la", "los", "las", "un", "una",
@@ -117,6 +161,11 @@ export function suggestName(description: string): string {
     .split(/\s+/)
     .filter(Boolean);
   while (words.length > 1 && LEADING_ARTICLES.has(words[0].toLowerCase())) words.shift();
+  // "Un widget con los repos destacados" names what it shows, not that it is a widget.
+  if (words.length > 1 && words[0].toLowerCase() === "widget") {
+    words.shift();
+    while (words.length > 1 && (LEADING_ARTICLES.has(words[0].toLowerCase()) || TRAILING_CONNECTORS.has(words[0].toLowerCase()))) words.shift();
+  }
   const kept = words.slice(0, 3);
   // "Contador simple con" → "Contador simple": never end on a connector.
   while (kept.length > 1 && TRAILING_CONNECTORS.has(kept[kept.length - 1].toLowerCase())) kept.pop();

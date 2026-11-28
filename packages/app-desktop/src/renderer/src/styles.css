@@ -11584,9 +11584,11 @@ textarea.repo-input.mono { font-family: var(--ygg-font-mono); font-size: 12px; }
 .dash-config-preview { display: flex; flex-direction: column; gap: 6px; max-width: 100%; }
 .dash-preview-box { display: flex; max-width: 100%; overflow: hidden; background: var(--ygg-sidebar); border: 1px solid var(--project-accent-color); border-radius: 10px; }
 .dash-preview-box > * { flex: 1; }
-.dash-preview-box.dash-size-s { width: 240px; height: 200px; }
-.dash-preview-box.dash-size-m { width: 480px; height: 200px; }
-.dash-preview-box.dash-size-l { width: 480px; height: 414px; }
+/* Heights are what the widget itself gets on the dashboard (200px/414px card minus its header) plus the 2px border.
+   S uses the taller two-line header of a widget with network access, so a preview never promises more room. */
+.dash-preview-box.dash-size-s { width: 240px; height: 157px; }
+.dash-preview-box.dash-size-m { width: 480px; height: 158px; }
+.dash-preview-box.dash-size-l { width: 480px; height: 372px; }
 .dash-sizes { display: flex; gap: 4px; }
 .dash-form-field { display: flex; flex-direction: column; gap: 3px; }
 .dash-check { display: flex; align-items: center; gap: 8px; min-height: 28px; }
@@ -11597,8 +11599,9 @@ textarea.repo-input.mono { font-family: var(--ygg-font-mono); font-size: 12px; }
 .studio-widget-form[hidden] { display: none; }
 .studio-preview-stage-widget .studio-preview-app-ghost { display: none; }
 .studio-preview-stage-widget .studio-frame-host { display: flex; flex: 1; align-items: center; justify-content: center; overflow: auto; padding: 12px; }
-.studio-preview-stage-widget .studio-frame-scaled, .studio-preview-stage-widget .studio-frame-shell { flex: none; width: auto; height: auto; }
-.studio-preview-stage-widget .studio-preview-frame.dash-preview-box { flex: none; }
+/* Full width so the card's max-width has something to measure against in a narrow column. */
+.studio-preview-stage-widget .studio-frame-scaled, .studio-preview-stage-widget .studio-frame-shell { flex: none; display: flex; justify-content: center; width: 100%; min-width: 0; height: auto; padding: 0; background: none; border: 0; box-shadow: none; }
+.studio-preview-stage-widget .studio-preview-frame.dash-preview-box { flex: 0 1 auto; min-width: 0; }
 /* A small card has no room for the age next to the title: it goes on its own line. */
 .dash-card.dash-size-s .dash-card-head { flex-wrap: wrap; row-gap: 0; padding-top: 2px; padding-bottom: 0; }
 .dash-card.dash-size-s .dash-card-meta { order: 1; flex-basis: 100%; margin: -4px 0 0; padding: 0; line-height: 1.2; }

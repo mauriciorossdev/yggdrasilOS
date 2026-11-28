@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { permissionsUsedIn } from "./pluginPermissions.js";
+import { netUsesIn, permissionsUsedIn } from "./pluginPermissions.js";
 
 describe("permissionsUsedIn", () => {
   it("maps fs reads and the fs.changed event to fs", () => {
@@ -26,5 +26,22 @@ describe("permissionsUsedIn", () => {
 
   it("ignores storage, app and unrelated text", () => {
     expect(permissionsUsedIn('await ygg.storage.set("k", 1); ygg.app.notify("x"); // fs write later')).toEqual([]);
+  });
+});
+
+describe("netUsesIn", () => {
+  it("reads the host of a literal URL", () => {
+    expect(netUsesIn('const r = await ygg.net.fetch("https://API.github.com/search?q=x");')).toEqual([{ permission: "net:api.github.com", line: 1 }]);
+    expect(netUsesIn("\nygg.net.fetch(`https://a.example.com/${id}`, { auth: 'k' })")).toEqual([{ permission: "net:a.example.com", line: 2 }]);
+  });
+
+  it("follows a variable assigned a literal URL in the same file", () => {
+    const code = 'const url = "https://api.example.com/v1?x=" + y;\nawait ygg.net.fetch(url);';
+    expect(netUsesIn(code)).toEqual([{ permission: "net:api.example.com", line: 2 }]);
+  });
+
+  it("reports plain net when the host can't be read, and ignores other links", () => {
+    expect(netUsesIn("await ygg.net.fetch(buildUrl());")).toEqual([{ permission: "net", line: 1 }]);
+    expect(netUsesIn('const home = "https://example.com"; ygg.app.openLink(home);')).toEqual([]);
   });
 });
