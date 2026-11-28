@@ -2,14 +2,14 @@ import { useEffect, useRef, useState, type ReactNode } from "react";
 import { ArrowDownTrayIcon, XMarkIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import type { FsReadResult } from "../types.js";
-import { TextEditor } from "./TextEditor.js";
+import { TextEditor } from "./LazyEditors.js";
 import { FileViewer } from "./FileViewer.js";
 import { previewKind } from "./filePreviewKind.js";
 import { reconcileExternalChange } from "../documents/reconcileExternalChange.js";
 import { DiskConflictBar } from "../documents/DiskConflictBar.js";
 import { FeatureProgress } from "../documents/FeatureProgress.js";
 import { useI18n } from "../i18n/index.js";
-import { contentToSave } from "./contentToSave.js";
+import { contentToSave } from "./editorBridge.js";
 import { setFallbackOpenerDirty } from "./openFileBus.js";
 
 type Props = {

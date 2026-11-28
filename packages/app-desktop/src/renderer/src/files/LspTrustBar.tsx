@@ -1,6 +1,7 @@
 import { useEffect, useState } from "react";
 import { useI18n } from "../i18n/index.js";
-import { fetchLspStatus, isServerConnected, onDiagnosticsChanged, retryLanguage, type LspStatus } from "./lsp/service.js";
+import { isServerConnected, onDiagnosticsChanged, retryLanguage } from "./lsp/service.js";
+import { fetchLspStatus, type LspStatus } from "./lsp/status.js";
 
 /** Remembered for this window only: the choice is offered again next time unless the project is trusted. */
 let dismissed = false;

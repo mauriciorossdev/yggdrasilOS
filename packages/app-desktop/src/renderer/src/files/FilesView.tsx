@@ -2,7 +2,8 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { XMarkIcon } from "@heroicons/react/20/solid";
 import { useGateway } from "@yggdrasil/client-web";
 import { FileTree } from "./FileTree.js";
-import { TextEditor, type RevealTarget } from "./TextEditor.js";
+import { TextEditor } from "./LazyEditors.js";
+import type { RevealTarget } from "./TextEditor.js";
 import { FolderView } from "./FolderView.js";
 import { folderOfTab, folderTabKey, isFolderTab, navigateFolderTab, tabLabel } from "./folderTabs.js";
 import { onRequestOpenInFiles } from "./filesBridge.js";
@@ -12,9 +13,9 @@ import { DiskConflictBar } from "../documents/DiskConflictBar.js";
 import { reconcileExternalChange } from "../documents/reconcileExternalChange.js";
 import type { FsReadResult } from "../types.js";
 import { useI18n } from "../i18n/index.js";
-import { contentToSave } from "./contentToSave.js";
+import { contentToSave } from "./editorBridge.js";
 import { registerFileOpener } from "./openFileBus.js";
-import { releaseModel } from "./lsp/service.js";
+import { releaseModel } from "./editorBridge.js";
 
 type TabState = {
   content: string;

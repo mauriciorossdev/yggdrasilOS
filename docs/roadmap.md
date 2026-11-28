@@ -34,7 +34,8 @@ are welcome.
 
 - **ODD:** make its remaining steps explicit to agents, such as confirming that a request authorizes code changes and
   closing with what was not verified.
-- **Startup time:** measure it, then load the heavy parts of the desktop app only when they are used.
+- **Startup time:** the code editor now loads on demand; next is what is left in the entry bundle, mostly the Markdown
+  editor and renderer.
 - **Smaller modules:** split the largest files of the desktop app and the gateway, without changing behavior.
 - **Documentation in English:** the remaining guides.
 - **Dashboard:** sync layout and settings between computers (never secrets).

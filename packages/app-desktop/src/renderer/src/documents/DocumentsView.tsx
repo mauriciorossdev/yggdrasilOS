@@ -3,7 +3,8 @@ import { ArrowLeftIcon, ArrowTopRightOnSquareIcon, XMarkIcon } from "@heroicons/
 import { useGateway } from "@yggdrasil/client-web";
 import { onRequestOpenDocument } from "../chat/documentsBridge.js";
 import { FileTree } from "../files/FileTree.js";
-import { TextEditor, type RevealTarget } from "../files/TextEditor.js";
+import { TextEditor } from "../files/LazyEditors.js";
+import type { RevealTarget } from "../files/TextEditor.js";
 import type { OpenTarget } from "../files/FileSearchResults.js";
 import { FileViewer } from "../files/FileViewer.js";
 import { FolderView } from "../files/FolderView.js";
@@ -19,7 +20,7 @@ import { SaveIndicator } from "./SaveIndicator.js";
 import { useNotesIndex } from "./useNotesIndex.js";
 import { buildBacklinks, wikiItems } from "./notesIndex.js";
 import { useI18n } from "../i18n/index.js";
-import { releaseModel } from "../files/lsp/service.js";
+import { releaseModel } from "../files/editorBridge.js";
 import type { FsListResult, FsReadResult } from "../types.js";
 
 const NOTES_ROOT = "notes";
